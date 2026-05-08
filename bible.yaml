@@ -1,0 +1,29 @@
+characters:
+  - name: Elena
+    traits:
+      - determined
+      - left-handed
+      - distrustful of authority
+    dialogue_examples:
+      - "I won't wait for permission."
+      - "The Citadel takes. It never gives back."
+      - "You think walls keep things out. They keep things in."
+
+world:
+  locations:
+    - The Citadel
+    - The Wastes
+    - The Lower Gates
+  rules:
+    - Magic requires physical cost proportional to effect
+    - The Citadel is ruled by the Council of Architects
+
+timeline: []
+
+style_guide:
+  voice: sparse and precise, with occasional lyrical moments; never ornate
+  avoid:
+    - adverbs ending in -ly
+    - passive voice constructions
+    - was/were + gerund (e.g. "was walking")
+    - throat-clearing opening sentences
