@@ -19,7 +19,7 @@ from backend.storage import (
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 app = FastAPI(title="Maya")
-app.mount("/static", StaticFiles(directory=str(_FRONTEND_DIR)), name="static")
+app.mount("/static", StaticFiles(directory=str(_FRONTEND_DIR), check_dir=False), name="static")
 
 
 @app.get("/")
