@@ -11,7 +11,7 @@ _PLAN_TOOL = {
         "properties": {
             "goal": {"type": "string", "description": "What this scene accomplishes narratively"},
             "pov_character": {"type": "string", "description": "Whose perspective drives the scene"},
-            "location": {"type": "string"},
+            "location": {"type": "string", "description": "Specific physical location where the scene takes place"},
             "beats": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -63,5 +63,7 @@ def planner_node(state: dict) -> dict:
         ],
     )
 
-    tool_use = next(b for b in response.content if b.type == "tool_use")
+    tool_use = next((b for b in response.content if b.type == "tool_use"), None)
+    if tool_use is None:
+        raise RuntimeError(f"Claude did not return a tool_use block; content={response.content!r}")
     return {"scene_plan": tool_use.input}
