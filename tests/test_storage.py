@@ -73,5 +73,18 @@ def test_save_bible_and_reload(tmp_path, sample_bible):
 
 def test_save_bible_rejects_invalid_yaml(tmp_path):
     (tmp_path / "bible.yaml").write_text("valid: yaml")
-    with pytest.raises(Exception):
+    with pytest.raises(yaml.YAMLError):
         storage.save_bible("invalid: yaml: : :")
+
+
+def test_save_bible_rejects_non_dict_yaml(tmp_path):
+    (tmp_path / "bible.yaml").write_text("valid: yaml")
+    with pytest.raises(ValueError):
+        storage.save_bible("- list item\n")
+
+
+def test_save_and_load_summary(tmp_path):
+    storage.save_summary(1, "Elena reached the gates.")
+    result = storage.load_summaries(2)
+    assert len(result) == 1
+    assert "Elena reached the gates." in result[0]

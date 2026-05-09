@@ -11,8 +11,8 @@ def load_bible() -> dict:
 
 def save_bible(content: str) -> None:
     parsed = yaml.safe_load(content)
-    if parsed is None:
-        raise ValueError("Empty or invalid YAML")
+    if not isinstance(parsed, dict):
+        raise ValueError("Bible must be a YAML mapping")
     (BASE_DIR / "bible.yaml").write_text(content)
 
 
@@ -27,6 +27,11 @@ def load_summaries(up_to_chapter: int) -> list[str]:
         if path.exists():
             summaries.append(path.read_text())
     return summaries
+
+
+def save_summary(chapter_number: int, text: str) -> None:
+    path = BASE_DIR / "summaries" / f"ch{chapter_number:02d}_summary.txt"
+    path.write_text(text)
 
 
 def save_chapter(chapter_number: int, plan: dict, draft: str, issues: list[dict]) -> None:
