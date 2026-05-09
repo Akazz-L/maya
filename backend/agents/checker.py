@@ -36,7 +36,7 @@ def checker_node(state: dict) -> dict:
     summaries = state["previous_summaries"]
 
     summaries_text = (
-        "\n\n".join(f"Chapter {i + 1}:\n{s}" for i, s in enumerate(summaries))
+        "\n\n".join(f"Chapter {i + 1} summary:\n{s}" for i, s in enumerate(summaries))
         if summaries
         else "No previous chapters."
     )
@@ -57,10 +57,15 @@ def checker_node(state: dict) -> dict:
                 "content": (
                     f"Check this draft for continuity issues.\n\n"
                     f"DRAFT:\n{state['draft']}\n\n"
+                    f"SCENE PLAN (expected POV, location, beats):\n"
+                    f"POV: {state['scene_plan'].get('pov_character', '')}\n"
+                    f"Location: {state['scene_plan'].get('location', '')}\n"
+                    f"Beats: {', '.join(state['scene_plan'].get('beats', []))}\n\n"
                     f"CHARACTER FACTS:\n{yaml.dump(bible.get('characters', []))}\n\n"
                     f"WORLD RULES:\n{yaml.dump(bible.get('world', {}))}\n\n"
                     f"TIMELINE:\n{yaml.dump(bible.get('timeline', []))}\n\n"
                     f"PREVIOUS CHAPTERS:\n{summaries_text}\n\n"
+                    f"STYLE RULES TO ENFORCE:\n{yaml.dump(bible.get('style_guide', {}))}\n\n"
                     "Check for: physical trait contradictions, timeline inconsistencies, "
                     "character knowledge errors (knowing something they shouldn't), "
                     "location consistency errors."
