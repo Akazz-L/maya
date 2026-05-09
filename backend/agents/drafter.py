@@ -37,13 +37,13 @@ def drafter_node(state: dict) -> dict:
                 "content": (
                     f"Write this scene as prose.\n\n"
                     f"SCENE PLAN:\n"
-                    f"Goal: {plan.get('goal')}\n"
-                    f"POV: {plan.get('pov_character')}\n"
-                    f"Location: {plan.get('location')}\n"
+                    f"Goal: {plan.get('goal', '')}\n"
+                    f"POV: {plan.get('pov_character', '')}\n"
+                    f"Location: {plan.get('location', '')}\n"
                     f"Beats:\n{beats_text}\n"
-                    f"Opening image: {plan.get('opening_image')}\n"
-                    f"Closing image: {plan.get('closing_image')}\n"
-                    f"Sensory anchor: {plan.get('sensory_anchor')}\n\n"
+                    f"Opening image: {plan.get('opening_image', '')}\n"
+                    f"Closing image: {plan.get('closing_image', '')}\n"
+                    f"Sensory anchor: {plan.get('sensory_anchor', '')}\n\n"
                     f"PREVIOUS CHAPTER:\n{last_summary}\n\n"
                     f"CHARACTER VOICES:\n"
                     + ("\n\n".join(dialogue_blocks) if dialogue_blocks else "No examples available.")
@@ -52,4 +52,6 @@ def drafter_node(state: dict) -> dict:
         ],
     )
 
+    if not response.content:
+        raise ValueError(f"Drafter received empty content from API (stop_reason={response.stop_reason!r})")
     return {"draft": response.content[0].text}
