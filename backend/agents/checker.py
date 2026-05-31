@@ -1,5 +1,6 @@
 import yaml
 import anthropic
+from backend.settings import get_model
 
 client = anthropic.Anthropic()
 
@@ -42,7 +43,7 @@ def checker_node(state: dict) -> dict:
     )
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=get_model(),
         max_tokens=2048,
         system=(
             "You are a continuity editor. Check for contradictions between the draft "

@@ -1,4 +1,5 @@
 import anthropic
+from backend.settings import get_model
 
 client = anthropic.Anthropic()
 
@@ -22,7 +23,7 @@ def drafter_node(state: dict) -> dict:
     beats_text = "\n".join(f"- {b}" for b in plan.get("beats", []))
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=get_model(),
         max_tokens=4096,
         temperature=0.9,
         system=(

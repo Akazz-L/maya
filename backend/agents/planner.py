@@ -1,5 +1,6 @@
 import yaml
 import anthropic
+from backend.settings import get_model
 
 client = anthropic.Anthropic()
 
@@ -40,7 +41,7 @@ def planner_node(state: dict) -> dict:
     )
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=get_model(),
         max_tokens=1024,
         system=(
             "You are a narrative architect. Create precise, concrete scene plans "
