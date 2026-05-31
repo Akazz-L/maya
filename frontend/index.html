@@ -7,6 +7,7 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; display: flex; height: 100vh; overflow: hidden; background: #f5f5f0; }
 
+    /* Bible sidebar */
     #bible-panel {
       width: 320px; min-width: 220px; display: flex; flex-direction: column;
       border-right: 1px solid #ddd; background: #fff; padding: 16px; gap: 8px;
@@ -15,37 +16,97 @@
     #bible-editor { flex: 1; resize: none; border: 1px solid #ddd; padding: 8px; font-family: monospace; font-size: 12px; border-radius: 4px; }
     #save-bible-btn { padding: 8px; background: #1a1a1a; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
 
+    /* Chapter panel */
     #chapter-panel { flex: 1; display: flex; flex-direction: column; padding: 24px; gap: 16px; overflow: hidden; }
 
+    /* Step indicator */
+    #step-bar { display: flex; align-items: center; }
+    .step-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #bbb; }
+    .step-item.active { color: #2563eb; font-weight: 600; }
+    .step-item.done { color: #16a34a; }
+    .step-dot {
+      width: 22px; height: 22px; border-radius: 50%; border: 2px solid #ddd;
+      display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0;
+    }
+    .step-item.active .step-dot { border-color: #2563eb; background: #2563eb; color: #fff; }
+    .step-item.done .step-dot { border-color: #16a34a; background: #16a34a; color: #fff; }
+    .step-connector { flex: 0 0 40px; height: 2px; background: #ddd; margin: 0 4px; }
+    .step-connector.done { background: #16a34a; }
+
+    /* Controls row */
     #controls { display: flex; gap: 12px; align-items: center; }
     #controls label { font-size: 14px; color: #444; }
     #chapter-num { width: 64px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
-    #generate-btn { padding: 8px 20px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-    #generate-btn:disabled { opacity: .5; cursor: default; }
-    #spinner { font-size: 13px; color: #888; }
 
-    #results { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
-    #tabs { display: flex; gap: 4px; }
-    #tabs button {
-      padding: 6px 14px; border: 1px solid #ddd; background: #f5f5f0;
-      border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px;
+    /* Content area */
+    #content { flex: 1; overflow-y: auto; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 20px; }
+
+    /* Empty state */
+    #empty-msg { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px; color: #bbb; gap: 8px; font-size: 14px; }
+
+    /* Plan form */
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    .field-row.single { grid-template-columns: 1fr; }
+    .field-group { display: flex; flex-direction: column; gap: 4px; }
+    .field-group label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: #888; font-weight: 700; }
+    .field-group input, .field-group textarea {
+      padding: 7px 10px; border: 1px solid #ddd; border-radius: 4px;
+      font-size: 14px; font-family: inherit; background: #fafafa;
     }
-    #tabs button.active { background: #fff; border-bottom-color: #fff; }
+    .field-group input:focus, .field-group textarea:focus { outline: none; border-color: #93c5fd; background: #fff; }
+    .field-group textarea { resize: vertical; min-height: 56px; }
 
-    .tab-content { flex: 1; overflow-y: auto; background: #fff; border: 1px solid #ddd; border-radius: 0 4px 4px 4px; padding: 16px; }
-    #plan-content { font-family: monospace; font-size: 12px; white-space: pre-wrap; }
-    #draft-content p { line-height: 1.7; margin-bottom: 1em; font-size: 15px; }
+    /* Beats */
+    #beats-section { margin-bottom: 14px; }
+    #beats-section > label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: #888; font-weight: 700; display: block; margin-bottom: 6px; }
+    #beats-list { display: flex; flex-direction: column; gap: 6px; }
+    .beat-row { display: flex; gap: 6px; align-items: center; }
+    .beat-row span { font-size: 12px; color: #bbb; width: 18px; flex-shrink: 0; text-align: right; }
+    .beat-row input { flex: 1; padding: 7px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #fafafa; }
+    .beat-row input:focus { outline: none; border-color: #93c5fd; background: #fff; }
+    .beat-del { padding: 4px 8px; border: 1px solid #ddd; background: #fff; border-radius: 4px; cursor: pointer; color: #bbb; font-size: 14px; line-height: 1; flex-shrink: 0; }
+    .beat-del:hover { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+    #add-beat-btn { margin-top: 6px; width: 100%; padding: 7px; border: 1px dashed #ddd; background: #fafafa; border-radius: 4px; cursor: pointer; font-size: 13px; color: #999; }
+    #add-beat-btn:hover { background: #f0f0f0; }
 
-    #issues-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
-    #issues-list li { border: 1px solid #eee; border-radius: 6px; padding: 12px; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-right: 8px; text-transform: uppercase; }
-    .badge-critical { background: #fee2e2; color: #b91c1c; }
-    .badge-minor { background: #fef9c3; color: #854d0e; }
-    .badge-style { background: #f1f5f9; color: #475569; }
-    .issue-fix { display: block; margin-top: 6px; font-size: 12px; color: #666; font-style: italic; }
+    /* Draft editor */
+    #draft-textarea {
+      width: 100%; min-height: 480px; padding: 14px; border: 1px solid #ddd; border-radius: 4px;
+      font-size: 15px; line-height: 1.75; font-family: Georgia, 'Times New Roman', serif; resize: vertical;
+    }
+    #draft-textarea:focus { outline: none; border-color: #93c5fd; }
 
-    #accept-btn { align-self: flex-end; padding: 8px 20px; background: #16a34a; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    /* Issue cards */
+    #issues-container { display: flex; flex-direction: column; gap: 14px; }
+    #no-issues-msg { color: #888; font-size: 14px; padding: 20px 0; text-align: center; }
+    .issue-card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px; }
+    .issue-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .ic-num { font-size: 11px; color: #aaa; }
+    .ic-severity {
+      padding: 3px 10px; border: 1px solid #ddd; border-radius: 4px;
+      font-size: 12px; background: #fafafa; cursor: pointer;
+    }
+    .ic-severity:focus { outline: none; border-color: #93c5fd; }
+    .ic-del { margin-left: auto; padding: 4px 10px; border: 1px solid #fca5a5; background: #fff; color: #b91c1c; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .ic-del:hover { background: #fee2e2; }
+    .issue-card-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .issue-card-fields .span2 { grid-column: 1 / -1; }
+    .ic-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #888; font-weight: 700; display: block; margin-bottom: 3px; }
+    .ic-input { width: 100%; padding: 6px 9px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; font-family: inherit; background: #fafafa; }
+    .ic-input:focus { outline: none; border-color: #93c5fd; background: #fff; }
+    textarea.ic-input { resize: vertical; min-height: 52px; }
+
+    /* Action row */
+    #action-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .btn { padding: 8px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-family: inherit; }
+    .btn:disabled { opacity: .5; cursor: default; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-success { background: #16a34a; color: #fff; }
+    .btn-secondary { background: #fff; color: #444; border: 1px solid #ddd; }
+    #spinner { font-size: 13px; color: #888; display: none; }
+    #spinner.show { display: inline; }
     #status-msg { font-size: 13px; color: #16a34a; }
+    #status-msg.error { color: #b91c1c; }
   </style>
 </head>
 <body>
@@ -57,29 +118,46 @@
 </aside>
 
 <main id="chapter-panel">
+
+  <div id="step-bar">
+    <div class="step-item" id="si-plan">
+      <div class="step-dot">1</div>Plan
+    </div>
+    <div class="step-connector" id="sc-1"></div>
+    <div class="step-item" id="si-draft">
+      <div class="step-dot">2</div>Draft
+    </div>
+    <div class="step-connector" id="sc-2"></div>
+    <div class="step-item" id="si-check">
+      <div class="step-dot">3</div>Check
+    </div>
+  </div>
+
   <div id="controls">
-    <label>Chapter <input type="number" id="chapter-num" value="1" min="1"></label>
-    <button id="generate-btn" onclick="generate()">Generate</button>
-    <span id="spinner" hidden>Generating…</span>
+    <label>Chapter <input type="number" id="chapter-num" value="1" min="1" onchange="onChapterChange()"></label>
+  </div>
+
+  <div id="content">
+    <div id="empty-msg"><p>Enter a chapter number and generate a plan to begin.</p></div>
+  </div>
+
+  <div id="action-row">
+    <span id="spinner">Working…</span>
     <span id="status-msg"></span>
   </div>
 
-  <div id="results" hidden>
-    <div id="tabs">
-      <button id="tab-plan" onclick="showTab('plan')">Plan</button>
-      <button id="tab-draft" onclick="showTab('draft')">Draft</button>
-      <button id="tab-issues" onclick="showTab('issues')">Issues <span id="issues-count"></span></button>
-    </div>
-    <div id="plan-tab" class="tab-content"><pre id="plan-content"></pre></div>
-    <div id="draft-tab" class="tab-content" hidden><div id="draft-content"></div></div>
-    <div id="issues-tab" class="tab-content" hidden><ul id="issues-list"></ul></div>
-    <button id="accept-btn" onclick="acceptChapter()">Accept &amp; Save</button>
-  </div>
 </main>
 
 <script>
-  let currentResult = null;
+  // ── state ─────────────────────────────────────────────────────────────────
+  let wfStep = null;   // null | 'plan' | 'draft' | 'check'
+  let wfPlan = {};
+  let wfDraft = '';
+  let wfIssues = [];
 
+  function chNum() { return parseInt(document.getElementById('chapter-num').value) || 1; }
+
+  // ── bible ─────────────────────────────────────────────────────────────────
   async function loadBible() {
     const res = await fetch('/bible');
     const data = await res.json();
@@ -88,74 +166,305 @@
 
   async function saveBible() {
     const content = document.getElementById('bible-editor').value;
-    const res = await fetch('/bible', {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({content}),
-    });
-    setStatus(res.ok ? 'Bible saved.' : 'Error saving bible.');
+    const res = await fetch('/bible', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content})});
+    setStatus(res.ok ? 'Bible saved.' : 'Error saving bible.', !res.ok);
   }
 
-  async function generate() {
-    const n = document.getElementById('chapter-num').value;
-    document.getElementById('spinner').hidden = false;
-    document.getElementById('generate-btn').disabled = true;
-    document.getElementById('results').hidden = true;
-    setStatus('');
+  // ── resume on chapter change ──────────────────────────────────────────────
+  async function onChapterChange() {
+    resetWorkflow();
+    await checkResume();
+  }
+
+  async function checkResume() {
     try {
-      const res = await fetch(`/generate/${n}`, {method: 'POST'});
-      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || res.statusText); }
-      currentResult = await res.json();
-      renderResults(currentResult);
-      document.getElementById('results').hidden = false;
-      showTab('plan');
-    } catch (e) {
-      setStatus('Error: ' + e.message);
-    } finally {
-      document.getElementById('spinner').hidden = true;
-      document.getElementById('generate-btn').disabled = false;
+      const res = await fetch(`/chapter/${chNum()}/state`);
+      if (!res.ok) return;
+      const saved = await res.json();
+      if (!saved) return;
+      wfPlan = saved.scene_plan || {};
+      wfDraft = saved.draft || '';
+      wfIssues = saved.issues || [];
+      renderStep(saved.step);
+    } catch (_) {}
+  }
+
+  // ── step rendering ────────────────────────────────────────────────────────
+  function renderStep(step) {
+    wfStep = step;
+    updateStepBar(step);
+    const content = document.getElementById('content');
+    const actionRow = document.getElementById('action-row');
+
+    if (step === 'plan') {
+      content.innerHTML = renderPlanHTML(wfPlan);
+      actionRow.innerHTML = `
+        <button class="btn btn-primary" onclick="generatePlan()" id="btn-gen-plan">Generate Plan</button>
+        <span id="spinner">Working…</span>
+        <span id="status-msg"></span>`;
+      // If plan already exists, also show "Generate Draft" button
+      if (wfPlan && Object.keys(wfPlan).length > 0) {
+        document.getElementById('btn-gen-plan').insertAdjacentHTML('afterend',
+          `<button class="btn btn-primary" onclick="generateDraft()">Generate Draft →</button>`);
+      }
+    } else if (step === 'draft') {
+      content.innerHTML = `<textarea id="draft-textarea" spellcheck="false">${esc(wfDraft)}</textarea>`;
+      actionRow.innerHTML = `
+        <button class="btn btn-secondary" onclick="backToPlan()">← Edit Plan</button>
+        <button class="btn btn-primary" onclick="checkIssues()">Check Issues →</button>
+        <span id="spinner">Working…</span>
+        <span id="status-msg"></span>`;
+    } else if (step === 'check') {
+      content.innerHTML = renderIssuesHTML(wfIssues);
+      actionRow.innerHTML = `
+        <button class="btn btn-secondary" onclick="reviseDraft()">← Revise Draft</button>
+        <button class="btn btn-success" onclick="acceptChapter()">Accept &amp; Save</button>
+        <span id="spinner">Working…</span>
+        <span id="status-msg"></span>`;
     }
   }
 
-  function renderResults(data) {
-    document.getElementById('plan-content').textContent = JSON.stringify(data.scene_plan, null, 2);
-    document.getElementById('draft-content').innerHTML =
-      data.draft.split(/\n\n+/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
-    const issues = data.continuity_issues;
-    document.getElementById('issues-count').textContent = issues.length ? `(${issues.length})` : '';
-    document.getElementById('issues-list').innerHTML = issues.length === 0
-      ? '<li style="color:#888">No issues found.</li>'
-      : issues.map(i => `
-          <li>
-            <span class="badge badge-${i.severity}">${i.severity}</span>
-            <strong>${i.location}:</strong> ${i.issue}
-            <span class="issue-fix">Fix: ${i.suggested_fix}</span>
-          </li>`).join('');
+  function updateStepBar(step) {
+    const order = ['plan','draft','check'];
+    const idx = order.indexOf(step);
+    order.forEach((s, i) => {
+      const el = document.getElementById(`si-${s}`);
+      el.classList.remove('active','done');
+      if (i < idx) el.classList.add('done');
+      else if (i === idx) el.classList.add('active');
+    });
+    ['sc-1','sc-2'].forEach((id, i) => {
+      const el = document.getElementById(id);
+      el.classList.toggle('done', i < idx);
+    });
   }
 
-  function showTab(name) {
-    ['plan', 'draft', 'issues'].forEach(t => {
-      document.getElementById(`${t}-tab`).hidden = t !== name;
-      document.getElementById(`tab-${t}`).classList.toggle('active', t === name);
+  function resetWorkflow() {
+    wfStep = null; wfPlan = {}; wfDraft = ''; wfIssues = [];
+    document.getElementById('content').innerHTML = '<div id="empty-msg"><p>Enter a chapter number and generate a plan to begin.</p></div>';
+    document.getElementById('action-row').innerHTML = `
+      <button class="btn btn-primary" id="btn-gen-plan" onclick="generatePlan()">Generate Plan</button>
+      <span id="spinner">Working…</span>
+      <span id="status-msg"></span>`;
+    updateStepBar('');
+  }
+
+  // ── plan form ─────────────────────────────────────────────────────────────
+  function renderPlanHTML(plan) {
+    const beats = (plan.beats || []).map((b, i) => beatRowHTML(b, i)).join('');
+    return `
+      <div class="field-row">
+        <div class="field-group">
+          <label>Goal</label>
+          <textarea id="f-goal">${esc(plan.goal||'')}</textarea>
+        </div>
+        <div class="field-group">
+          <label>POV Character</label>
+          <input id="f-pov" type="text" value="${esc(plan.pov_character||'')}">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>Location</label>
+          <input id="f-location" type="text" value="${esc(plan.location||'')}">
+        </div>
+        <div class="field-group">
+          <label>Sensory Anchor</label>
+          <input id="f-sensory" type="text" value="${esc(plan.sensory_anchor||'')}">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>Opening Image</label>
+          <textarea id="f-opening">${esc(plan.opening_image||'')}</textarea>
+        </div>
+        <div class="field-group">
+          <label>Closing Image</label>
+          <textarea id="f-closing">${esc(plan.closing_image||'')}</textarea>
+        </div>
+      </div>
+      <div id="beats-section">
+        <label>Beats</label>
+        <div id="beats-list">${beats}</div>
+        <button id="add-beat-btn" onclick="addBeat()">+ Add beat</button>
+      </div>`;
+  }
+
+  function beatRowHTML(value, idx) {
+    return `<div class="beat-row">
+      <span>${idx+1}.</span>
+      <input class="beat-input" type="text" value="${esc(value)}">
+      <button class="beat-del" onclick="this.closest('.beat-row').remove(); renumberBeats()" title="Remove">×</button>
+    </div>`;
+  }
+
+  function addBeat() {
+    const list = document.getElementById('beats-list');
+    const idx = list.querySelectorAll('.beat-row').length;
+    list.insertAdjacentHTML('beforeend', beatRowHTML('', idx));
+  }
+
+  function renumberBeats() {
+    document.querySelectorAll('#beats-list .beat-row').forEach((row, i) => {
+      row.querySelector('span').textContent = `${i+1}.`;
     });
+  }
+
+  function getPlanFromForm() {
+    return {
+      goal: document.getElementById('f-goal').value.trim(),
+      pov_character: document.getElementById('f-pov').value.trim(),
+      location: document.getElementById('f-location').value.trim(),
+      sensory_anchor: document.getElementById('f-sensory').value.trim(),
+      opening_image: document.getElementById('f-opening').value.trim(),
+      closing_image: document.getElementById('f-closing').value.trim(),
+      beats: Array.from(document.querySelectorAll('.beat-input')).map(i => i.value.trim()).filter(Boolean),
+    };
+  }
+
+  // ── issues ────────────────────────────────────────────────────────────────
+  function renderIssuesHTML(issues) {
+    if (!issues.length) return '<div id="no-issues-msg">No issues found — ready to accept.</div>';
+    return `<div id="issues-container">${issues.map((iss, i) => issueCardHTML(iss, i)).join('')}</div>`;
+  }
+
+  function issueCardHTML(iss, i) {
+    const sevOpts = ['critical','minor','style'].map(s =>
+      `<option value="${s}" ${iss.severity===s?'selected':''}>${s}</option>`).join('');
+    return `<div class="issue-card">
+      <div class="issue-card-top">
+        <span class="ic-num">#${i+1}</span>
+        <select class="ic-severity ic-input">${sevOpts}</select>
+        <button class="ic-del" onclick="this.closest('.issue-card').remove()">Remove</button>
+      </div>
+      <div class="issue-card-fields">
+        <div class="span2">
+          <span class="ic-label">Issue</span>
+          <textarea class="ic-input ic-issue">${esc(iss.issue||'')}</textarea>
+        </div>
+        <div>
+          <span class="ic-label">Location</span>
+          <input class="ic-input ic-location" type="text" value="${esc(iss.location||'')}">
+        </div>
+        <div>
+          <span class="ic-label">Suggested Fix</span>
+          <textarea class="ic-input ic-fix">${esc(iss.suggested_fix||'')}</textarea>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function getIssuesFromCards() {
+    return Array.from(document.querySelectorAll('.issue-card')).map(card => ({
+      issue: card.querySelector('.ic-issue').value.trim(),
+      severity: card.querySelector('.ic-severity').value,
+      location: card.querySelector('.ic-location').value.trim(),
+      suggested_fix: card.querySelector('.ic-fix').value.trim(),
+    }));
+  }
+
+  // ── actions ───────────────────────────────────────────────────────────────
+  async function generatePlan() {
+    busy(true);
+    try {
+      const res = await post(`/chapter/${chNum()}/plan`, null);
+      wfPlan = res.scene_plan;
+      renderStep('plan');  // renderStep adds "Generate Draft" button when wfPlan is set
+      setStatus('Plan generated. Edit fields then continue.');
+    } catch (e) { setStatus(e.message, true); }
+    finally { busy(false); }
+  }
+
+  function backToPlan() {
+    wfDraft = document.getElementById('draft-textarea').value;
+    renderStep('plan');
+  }
+
+  async function generateDraft() {
+    wfPlan = getPlanFromForm();
+    busy(true);
+    try {
+      const res = await post(`/chapter/${chNum()}/draft`, {scene_plan: wfPlan});
+      wfDraft = res.draft;
+      renderStep('draft');
+      setStatus('Draft ready. Edit then check for issues.');
+    } catch (e) { setStatus(e.message, true); }
+    finally { busy(false); }
+  }
+
+  async function checkIssues() {
+    wfDraft = document.getElementById('draft-textarea').value;
+    busy(true);
+    try {
+      const res = await post(`/chapter/${chNum()}/check`, {draft: wfDraft});
+      wfIssues = res.issues;
+      renderStep('check');
+      const count = wfIssues.length;
+      setStatus(count ? `${count} issue${count>1?'s':''} found. Edit, remove, or revise.` : 'No issues — ready to accept.');
+    } catch (e) { setStatus(e.message, true); }
+    finally { busy(false); }
+  }
+
+  async function reviseDraft() {
+    wfIssues = getIssuesFromCards();
+    busy(true);
+    try {
+      const res = await post(`/chapter/${chNum()}/revise`, {draft: wfDraft, issues: wfIssues});
+      wfDraft = res.draft;
+      renderStep('draft');
+      setStatus('Revised draft ready. Check again or accept.');
+    } catch (e) { setStatus(e.message, true); }
+    finally { busy(false); }
   }
 
   async function acceptChapter() {
-    if (!currentResult) return;
-    const n = document.getElementById('chapter-num').value;
-    const res = await fetch(`/chapter/${n}/accept`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(currentResult),
-    });
-    setStatus(res.ok ? `Chapter ${n} saved to disk.` : 'Error saving.');
+    wfIssues = getIssuesFromCards();
+    busy(true);
+    try {
+      await post(`/chapter/${chNum()}/accept`, {scene_plan: wfPlan, draft: wfDraft, issues: wfIssues}, 'PUT');
+      setStatus(`Chapter ${chNum()} saved.`);
+      resetWorkflow();
+    } catch (e) { setStatus(e.message, true); }
+    finally { busy(false); }
   }
 
-  function setStatus(msg) {
-    document.getElementById('status-msg').textContent = msg;
+  // ── helpers ───────────────────────────────────────────────────────────────
+  async function post(url, body, method='POST') {
+    const opts = {method, headers:{'Content-Type':'application/json'}};
+    if (body !== null) opts.body = JSON.stringify(body);
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || res.statusText);
+    }
+    return res.json();
   }
 
-  loadBible();
+  function busy(on) {
+    document.getElementById('spinner').classList.toggle('show', on);
+    document.querySelectorAll('.btn').forEach(b => b.disabled = on);
+    if (on) setStatus('');
+  }
+
+  function setStatus(msg, isError=false) {
+    const el = document.getElementById('status-msg');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = isError ? 'error' : '';
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── init ──────────────────────────────────────────────────────────────────
+  async function init() {
+    await loadBible();
+    resetWorkflow();
+    await checkResume();
+  }
+
+  init();
 </script>
 </body>
 </html>
