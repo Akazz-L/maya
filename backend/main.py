@@ -4,16 +4,28 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.models import BibleUpdateRequest, GenerateResponse
-from backend.pipeline import pipeline
+from backend.agents.checker import checker_node
+from backend.agents.drafter import drafter_node
+from backend.agents.planner import planner_node
+from backend.models import (
+    AcceptRequest,
+    BibleUpdateRequest,
+    CheckRequest,
+    DraftRequest,
+    DraftStateResponse,
+    ReviseRequest,
+)
 from backend.storage import (
+    delete_draft_state,
     load_bible,
     load_bible_text,
     load_chapter,
+    load_draft_state,
     load_outline,
     load_summaries,
     save_bible,
     save_chapter,
+    save_draft_state,
 )
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -27,32 +39,95 @@ def root():
     return FileResponse(_FRONTEND_DIR / "index.html")
 
 
-@app.post("/generate/{chapter_number}", response_model=GenerateResponse)
-def generate_chapter(chapter_number: int):
+def _base_state(chapter_number: int) -> dict:
     bible = load_bible()
     outline = load_outline()
     beats = outline.get("chapters", [])
     if chapter_number < 1 or chapter_number > len(beats):
         raise HTTPException(status_code=400, detail=f"Chapter {chapter_number} not in outline")
+    return {
+        "chapter_number": chapter_number,
+        "outline_beat": beats[chapter_number - 1],
+        "story_bible": bible,
+        "previous_summaries": load_summaries(chapter_number),
+        "scene_plan": {},
+        "draft": "",
+        "continuity_issues": [],
+    }
 
-    state = pipeline.invoke(
-        {
-            "chapter_number": chapter_number,
-            "outline_beat": beats[chapter_number - 1],
-            "story_bible": bible,
-            "previous_summaries": load_summaries(chapter_number),
-            "scene_plan": {},
-            "draft": "",
-            "continuity_issues": [],
-        }
+
+@app.post("/chapter/{chapter_number}/plan")
+def generate_plan(chapter_number: int):
+    state = _base_state(chapter_number)
+    result = planner_node(state)
+    state.update(result)
+    save_draft_state(chapter_number, {"step": "plan", "scene_plan": state["scene_plan"], "draft": "", "issues": []})
+    return {"scene_plan": state["scene_plan"]}
+
+
+@app.post("/chapter/{chapter_number}/draft")
+def generate_draft(chapter_number: int, body: DraftRequest):
+    state = _base_state(chapter_number)
+    state["scene_plan"] = body.scene_plan
+    result = drafter_node(state)
+    state.update(result)
+    save_draft_state(chapter_number, {"step": "draft", "scene_plan": body.scene_plan, "draft": state["draft"], "issues": []})
+    return {"draft": state["draft"]}
+
+
+@app.post("/chapter/{chapter_number}/check")
+def generate_check(chapter_number: int, body: CheckRequest):
+    state = _base_state(chapter_number)
+    saved = load_draft_state(chapter_number)
+    state["scene_plan"] = saved["scene_plan"] if saved else {}
+    state["draft"] = body.draft
+    result = checker_node(state)
+    state.update(result)
+    save_draft_state(chapter_number, {
+        "step": "check",
+        "scene_plan": state["scene_plan"],
+        "draft": body.draft,
+        "issues": state["continuity_issues"],
+    })
+    return {"issues": state["continuity_issues"]}
+
+
+@app.post("/chapter/{chapter_number}/revise")
+def revise_draft(chapter_number: int, body: ReviseRequest):
+    state = _base_state(chapter_number)
+    saved = load_draft_state(chapter_number)
+    state["scene_plan"] = saved["scene_plan"] if saved else {}
+    state["draft"] = body.draft
+    state["continuity_issues"] = body.issues
+    result = drafter_node(state)
+    state.update(result)
+    save_draft_state(chapter_number, {
+        "step": "draft",
+        "scene_plan": state["scene_plan"],
+        "draft": state["draft"],
+        "issues": [],
+    })
+    return {"draft": state["draft"]}
+
+
+@app.get("/chapter/{chapter_number}/state")
+def get_draft_state(chapter_number: int):
+    saved = load_draft_state(chapter_number)
+    if not saved:
+        return None
+    return DraftStateResponse(
+        step=saved.get("step", "plan"),
+        scene_plan=saved.get("scene_plan", {}),
+        draft=saved.get("draft", ""),
+        issues=saved.get("issues", []),
     )
 
-    return GenerateResponse(
-        chapter_number=chapter_number,
-        scene_plan=state["scene_plan"],
-        draft=state["draft"],
-        continuity_issues=state["continuity_issues"],
-    )
+
+@app.put("/chapter/{chapter_number}/accept")
+def accept_chapter(chapter_number: int, body: AcceptRequest):
+    save_chapter(chapter_number, body.scene_plan, body.draft, body.issues)
+    delete_draft_state(chapter_number)
+    return {"status": "saved"}
 
 
 @app.get("/chapter/{chapter_number}")
@@ -61,12 +136,6 @@ def get_chapter(chapter_number: int):
         return load_chapter(chapter_number)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Chapter not found")
-
-
-@app.put("/chapter/{chapter_number}/accept")
-def accept_chapter(chapter_number: int, data: GenerateResponse):
-    save_chapter(chapter_number, data.scene_plan, data.draft, data.continuity_issues)
-    return {"status": "saved"}
 
 
 @app.get("/bible")

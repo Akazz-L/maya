@@ -21,3 +21,29 @@ class GenerateResponse(BaseModel):
 
 class BibleUpdateRequest(BaseModel):
     content: str
+
+
+class DraftRequest(BaseModel):
+    scene_plan: dict
+
+
+class CheckRequest(BaseModel):
+    draft: str
+
+
+class ReviseRequest(BaseModel):
+    draft: str
+    issues: list[dict]
+
+
+class AcceptRequest(BaseModel):
+    scene_plan: dict
+    draft: str
+    issues: list[dict]
+
+
+class DraftStateResponse(BaseModel):
+    step: str
+    scene_plan: dict
+    draft: str
+    issues: list[dict]
