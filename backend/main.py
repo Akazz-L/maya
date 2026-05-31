@@ -1,6 +1,10 @@
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+_logger = logging.getLogger(__name__)
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
