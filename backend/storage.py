@@ -9,6 +9,10 @@ def load_bible() -> dict:
     return yaml.safe_load((BASE_DIR / "bible.yaml").read_text())
 
 
+def load_bible_text() -> str:
+    return (BASE_DIR / "bible.yaml").read_text()
+
+
 def save_bible(content: str) -> None:
     parsed = yaml.safe_load(content)
     if not isinstance(parsed, dict):

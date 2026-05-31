@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -9,6 +8,7 @@ from backend.models import BibleUpdateRequest, GenerateResponse
 from backend.pipeline import pipeline
 from backend.storage import (
     load_bible,
+    load_bible_text,
     load_chapter,
     load_outline,
     load_summaries,
@@ -71,7 +71,7 @@ def accept_chapter(chapter_number: int, data: GenerateResponse):
 
 @app.get("/bible")
 def get_bible():
-    return {"content": yaml.dump(load_bible())}
+    return {"content": load_bible_text()}
 
 
 @app.put("/bible")
