@@ -382,11 +382,17 @@
 
   async function generateDraft() {
     wfPlan = getPlanFromForm();
-    busy(true);
+    // Show the editor immediately, then stream prose into it.
+    wfDraft = '';
+    renderStep('draft');
+    const ta = document.getElementById('draft-textarea');
+    ta.value = '';
+    busy(true);  // after renderStep so the freshly-rendered buttons get disabled
     try {
-      const res = await post(`/chapter/${chNum()}/draft`, {scene_plan: wfPlan});
-      wfDraft = res.draft;
-      renderStep('draft');
+      await streamPost(`/chapter/${chNum()}/draft/stream`, {scene_plan: wfPlan}, {
+        onDelta: text => { ta.value += text; ta.scrollTop = ta.scrollHeight; },
+        onDone: draft => { wfDraft = draft; ta.value = draft; },
+      });
       setStatus('Draft ready. Edit then check for issues.');
     } catch (e) { setStatus(e.message, true); }
     finally { busy(false); }
@@ -407,11 +413,17 @@
 
   async function reviseDraft() {
     wfIssues = getIssuesFromCards();
-    busy(true);
+    const prevDraft = wfDraft;
+    // Switch to the editor and stream the revised prose in, replacing the old.
+    renderStep('draft');
+    const ta = document.getElementById('draft-textarea');
+    ta.value = '';
+    busy(true);  // after renderStep so the freshly-rendered buttons get disabled
     try {
-      const res = await post(`/chapter/${chNum()}/revise`, {draft: wfDraft, issues: wfIssues});
-      wfDraft = res.draft;
-      renderStep('draft');
+      await streamPost(`/chapter/${chNum()}/revise/stream`, {draft: prevDraft, issues: wfIssues}, {
+        onDelta: text => { ta.value += text; ta.scrollTop = ta.scrollHeight; },
+        onDone: draft => { wfDraft = draft; ta.value = draft; },
+      });
       setStatus('Revised draft ready. Check again or accept.');
     } catch (e) { setStatus(e.message, true); }
     finally { busy(false); }
@@ -438,6 +450,34 @@
       throw new Error(err.detail || res.statusText);
     }
     return res.json();
+  }
+
+  // Read an SSE stream of {type:'delta'|'done'|'error'} frames from a POST.
+  async function streamPost(url, body, {onDelta, onDone}) {
+    const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+      body: body ? JSON.stringify(body) : null});
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || res.statusText);
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream:true});
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const frame = buf.slice(0, i).replace(/^data: /, '');
+        buf = buf.slice(i + 2);
+        if (!frame) continue;
+        const evt = JSON.parse(frame);
+        if (evt.type === 'delta') onDelta(evt.text);
+        else if (evt.type === 'done') onDone(evt.draft);
+        else if (evt.type === 'error') throw new Error(evt.detail);
+      }
+    }
   }
 
   function busy(on) {

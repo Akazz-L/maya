@@ -1,10 +1,14 @@
+from collections.abc import Iterator
+
 import anthropic
 from backend.settings import get_model
 
 client = anthropic.Anthropic()
 
 
-def drafter_node(state: dict) -> dict:
+def _build_messages(state: dict) -> tuple[str, str]:
+    """Build (system_prompt, user_content) for the drafter. Shared by the
+    blocking node and the streaming generator so prompt logic stays identical."""
     bible = state["story_bible"]
     plan = state["scene_plan"]
     style = bible.get("style_guide", {})
@@ -69,6 +73,12 @@ def drafter_node(state: dict) -> dict:
             + ("\n\n".join(dialogue_blocks) if dialogue_blocks else "No examples available.")
         )
 
+    return system_prompt, user_content
+
+
+def drafter_node(state: dict) -> dict:
+    system_prompt, user_content = _build_messages(state)
+
     response = client.messages.create(
         model=get_model(),
         max_tokens=4096,
@@ -80,3 +90,19 @@ def drafter_node(state: dict) -> dict:
     if not response.content:
         raise ValueError(f"Drafter received empty content from API (stop_reason={response.stop_reason!r})")
     return {"draft": response.content[0].text}
+
+
+def drafter_token_stream(state: dict) -> Iterator[str]:
+    """Yield prose text deltas as the model writes them. Owns the API call only;
+    transport (SSE framing) and persistence are the endpoint's responsibility."""
+    system_prompt, user_content = _build_messages(state)
+
+    with client.messages.stream(
+        model=get_model(),
+        max_tokens=4096,
+        temperature=0.9,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_content}],
+    ) as stream:
+        for text in stream.text_stream:
+            yield text
