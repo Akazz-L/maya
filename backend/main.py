@@ -22,6 +22,7 @@ from backend.models import (
     ReviseRequest,
 )
 from backend.storage import (
+    chapter_exists,
     delete_draft_state,
     load_bible,
     load_bible_text,
@@ -182,7 +183,9 @@ def get_draft_state(chapter_number: int):
 
 
 @app.put("/chapter/{chapter_number}/accept")
-def accept_chapter(chapter_number: int, body: AcceptRequest):
+def accept_chapter(chapter_number: int, body: AcceptRequest, overwrite: bool = False):
+    if chapter_exists(chapter_number) and not overwrite:
+        raise HTTPException(status_code=409, detail=f"Chapter {chapter_number} already exists")
     save_chapter(chapter_number, body.scene_plan, body.draft, body.issues)
     delete_draft_state(chapter_number)
     return {"status": "saved"}

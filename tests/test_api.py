@@ -94,6 +94,30 @@ def test_get_chapter_after_accept(client, pipeline_result):
     assert data["draft"] == "Elena stood at the gates."
 
 
+def test_accept_new_chapter_succeeds(client, sample_scene_plan):
+    body = {"scene_plan": sample_scene_plan, "draft": "First version.", "issues": []}
+    response = client.put("/chapter/1/accept", json=body)
+    assert response.status_code == 200
+    assert response.json() == {"status": "saved"}
+
+
+def test_accept_existing_chapter_blocked_without_overwrite(client, sample_scene_plan):
+    body = {"scene_plan": sample_scene_plan, "draft": "First version.", "issues": []}
+    client.put("/chapter/1/accept", json=body)
+    second = client.put("/chapter/1/accept", json={**body, "draft": "Second version."})
+    assert second.status_code == 409
+    # The saved chapter is left untouched.
+    assert client.get("/chapter/1").json()["draft"] == "First version."
+
+
+def test_accept_existing_chapter_overwrites_with_flag(client, sample_scene_plan):
+    body = {"scene_plan": sample_scene_plan, "draft": "First version.", "issues": []}
+    client.put("/chapter/1/accept", json=body)
+    second = client.put("/chapter/1/accept?overwrite=true", json={**body, "draft": "Second version."})
+    assert second.status_code == 200
+    assert client.get("/chapter/1").json()["draft"] == "Second version."
+
+
 def _parse_sse(text):
     """Parse SSE response body into a list of decoded data payloads."""
     import json

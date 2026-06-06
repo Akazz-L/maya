@@ -62,6 +62,13 @@ def test_load_chapter_not_found():
         storage.load_chapter(99)
 
 
+def test_chapter_exists(tmp_path, sample_scene_plan):
+    assert storage.chapter_exists(1) is False
+    storage.save_chapter(1, sample_scene_plan, "Elena stood at the gates.", [])
+    assert storage.chapter_exists(1) is True
+    assert storage.chapter_exists(2) is False
+
+
 def test_save_bible_and_reload(tmp_path, sample_bible):
     original = yaml.dump(sample_bible)
     (tmp_path / "bible.yaml").write_text(original)

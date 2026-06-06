@@ -75,6 +75,10 @@ def delete_draft_state(chapter_number: int) -> None:
     path.unlink(missing_ok=True)
 
 
+def chapter_exists(chapter_number: int) -> bool:
+    return (BASE_DIR / "chapters" / f"ch{chapter_number:02d}" / "plan.json").exists()
+
+
 def load_chapter(chapter_number: int) -> dict:
     ch_dir = BASE_DIR / "chapters" / f"ch{chapter_number:02d}"
     if not ch_dir.exists():

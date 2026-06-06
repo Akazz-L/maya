@@ -77,6 +77,8 @@
       font-size: 15px; line-height: 1.75; font-family: Georgia, 'Times New Roman', serif; resize: vertical;
     }
     #draft-textarea:focus { outline: none; border-color: #93c5fd; }
+    #draft-textarea[readonly] { background: #f9fafb; color: #444; }
+    #saved-banner { background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 14px; }
 
     /* Issue cards */
     #issues-container { display: flex; flex-direction: column; gap: 14px; }
@@ -159,6 +161,7 @@
   let wfPlan = {};
   let wfDraft = '';
   let wfIssues = [];
+  let wfOverwrite = false;  // true when the current workflow will replace a saved chapter
 
   function chNum() { return parseInt(document.getElementById('chapter-num').value) || 1; }
 
@@ -188,23 +191,55 @@
     setStatus(res.ok ? 'Outline saved.' : 'Error saving outline.', !res.ok);
   }
 
-  // ── resume on chapter change ──────────────────────────────────────────────
+  // ── load the right view for the selected chapter ───────────────────────────
   async function onChapterChange() {
-    resetWorkflow();
-    await checkResume();
+    await loadChapterView();
   }
 
-  async function checkResume() {
+  // Priority: an in-progress draft_state resumes the workflow (incl. a redo);
+  // otherwise a saved chapter is shown locked (read-only); otherwise empty.
+  async function loadChapterView() {
+    resetWorkflow();
+    let chapter = null, state = null;
     try {
-      const res = await fetch(`/chapter/${chNum()}/state`);
-      if (!res.ok) return;
-      const saved = await res.json();
-      if (!saved) return;
-      wfPlan = saved.scene_plan || {};
-      wfDraft = saved.draft || '';
-      wfIssues = saved.issues || [];
-      renderStep(saved.step);
+      const cRes = await fetch(`/chapter/${chNum()}`);
+      if (cRes.ok) chapter = await cRes.json();
+      const sRes = await fetch(`/chapter/${chNum()}/state`);
+      if (sRes.ok) state = await sRes.json();
     } catch (_) {}
+    // We're overwriting iff a saved chapter already exists on disk.
+    wfOverwrite = !!chapter;
+    if (state) {
+      wfPlan = state.scene_plan || {};
+      wfDraft = state.draft || '';
+      wfIssues = state.issues || [];
+      renderStep(state.step);
+    } else if (chapter) {
+      renderSaved(chapter);
+    }
+  }
+
+  // Locked, read-only view of an already-saved chapter.
+  function renderSaved(chapter) {
+    wfStep = 'saved';
+    wfPlan = chapter.plan || {};
+    wfDraft = chapter.draft || '';
+    wfIssues = chapter.issues || [];
+    markAllStepsDone();
+    document.getElementById('content').innerHTML = `
+      <div id="saved-banner">✓ Chapter ${chNum()} is saved — read-only. Click “Redo chapter” to replace it.</div>
+      <textarea id="draft-textarea" readonly spellcheck="false">${esc(wfDraft)}</textarea>`;
+    document.getElementById('action-row').innerHTML = `
+      <button class="btn btn-secondary" onclick="redoChapter()">Redo chapter</button>
+      <span id="spinner">Working…</span>
+      <span id="status-msg"></span>`;
+  }
+
+  function redoChapter() {
+    if (!confirm(`Redo chapter ${chNum()}? The saved version will be replaced when you accept again.`)) return;
+    wfOverwrite = true;  // explicit, in case the file gets accepted without disk re-check
+    renderStep('plan');  // wfPlan is populated, so "Generate Draft →" appears
+    setStatus('Editing a saved chapter — re-accepting will replace it.');
   }
 
   // ── step rendering ────────────────────────────────────────────────────────
@@ -257,8 +292,16 @@
     });
   }
 
+  function markAllStepsDone() {
+    ['plan','draft','check'].forEach(s => {
+      const el = document.getElementById(`si-${s}`);
+      el.classList.remove('active'); el.classList.add('done');
+    });
+    ['sc-1','sc-2'].forEach(id => document.getElementById(id).classList.add('done'));
+  }
+
   function resetWorkflow() {
-    wfStep = null; wfPlan = {}; wfDraft = ''; wfIssues = [];
+    wfStep = null; wfPlan = {}; wfDraft = ''; wfIssues = []; wfOverwrite = false;
     document.getElementById('content').innerHTML = '<div id="empty-msg"><p>Enter a chapter number and generate a plan to begin.</p></div>';
     document.getElementById('action-row').innerHTML = `
       <button class="btn btn-primary" id="btn-gen-plan" onclick="generatePlan()">Generate Plan</button>
@@ -451,9 +494,9 @@
     wfIssues = getIssuesFromCards();
     busy(true);
     try {
-      await post(`/chapter/${chNum()}/accept`, {scene_plan: wfPlan, draft: wfDraft, issues: wfIssues}, 'PUT');
+      await post(`/chapter/${chNum()}/accept?overwrite=${wfOverwrite}`, {scene_plan: wfPlan, draft: wfDraft, issues: wfIssues}, 'PUT');
+      await loadChapterView();  // re-render as the now-locked saved chapter
       setStatus(`Chapter ${chNum()} saved.`);
-      resetWorkflow();
     } catch (e) { setStatus(e.message, true); }
     finally { busy(false); }
   }
@@ -519,8 +562,7 @@
   async function init() {
     await loadBible();
     await loadOutline();
-    resetWorkflow();
-    await checkResume();
+    await loadChapterView();
   }
 
   init();
