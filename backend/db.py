@@ -19,3 +19,14 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     _, factory = _get_engine()
     async with factory() as session:
         yield session
+
+
+async def init_db() -> None:
+    """Create any missing tables. Idempotent — safe to call on every startup.
+    Lets the app run against a fresh on-disk SQLite file with zero setup;
+    for PostgreSQL you can still manage schema with `alembic upgrade head`."""
+    from backend.db_models import Base
+
+    engine, _ = _get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)

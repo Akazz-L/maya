@@ -52,6 +52,30 @@ async def load_outline(db: AsyncSession, project_id: uuid.UUID) -> dict:
     return yaml.safe_load(project.outline_content) or {}
 
 
+async def load_outline_text(db: AsyncSession, project_id: uuid.UUID) -> str:
+    project = await _get_project(db, project_id)
+    return project.outline_content
+
+
+async def save_outline(db: AsyncSession, project_id: uuid.UUID, content: str) -> None:
+    parsed = yaml.safe_load(content)
+    if not isinstance(parsed, dict) or "chapters" not in parsed:
+        raise ValueError("Outline must be a YAML mapping with a 'chapters' key")
+    project = await _get_project(db, project_id)
+    project.outline_content = content
+    await db.commit()
+
+
+async def chapter_exists(db: AsyncSession, project_id: uuid.UUID, chapter_number: int) -> bool:
+    result = await db.execute(
+        select(Chapter.draft).where(
+            Chapter.project_id == project_id, Chapter.number == chapter_number
+        )
+    )
+    draft = result.scalar_one_or_none()
+    return draft is not None
+
+
 async def load_summaries(db: AsyncSession, project_id: uuid.UUID, up_to_chapter: int) -> list[str]:
     result = await db.execute(
         select(Chapter.id, Chapter.number)

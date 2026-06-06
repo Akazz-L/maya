@@ -147,3 +147,27 @@ async def test_save_and_load_summary(project):
     result = await storage.load_summaries(db, project_id, 2)
     assert len(result) == 1
     assert "Elena reached the gates." in result[0]
+
+
+@pytest.mark.asyncio
+async def test_save_outline_and_reload(project):
+    db, project_id = project
+    await storage.save_outline(db, project_id, "chapters:\n  - Elena arrives\n  - Elena departs\n")
+    result = await storage.load_outline(db, project_id)
+    assert result["chapters"] == ["Elena arrives", "Elena departs"]
+
+
+@pytest.mark.asyncio
+async def test_save_outline_rejects_missing_chapters(project):
+    db, project_id = project
+    with pytest.raises(ValueError):
+        await storage.save_outline(db, project_id, "title: My Book\n")
+
+
+@pytest.mark.asyncio
+async def test_chapter_exists(project, sample_scene_plan):
+    db, project_id = project
+    assert await storage.chapter_exists(db, project_id, 1) is False
+    await storage.save_chapter(db, project_id, 1, sample_scene_plan, "Elena stood at the gates.", [])
+    assert await storage.chapter_exists(db, project_id, 1) is True
+    assert await storage.chapter_exists(db, project_id, 2) is False

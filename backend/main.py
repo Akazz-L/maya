@@ -1,9 +1,11 @@
+import json
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -13,26 +15,30 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefm
 _logger = logging.getLogger(__name__)
 
 from backend.agents.checker import checker_node
-from backend.agents.drafter import drafter_node
+from backend.agents.drafter import drafter_node, drafter_token_stream
 from backend.agents.planner import planner_node
 from backend.auth import create_access_token, get_current_user, hash_password, verify_password
-from backend.db import get_db
+from backend.db import get_db, init_db
 from backend.db_models import Project, User
 from backend.db_storage import (
+    chapter_exists,
     delete_draft_state,
     load_bible,
     load_bible_text,
     load_chapter,
     load_draft_state,
     load_outline,
+    load_outline_text,
     load_summaries,
     save_bible,
     save_chapter,
     save_draft_state,
+    save_outline,
 )
 from backend.models import (
     AcceptRequest,
     BibleUpdateRequest,
+    OutlineUpdateRequest,
     CheckRequest,
     DraftRequest,
     DraftStateResponse,
@@ -41,7 +47,14 @@ from backend.models import (
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
-app = FastAPI(title="Maya")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    yield
+
+
+app = FastAPI(title="Maya", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(_FRONTEND_DIR), check_dir=False), name="static")
 
 
@@ -189,6 +202,32 @@ async def update_bible(
 
 
 # ---------------------------------------------------------------------------
+# Outline
+# ---------------------------------------------------------------------------
+
+@app.get("/projects/{project_id}/outline")
+async def get_outline(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _require_project(project_id, current_user, db)
+    return {"content": await load_outline_text(db, project_id)}
+
+
+@app.put("/projects/{project_id}/outline")
+async def update_outline(
+    project_id: uuid.UUID,
+    request: OutlineUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _require_project(project_id, current_user, db)
+    await save_outline(db, project_id, request.content)
+    return {"status": "saved"}
+
+
+# ---------------------------------------------------------------------------
 # Chapter workflow
 # ---------------------------------------------------------------------------
 
@@ -273,6 +312,74 @@ async def revise_draft(
     return {"draft": state["draft"]}
 
 
+# ---------------------------------------------------------------------------
+# Streaming (Draft / Revise) — SSE
+# ---------------------------------------------------------------------------
+
+def _sse(data: dict) -> str:
+    return f"data: {json.dumps(data)}\n\n"
+
+
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+
+@app.post("/projects/{project_id}/chapters/{chapter_number}/draft/stream")
+async def generate_draft_stream(
+    project_id: uuid.UUID,
+    chapter_number: int,
+    body: DraftRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _require_project(project_id, current_user, db)
+    state = await _base_state(project_id, chapter_number, db)
+    state["scene_plan"] = body.scene_plan
+
+    async def gen():
+        buf = []
+        try:
+            async for text in drafter_token_stream(state):
+                buf.append(text)
+                yield _sse({"type": "delta", "text": text})
+            draft = "".join(buf)
+            await save_draft_state(db, project_id, chapter_number, {"step": "draft", "scene_plan": body.scene_plan, "draft": draft, "issues": []})
+            yield _sse({"type": "done", "draft": draft})
+        except Exception as e:
+            yield _sse({"type": "error", "detail": str(e)})
+
+    return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
+@app.post("/projects/{project_id}/chapters/{chapter_number}/revise/stream")
+async def revise_draft_stream(
+    project_id: uuid.UUID,
+    chapter_number: int,
+    body: ReviseRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _require_project(project_id, current_user, db)
+    state = await _base_state(project_id, chapter_number, db)
+    saved = await load_draft_state(db, project_id, chapter_number)
+    state["scene_plan"] = saved["scene_plan"] if saved else {}
+    state["draft"] = body.draft
+    state["continuity_issues"] = body.issues
+
+    async def gen():
+        buf = []
+        try:
+            async for text in drafter_token_stream(state):
+                buf.append(text)
+                yield _sse({"type": "delta", "text": text})
+            draft = "".join(buf)
+            await save_draft_state(db, project_id, chapter_number, {"step": "draft", "scene_plan": state["scene_plan"], "draft": draft, "issues": []})
+            yield _sse({"type": "done", "draft": draft})
+        except Exception as e:
+            yield _sse({"type": "error", "detail": str(e)})
+
+    return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
 @app.get("/projects/{project_id}/chapters/{chapter_number}/state")
 async def get_draft_state(
     project_id: uuid.UUID,
@@ -297,10 +404,13 @@ async def accept_chapter(
     project_id: uuid.UUID,
     chapter_number: int,
     body: AcceptRequest,
+    overwrite: bool = False,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     await _require_project(project_id, current_user, db)
+    if await chapter_exists(db, project_id, chapter_number) and not overwrite:
+        raise HTTPException(status_code=409, detail=f"Chapter {chapter_number} already exists")
     await save_chapter(db, project_id, chapter_number, body.scene_plan, body.draft, body.issues)
     await delete_draft_state(db, project_id, chapter_number)
     return {"status": "saved"}

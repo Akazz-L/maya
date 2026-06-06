@@ -8,7 +8,12 @@ Create Date: 2026-05-31
 import uuid
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+
+# Cross-dialect column types: sa.Uuid renders as native UUID on PostgreSQL and
+# CHAR(32) on SQLite; sa.JSON renders as JSONB on PostgreSQL and JSON/TEXT on
+# SQLite. This lets the same migration run on both backends.
+UUID = sa.Uuid
+JSONB = sa.JSON
 
 revision = "0001"
 down_revision = None

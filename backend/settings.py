@@ -26,10 +26,9 @@ def get_model() -> str:
 
 
 def get_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        raise RuntimeError("DATABASE_URL environment variable is not set")
-    return url
+    # Default to an on-disk SQLite file so the app runs with zero setup and
+    # persists data across restarts. Override with DATABASE_URL for PostgreSQL.
+    return os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./maya.db")
 
 
 def get_jwt_secret() -> str:
