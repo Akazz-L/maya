@@ -2,7 +2,7 @@ import yaml
 import anthropic
 from backend.settings import get_model
 
-client = anthropic.Anthropic()
+client = anthropic.AsyncAnthropic()
 
 _PLAN_TOOL = {
     "name": "create_scene_plan",
@@ -30,7 +30,7 @@ _PLAN_TOOL = {
 }
 
 
-def planner_node(state: dict) -> dict:
+async def planner_node(state: dict) -> dict:
     bible = state["story_bible"]
     summaries = state["previous_summaries"]
 
@@ -40,7 +40,7 @@ def planner_node(state: dict) -> dict:
         else "No previous chapters."
     )
 
-    response = client.messages.create(
+    response = await client.messages.create(
         model=get_model(),
         max_tokens=1024,
         system=(

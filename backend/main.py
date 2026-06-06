@@ -201,7 +201,7 @@ async def generate_plan(
 ):
     await _require_project(project_id, current_user, db)
     state = await _base_state(project_id, chapter_number, db)
-    result = planner_node(state)
+    result = await planner_node(state)
     state.update(result)
     await save_draft_state(db, project_id, chapter_number, {"step": "plan", "scene_plan": state["scene_plan"], "draft": "", "issues": []})
     return {"scene_plan": state["scene_plan"]}
@@ -218,7 +218,7 @@ async def generate_draft(
     await _require_project(project_id, current_user, db)
     state = await _base_state(project_id, chapter_number, db)
     state["scene_plan"] = body.scene_plan
-    result = drafter_node(state)
+    result = await drafter_node(state)
     state.update(result)
     await save_draft_state(db, project_id, chapter_number, {"step": "draft", "scene_plan": body.scene_plan, "draft": state["draft"], "issues": []})
     return {"draft": state["draft"]}
@@ -237,7 +237,7 @@ async def generate_check(
     saved = await load_draft_state(db, project_id, chapter_number)
     state["scene_plan"] = saved["scene_plan"] if saved else {}
     state["draft"] = body.draft
-    result = checker_node(state)
+    result = await checker_node(state)
     state.update(result)
     await save_draft_state(db, project_id, chapter_number, {
         "step": "check",
@@ -262,7 +262,7 @@ async def revise_draft(
     state["scene_plan"] = saved["scene_plan"] if saved else {}
     state["draft"] = body.draft
     state["continuity_issues"] = body.issues
-    result = drafter_node(state)
+    result = await drafter_node(state)
     state.update(result)
     await save_draft_state(db, project_id, chapter_number, {
         "step": "draft",

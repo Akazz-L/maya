@@ -1,9 +1,9 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 
 import anthropic
 from backend.settings import get_model
 
-client = anthropic.Anthropic()
+client = anthropic.AsyncAnthropic()
 
 
 def _build_messages(state: dict) -> tuple[str, str]:
@@ -76,10 +76,10 @@ def _build_messages(state: dict) -> tuple[str, str]:
     return system_prompt, user_content
 
 
-def drafter_node(state: dict) -> dict:
+async def drafter_node(state: dict) -> dict:
     system_prompt, user_content = _build_messages(state)
 
-    response = client.messages.create(
+    response = await client.messages.create(
         model=get_model(),
         max_tokens=4096,
         temperature=0.9,
@@ -92,17 +92,17 @@ def drafter_node(state: dict) -> dict:
     return {"draft": response.content[0].text}
 
 
-def drafter_token_stream(state: dict) -> Iterator[str]:
+async def drafter_token_stream(state: dict) -> AsyncIterator[str]:
     """Yield prose text deltas as the model writes them. Owns the API call only;
     transport (SSE framing) and persistence are the endpoint's responsibility."""
     system_prompt, user_content = _build_messages(state)
 
-    with client.messages.stream(
+    async with client.messages.stream(
         model=get_model(),
         max_tokens=4096,
         temperature=0.9,
         system=system_prompt,
         messages=[{"role": "user", "content": user_content}],
     ) as stream:
-        for text in stream.text_stream:
+        async for text in stream.text_stream:
             yield text

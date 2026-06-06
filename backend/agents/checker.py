@@ -2,7 +2,7 @@ import yaml
 import anthropic
 from backend.settings import get_model
 
-client = anthropic.Anthropic()
+client = anthropic.AsyncAnthropic()
 
 _CHECK_TOOL = {
     "name": "report_continuity_issues",
@@ -32,7 +32,7 @@ _CHECK_TOOL = {
 }
 
 
-def checker_node(state: dict) -> dict:
+async def checker_node(state: dict) -> dict:
     bible = state["story_bible"]
     summaries = state["previous_summaries"]
 
@@ -42,7 +42,7 @@ def checker_node(state: dict) -> dict:
         else "No previous chapters."
     )
 
-    response = client.messages.create(
+    response = await client.messages.create(
         model=get_model(),
         max_tokens=2048,
         system=(
