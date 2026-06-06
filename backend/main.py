@@ -1,3 +1,4 @@
+import json
 import logging
 from pathlib import Path
 
@@ -5,11 +6,11 @@ from fastapi import FastAPI, HTTPException
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 _logger = logging.getLogger(__name__)
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.agents.checker import checker_node
-from backend.agents.drafter import drafter_node
+from backend.agents.drafter import drafter_node, drafter_token_stream
 from backend.agents.planner import planner_node
 from backend.models import (
     AcceptRequest,
@@ -17,19 +18,23 @@ from backend.models import (
     CheckRequest,
     DraftRequest,
     DraftStateResponse,
+    OutlineUpdateRequest,
     ReviseRequest,
 )
 from backend.storage import (
+    chapter_exists,
     delete_draft_state,
     load_bible,
     load_bible_text,
     load_chapter,
     load_draft_state,
     load_outline,
+    load_outline_text,
     load_summaries,
     save_bible,
     save_chapter,
     save_draft_state,
+    save_outline,
 )
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -114,6 +119,56 @@ def revise_draft(chapter_number: int, body: ReviseRequest):
     return {"draft": state["draft"]}
 
 
+def _sse(data: dict) -> str:
+    return f"data: {json.dumps(data)}\n\n"
+
+
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+
+@app.post("/chapter/{chapter_number}/draft/stream")
+def generate_draft_stream(chapter_number: int, body: DraftRequest):
+    state = _base_state(chapter_number)
+    state["scene_plan"] = body.scene_plan
+
+    def gen():
+        buf = []
+        try:
+            for text in drafter_token_stream(state):
+                buf.append(text)
+                yield _sse({"type": "delta", "text": text})
+            draft = "".join(buf)
+            save_draft_state(chapter_number, {"step": "draft", "scene_plan": body.scene_plan, "draft": draft, "issues": []})
+            yield _sse({"type": "done", "draft": draft})
+        except Exception as e:
+            yield _sse({"type": "error", "detail": str(e)})
+
+    return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
+@app.post("/chapter/{chapter_number}/revise/stream")
+def revise_draft_stream(chapter_number: int, body: ReviseRequest):
+    state = _base_state(chapter_number)
+    saved = load_draft_state(chapter_number)
+    state["scene_plan"] = saved["scene_plan"] if saved else {}
+    state["draft"] = body.draft
+    state["continuity_issues"] = body.issues
+
+    def gen():
+        buf = []
+        try:
+            for text in drafter_token_stream(state):
+                buf.append(text)
+                yield _sse({"type": "delta", "text": text})
+            draft = "".join(buf)
+            save_draft_state(chapter_number, {"step": "draft", "scene_plan": state["scene_plan"], "draft": draft, "issues": []})
+            yield _sse({"type": "done", "draft": draft})
+        except Exception as e:
+            yield _sse({"type": "error", "detail": str(e)})
+
+    return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
 @app.get("/chapter/{chapter_number}/state")
 def get_draft_state(chapter_number: int):
     saved = load_draft_state(chapter_number)
@@ -128,7 +183,9 @@ def get_draft_state(chapter_number: int):
 
 
 @app.put("/chapter/{chapter_number}/accept")
-def accept_chapter(chapter_number: int, body: AcceptRequest):
+def accept_chapter(chapter_number: int, body: AcceptRequest, overwrite: bool = False):
+    if chapter_exists(chapter_number) and not overwrite:
+        raise HTTPException(status_code=409, detail=f"Chapter {chapter_number} already exists")
     save_chapter(chapter_number, body.scene_plan, body.draft, body.issues)
     delete_draft_state(chapter_number)
     return {"status": "saved"}
@@ -150,4 +207,15 @@ def get_bible():
 @app.put("/bible")
 def update_bible(request: BibleUpdateRequest):
     save_bible(request.content)
+    return {"status": "saved"}
+
+
+@app.get("/outline")
+def get_outline():
+    return {"content": load_outline_text()}
+
+
+@app.put("/outline")
+def update_outline(request: OutlineUpdateRequest):
+    save_outline(request.content)
     return {"status": "saved"}

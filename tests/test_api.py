@@ -42,6 +42,23 @@ def test_put_bible(client):
     assert response.status_code == 200
 
 
+def test_get_outline(client):
+    response = client.get("/outline")
+    assert response.status_code == 200
+    data = response.json()
+    assert "content" in data
+    assert "Elena" in data["content"]
+
+
+def test_put_outline(client):
+    response = client.put("/outline", json={"content": "chapters:\n  - Elena leaves\n"})
+    assert response.status_code == 200
+    assert response.json() == {"status": "saved"}
+    # The new beat is now what plan generation would read back.
+    follow_up = client.get("/outline")
+    assert "Elena leaves" in follow_up.json()["content"]
+
+
 def test_generate_chapter(client, pipeline_result):
     with patch("backend.main.pipeline") as mock_pipeline:
         mock_pipeline.invoke.return_value = pipeline_result
@@ -75,3 +92,83 @@ def test_get_chapter_after_accept(client, pipeline_result):
     assert response.status_code == 200
     data = response.json()
     assert data["draft"] == "Elena stood at the gates."
+
+
+def test_accept_new_chapter_succeeds(client, sample_scene_plan):
+    body = {"scene_plan": sample_scene_plan, "draft": "First version.", "issues": []}
+    response = client.put("/chapter/1/accept", json=body)
+    assert response.status_code == 200
+    assert response.json() == {"status": "saved"}
+
+
+def test_accept_existing_chapter_blocked_without_overwrite(client, sample_scene_plan):
+    body = {"scene_plan": sample_scene_plan, "draft": "First version.", "issues": []}
+    client.put("/chapter/1/accept", json=body)
+    second = client.put("/chapter/1/accept", json={**body, "draft": "Second version."})
+    assert second.status_code == 409
+    # The saved chapter is left untouched.
+    assert client.get("/chapter/1").json()["draft"] == "First version."
+
+
+def test_accept_existing_chapter_overwrites_with_flag(client, sample_scene_plan):
+    body = {"scene_plan": sample_scene_plan, "draft": "First version.", "issues": []}
+    client.put("/chapter/1/accept", json=body)
+    second = client.put("/chapter/1/accept?overwrite=true", json={**body, "draft": "Second version."})
+    assert second.status_code == 200
+    assert client.get("/chapter/1").json()["draft"] == "Second version."
+
+
+def _parse_sse(text):
+    """Parse SSE response body into a list of decoded data payloads."""
+    import json
+    frames = []
+    for chunk in text.split("\n\n"):
+        chunk = chunk.strip()
+        if chunk.startswith("data: "):
+            frames.append(json.loads(chunk[len("data: "):]))
+    return frames
+
+
+def test_generate_draft_stream(client, sample_scene_plan):
+    with patch("backend.main.drafter_token_stream", return_value=iter(["Hello ", "world."])):
+        response = client.post("/chapter/1/draft/stream", json={"scene_plan": sample_scene_plan})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    frames = _parse_sse(response.text)
+    assert frames[:2] == [
+        {"type": "delta", "text": "Hello "},
+        {"type": "delta", "text": "world."},
+    ]
+    assert frames[-1] == {"type": "done", "draft": "Hello world."}
+    # Stream end persisted the full draft to draft_state.
+    import backend.storage as storage
+    assert storage.load_draft_state(1)["draft"] == "Hello world."
+
+
+def test_revise_draft_stream(client, sample_scene_plan):
+    # Seed prior draft state so revise can resolve the scene plan.
+    import backend.storage as storage
+    storage.save_draft_state(1, {"step": "check", "scene_plan": sample_scene_plan,
+                                  "draft": "Old draft.", "issues": []})
+    body = {"draft": "Old draft.", "issues": [
+        {"issue": "x", "severity": "minor", "location": "p1", "suggested_fix": "y"}]}
+    with patch("backend.main.drafter_token_stream", return_value=iter(["Revised ", "prose."])):
+        response = client.post("/chapter/1/revise/stream", json=body)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    frames = _parse_sse(response.text)
+    assert {"type": "delta", "text": "Revised "} in frames
+    assert frames[-1] == {"type": "done", "draft": "Revised prose."}
+    assert storage.load_draft_state(1)["draft"] == "Revised prose."
+
+
+def test_draft_stream_error_frame(client, sample_scene_plan):
+    def boom(state):
+        raise RuntimeError("api exploded")
+        yield  # pragma: no cover  (make it a generator)
+
+    with patch("backend.main.drafter_token_stream", boom):
+        response = client.post("/chapter/1/draft/stream", json={"scene_plan": sample_scene_plan})
+    assert response.status_code == 200
+    frames = _parse_sse(response.text)
+    assert frames[-1] == {"type": "error", "detail": "api exploded"}

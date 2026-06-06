@@ -13,8 +13,10 @@
       border-right: 1px solid #ddd; background: #fff; padding: 16px; gap: 8px;
     }
     #bible-panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .08em; color: #888; }
-    #bible-editor { flex: 1; resize: none; border: 1px solid #ddd; padding: 8px; font-family: monospace; font-size: 12px; border-radius: 4px; }
-    #save-bible-btn { padding: 8px; background: #1a1a1a; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    #bible-editor, #outline-editor { resize: none; border: 1px solid #ddd; padding: 8px; font-family: monospace; font-size: 12px; border-radius: 4px; }
+    #bible-editor { flex: 2; }
+    #outline-editor { flex: 1; }
+    #save-bible-btn, #save-outline-btn { padding: 8px; background: #1a1a1a; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
 
     /* Chapter panel */
     #chapter-panel { flex: 1; display: flex; flex-direction: column; padding: 24px; gap: 16px; overflow: hidden; }
@@ -75,6 +77,8 @@
       font-size: 15px; line-height: 1.75; font-family: Georgia, 'Times New Roman', serif; resize: vertical;
     }
     #draft-textarea:focus { outline: none; border-color: #93c5fd; }
+    #draft-textarea[readonly] { background: #f9fafb; color: #444; }
+    #saved-banner { background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 14px; }
 
     /* Issue cards */
     #issues-container { display: flex; flex-direction: column; gap: 14px; }
@@ -115,6 +119,9 @@
   <h2>Story Bible</h2>
   <textarea id="bible-editor" spellcheck="false"></textarea>
   <button id="save-bible-btn" onclick="saveBible()">Save Bible</button>
+  <h2>Outline</h2>
+  <textarea id="outline-editor" spellcheck="false"></textarea>
+  <button id="save-outline-btn" onclick="saveOutline()">Save Outline</button>
 </aside>
 
 <main id="chapter-panel">
@@ -154,6 +161,7 @@
   let wfPlan = {};
   let wfDraft = '';
   let wfIssues = [];
+  let wfOverwrite = false;  // true when the current workflow will replace a saved chapter
 
   function chNum() { return parseInt(document.getElementById('chapter-num').value) || 1; }
 
@@ -170,23 +178,68 @@
     setStatus(res.ok ? 'Bible saved.' : 'Error saving bible.', !res.ok);
   }
 
-  // ── resume on chapter change ──────────────────────────────────────────────
-  async function onChapterChange() {
-    resetWorkflow();
-    await checkResume();
+  // ── outline ───────────────────────────────────────────────────────────────
+  async function loadOutline() {
+    const res = await fetch('/outline');
+    const data = await res.json();
+    document.getElementById('outline-editor').value = data.content;
   }
 
-  async function checkResume() {
+  async function saveOutline() {
+    const content = document.getElementById('outline-editor').value;
+    const res = await fetch('/outline', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content})});
+    setStatus(res.ok ? 'Outline saved.' : 'Error saving outline.', !res.ok);
+  }
+
+  // ── load the right view for the selected chapter ───────────────────────────
+  async function onChapterChange() {
+    await loadChapterView();
+  }
+
+  // Priority: an in-progress draft_state resumes the workflow (incl. a redo);
+  // otherwise a saved chapter is shown locked (read-only); otherwise empty.
+  async function loadChapterView() {
+    resetWorkflow();
+    let chapter = null, state = null;
     try {
-      const res = await fetch(`/chapter/${chNum()}/state`);
-      if (!res.ok) return;
-      const saved = await res.json();
-      if (!saved) return;
-      wfPlan = saved.scene_plan || {};
-      wfDraft = saved.draft || '';
-      wfIssues = saved.issues || [];
-      renderStep(saved.step);
+      const cRes = await fetch(`/chapter/${chNum()}`);
+      if (cRes.ok) chapter = await cRes.json();
+      const sRes = await fetch(`/chapter/${chNum()}/state`);
+      if (sRes.ok) state = await sRes.json();
     } catch (_) {}
+    // We're overwriting iff a saved chapter already exists on disk.
+    wfOverwrite = !!chapter;
+    if (state) {
+      wfPlan = state.scene_plan || {};
+      wfDraft = state.draft || '';
+      wfIssues = state.issues || [];
+      renderStep(state.step);
+    } else if (chapter) {
+      renderSaved(chapter);
+    }
+  }
+
+  // Locked, read-only view of an already-saved chapter.
+  function renderSaved(chapter) {
+    wfStep = 'saved';
+    wfPlan = chapter.plan || {};
+    wfDraft = chapter.draft || '';
+    wfIssues = chapter.issues || [];
+    markAllStepsDone();
+    document.getElementById('content').innerHTML = `
+      <div id="saved-banner">✓ Chapter ${chNum()} is saved — read-only. Click “Redo chapter” to replace it.</div>
+      <textarea id="draft-textarea" readonly spellcheck="false">${esc(wfDraft)}</textarea>`;
+    document.getElementById('action-row').innerHTML = `
+      <button class="btn btn-secondary" onclick="redoChapter()">Redo chapter</button>
+      <span id="spinner">Working…</span>
+      <span id="status-msg"></span>`;
+  }
+
+  function redoChapter() {
+    if (!confirm(`Redo chapter ${chNum()}? The saved version will be replaced when you accept again.`)) return;
+    wfOverwrite = true;  // explicit, in case the file gets accepted without disk re-check
+    renderStep('plan');  // wfPlan is populated, so "Generate Draft →" appears
+    setStatus('Editing a saved chapter — re-accepting will replace it.');
   }
 
   // ── step rendering ────────────────────────────────────────────────────────
@@ -239,8 +292,16 @@
     });
   }
 
+  function markAllStepsDone() {
+    ['plan','draft','check'].forEach(s => {
+      const el = document.getElementById(`si-${s}`);
+      el.classList.remove('active'); el.classList.add('done');
+    });
+    ['sc-1','sc-2'].forEach(id => document.getElementById(id).classList.add('done'));
+  }
+
   function resetWorkflow() {
-    wfStep = null; wfPlan = {}; wfDraft = ''; wfIssues = [];
+    wfStep = null; wfPlan = {}; wfDraft = ''; wfIssues = []; wfOverwrite = false;
     document.getElementById('content').innerHTML = '<div id="empty-msg"><p>Enter a chapter number and generate a plan to begin.</p></div>';
     document.getElementById('action-row').innerHTML = `
       <button class="btn btn-primary" id="btn-gen-plan" onclick="generatePlan()">Generate Plan</button>
@@ -382,11 +443,17 @@
 
   async function generateDraft() {
     wfPlan = getPlanFromForm();
-    busy(true);
+    // Show the editor immediately, then stream prose into it.
+    wfDraft = '';
+    renderStep('draft');
+    const ta = document.getElementById('draft-textarea');
+    ta.value = '';
+    busy(true);  // after renderStep so the freshly-rendered buttons get disabled
     try {
-      const res = await post(`/chapter/${chNum()}/draft`, {scene_plan: wfPlan});
-      wfDraft = res.draft;
-      renderStep('draft');
+      await streamPost(`/chapter/${chNum()}/draft/stream`, {scene_plan: wfPlan}, {
+        onDelta: text => { ta.value += text; ta.scrollTop = ta.scrollHeight; },
+        onDone: draft => { wfDraft = draft; ta.value = draft; },
+      });
       setStatus('Draft ready. Edit then check for issues.');
     } catch (e) { setStatus(e.message, true); }
     finally { busy(false); }
@@ -407,11 +474,17 @@
 
   async function reviseDraft() {
     wfIssues = getIssuesFromCards();
-    busy(true);
+    const prevDraft = wfDraft;
+    // Switch to the editor and stream the revised prose in, replacing the old.
+    renderStep('draft');
+    const ta = document.getElementById('draft-textarea');
+    ta.value = '';
+    busy(true);  // after renderStep so the freshly-rendered buttons get disabled
     try {
-      const res = await post(`/chapter/${chNum()}/revise`, {draft: wfDraft, issues: wfIssues});
-      wfDraft = res.draft;
-      renderStep('draft');
+      await streamPost(`/chapter/${chNum()}/revise/stream`, {draft: prevDraft, issues: wfIssues}, {
+        onDelta: text => { ta.value += text; ta.scrollTop = ta.scrollHeight; },
+        onDone: draft => { wfDraft = draft; ta.value = draft; },
+      });
       setStatus('Revised draft ready. Check again or accept.');
     } catch (e) { setStatus(e.message, true); }
     finally { busy(false); }
@@ -421,9 +494,9 @@
     wfIssues = getIssuesFromCards();
     busy(true);
     try {
-      await post(`/chapter/${chNum()}/accept`, {scene_plan: wfPlan, draft: wfDraft, issues: wfIssues}, 'PUT');
+      await post(`/chapter/${chNum()}/accept?overwrite=${wfOverwrite}`, {scene_plan: wfPlan, draft: wfDraft, issues: wfIssues}, 'PUT');
+      await loadChapterView();  // re-render as the now-locked saved chapter
       setStatus(`Chapter ${chNum()} saved.`);
-      resetWorkflow();
     } catch (e) { setStatus(e.message, true); }
     finally { busy(false); }
   }
@@ -438,6 +511,34 @@
       throw new Error(err.detail || res.statusText);
     }
     return res.json();
+  }
+
+  // Read an SSE stream of {type:'delta'|'done'|'error'} frames from a POST.
+  async function streamPost(url, body, {onDelta, onDone}) {
+    const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+      body: body ? JSON.stringify(body) : null});
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || res.statusText);
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream:true});
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const frame = buf.slice(0, i).replace(/^data: /, '');
+        buf = buf.slice(i + 2);
+        if (!frame) continue;
+        const evt = JSON.parse(frame);
+        if (evt.type === 'delta') onDelta(evt.text);
+        else if (evt.type === 'done') onDone(evt.draft);
+        else if (evt.type === 'error') throw new Error(evt.detail);
+      }
+    }
   }
 
   function busy(on) {
@@ -460,8 +561,8 @@
   // ── init ──────────────────────────────────────────────────────────────────
   async function init() {
     await loadBible();
-    resetWorkflow();
-    await checkResume();
+    await loadOutline();
+    await loadChapterView();
   }
 
   init();

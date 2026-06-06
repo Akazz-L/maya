@@ -62,6 +62,13 @@ def test_load_chapter_not_found():
         storage.load_chapter(99)
 
 
+def test_chapter_exists(tmp_path, sample_scene_plan):
+    assert storage.chapter_exists(1) is False
+    storage.save_chapter(1, sample_scene_plan, "Elena stood at the gates.", [])
+    assert storage.chapter_exists(1) is True
+    assert storage.chapter_exists(2) is False
+
+
 def test_save_bible_and_reload(tmp_path, sample_bible):
     original = yaml.dump(sample_bible)
     (tmp_path / "bible.yaml").write_text(original)
@@ -81,6 +88,19 @@ def test_save_bible_rejects_non_dict_yaml(tmp_path):
     (tmp_path / "bible.yaml").write_text("valid: yaml")
     with pytest.raises(ValueError):
         storage.save_bible("- list item\n")
+
+
+def test_save_outline_and_reload(tmp_path):
+    (tmp_path / "outline.yaml").write_text("chapters:\n  - Old beat\n")
+    storage.save_outline("chapters:\n  - Elena arrives\n  - Elena departs\n")
+    result = storage.load_outline()
+    assert result["chapters"] == ["Elena arrives", "Elena departs"]
+
+
+def test_save_outline_rejects_missing_chapters(tmp_path):
+    (tmp_path / "outline.yaml").write_text("chapters:\n  - Old beat\n")
+    with pytest.raises(ValueError):
+        storage.save_outline("title: My Book\n")
 
 
 def test_save_and_load_summary(tmp_path):
