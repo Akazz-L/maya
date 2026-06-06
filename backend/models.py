@@ -23,6 +23,10 @@ class BibleUpdateRequest(BaseModel):
     content: str
 
 
+class OutlineUpdateRequest(BaseModel):
+    content: str
+
+
 class DraftRequest(BaseModel):
     scene_plan: dict
 

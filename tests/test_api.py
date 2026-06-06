@@ -42,6 +42,23 @@ def test_put_bible(client):
     assert response.status_code == 200
 
 
+def test_get_outline(client):
+    response = client.get("/outline")
+    assert response.status_code == 200
+    data = response.json()
+    assert "content" in data
+    assert "Elena" in data["content"]
+
+
+def test_put_outline(client):
+    response = client.put("/outline", json={"content": "chapters:\n  - Elena leaves\n"})
+    assert response.status_code == 200
+    assert response.json() == {"status": "saved"}
+    # The new beat is now what plan generation would read back.
+    follow_up = client.get("/outline")
+    assert "Elena leaves" in follow_up.json()["content"]
+
+
 def test_generate_chapter(client, pipeline_result):
     with patch("backend.main.pipeline") as mock_pipeline:
         mock_pipeline.invoke.return_value = pipeline_result

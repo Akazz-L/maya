@@ -13,8 +13,10 @@
       border-right: 1px solid #ddd; background: #fff; padding: 16px; gap: 8px;
     }
     #bible-panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .08em; color: #888; }
-    #bible-editor { flex: 1; resize: none; border: 1px solid #ddd; padding: 8px; font-family: monospace; font-size: 12px; border-radius: 4px; }
-    #save-bible-btn { padding: 8px; background: #1a1a1a; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    #bible-editor, #outline-editor { resize: none; border: 1px solid #ddd; padding: 8px; font-family: monospace; font-size: 12px; border-radius: 4px; }
+    #bible-editor { flex: 2; }
+    #outline-editor { flex: 1; }
+    #save-bible-btn, #save-outline-btn { padding: 8px; background: #1a1a1a; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
 
     /* Chapter panel */
     #chapter-panel { flex: 1; display: flex; flex-direction: column; padding: 24px; gap: 16px; overflow: hidden; }
@@ -115,6 +117,9 @@
   <h2>Story Bible</h2>
   <textarea id="bible-editor" spellcheck="false"></textarea>
   <button id="save-bible-btn" onclick="saveBible()">Save Bible</button>
+  <h2>Outline</h2>
+  <textarea id="outline-editor" spellcheck="false"></textarea>
+  <button id="save-outline-btn" onclick="saveOutline()">Save Outline</button>
 </aside>
 
 <main id="chapter-panel">
@@ -168,6 +173,19 @@
     const content = document.getElementById('bible-editor').value;
     const res = await fetch('/bible', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content})});
     setStatus(res.ok ? 'Bible saved.' : 'Error saving bible.', !res.ok);
+  }
+
+  // ── outline ───────────────────────────────────────────────────────────────
+  async function loadOutline() {
+    const res = await fetch('/outline');
+    const data = await res.json();
+    document.getElementById('outline-editor').value = data.content;
+  }
+
+  async function saveOutline() {
+    const content = document.getElementById('outline-editor').value;
+    const res = await fetch('/outline', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content})});
+    setStatus(res.ok ? 'Outline saved.' : 'Error saving outline.', !res.ok);
   }
 
   // ── resume on chapter change ──────────────────────────────────────────────
@@ -500,6 +518,7 @@
   // ── init ──────────────────────────────────────────────────────────────────
   async function init() {
     await loadBible();
+    await loadOutline();
     resetWorkflow();
     await checkResume();
   }

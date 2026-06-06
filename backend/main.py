@@ -18,6 +18,7 @@ from backend.models import (
     CheckRequest,
     DraftRequest,
     DraftStateResponse,
+    OutlineUpdateRequest,
     ReviseRequest,
 )
 from backend.storage import (
@@ -27,10 +28,12 @@ from backend.storage import (
     load_chapter,
     load_draft_state,
     load_outline,
+    load_outline_text,
     load_summaries,
     save_bible,
     save_chapter,
     save_draft_state,
+    save_outline,
 )
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -201,4 +204,15 @@ def get_bible():
 @app.put("/bible")
 def update_bible(request: BibleUpdateRequest):
     save_bible(request.content)
+    return {"status": "saved"}
+
+
+@app.get("/outline")
+def get_outline():
+    return {"content": load_outline_text()}
+
+
+@app.put("/outline")
+def update_outline(request: OutlineUpdateRequest):
+    save_outline(request.content)
     return {"status": "saved"}

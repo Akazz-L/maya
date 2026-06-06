@@ -83,6 +83,19 @@ def test_save_bible_rejects_non_dict_yaml(tmp_path):
         storage.save_bible("- list item\n")
 
 
+def test_save_outline_and_reload(tmp_path):
+    (tmp_path / "outline.yaml").write_text("chapters:\n  - Old beat\n")
+    storage.save_outline("chapters:\n  - Elena arrives\n  - Elena departs\n")
+    result = storage.load_outline()
+    assert result["chapters"] == ["Elena arrives", "Elena departs"]
+
+
+def test_save_outline_rejects_missing_chapters(tmp_path):
+    (tmp_path / "outline.yaml").write_text("chapters:\n  - Old beat\n")
+    with pytest.raises(ValueError):
+        storage.save_outline("title: My Book\n")
+
+
 def test_save_and_load_summary(tmp_path):
     storage.save_summary(1, "Elena reached the gates.")
     result = storage.load_summaries(2)

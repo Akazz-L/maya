@@ -24,6 +24,17 @@ def load_outline() -> dict:
     return yaml.safe_load((BASE_DIR / "outline.yaml").read_text())
 
 
+def load_outline_text() -> str:
+    return (BASE_DIR / "outline.yaml").read_text()
+
+
+def save_outline(content: str) -> None:
+    parsed = yaml.safe_load(content)
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("chapters"), list):
+        raise ValueError("Outline must be a YAML mapping with a 'chapters' list")
+    (BASE_DIR / "outline.yaml").write_text(content)
+
+
 def load_summaries(up_to_chapter: int) -> list[str]:
     summaries = []
     for i in range(1, up_to_chapter):
