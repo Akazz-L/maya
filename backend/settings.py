@@ -1,5 +1,10 @@
 import json
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 _SETTINGS_PATH = Path(__file__).parent.parent / "settings.json"
 _DEFAULT_MODEL = "claude-haiku-4-5-20251001"
@@ -18,3 +23,20 @@ _MODEL = _load_model()
 
 def get_model() -> str:
     return _MODEL
+
+
+def get_database_url() -> str:
+    # Default to an on-disk SQLite file so the app runs with zero setup and
+    # persists data across restarts. Override with DATABASE_URL for PostgreSQL.
+    return os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./maya.db")
+
+
+def get_jwt_secret() -> str:
+    secret = os.getenv("JWT_SECRET")
+    if not secret:
+        raise RuntimeError("JWT_SECRET environment variable is not set")
+    return secret
+
+
+def get_jwt_expire_minutes() -> int:
+    return int(os.getenv("JWT_EXPIRE_MINUTES", "10080"))

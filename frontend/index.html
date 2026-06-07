@@ -111,11 +111,51 @@
     #spinner.show { display: inline; }
     #status-msg { font-size: 13px; color: #16a34a; }
     #status-msg.error { color: #b91c1c; }
+
+    /* Project bar */
+    #project-bar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+    #project-select { flex: 1; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+    #new-project-btn, #logout-btn { padding: 6px 10px; border: 1px solid #ddd; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; }
+
+    /* Auth page */
+    #auth-page { width: 100%; height: 100vh; display: flex; align-items: center; justify-content: center; background: #f5f5f0; }
+    #auth-card { background: #fff; padding: 36px; border-radius: 10px; width: 360px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 4px 24px rgba(0,0,0,.08); }
+    #auth-card h1 { font-size: 28px; font-weight: 700; color: #1a1a1a; }
+    #auth-subtitle { font-size: 14px; color: #888; }
+    #auth-card h2 { font-size: 16px; color: #444; font-weight: 600; }
+    #auth-card input { padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+    #auth-card input:focus { outline: none; border-color: #93c5fd; }
+    #auth-card button { padding: 10px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    #auth-card button:hover { background: #1d4ed8; }
+    #login-toggle { font-size: 13px; color: #2563eb; cursor: pointer; text-align: center; }
+    #login-error { font-size: 13px; color: #b91c1c; min-height: 16px; }
+
+    /* App wrapper — hidden until logged in */
+    #app { display: none; flex: 1; min-width: 0; overflow: hidden; }
   </style>
 </head>
 <body>
 
+<div id="auth-page">
+  <div id="auth-card">
+    <h1>Maya</h1>
+    <p id="auth-subtitle">Your AI novel-writing assistant</p>
+    <h2 id="login-title">Sign in</h2>
+    <input type="email" id="login-email" placeholder="Email" autocomplete="username">
+    <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+    <div id="login-error"></div>
+    <button id="login-submit" onclick="submitAuth()">Sign in</button>
+    <div id="login-toggle" onclick="toggleAuthMode()">Need an account? Register</div>
+  </div>
+</div>
+
+<div id="app">
 <aside id="bible-panel">
+  <div id="project-bar">
+    <select id="project-select" onchange="switchProject(this.value)"></select>
+    <button id="new-project-btn" onclick="newProject()" title="New project">+</button>
+    <button id="logout-btn" onclick="logout()" title="Sign out">⎋</button>
+  </div>
   <h2>Story Bible</h2>
   <textarea id="bible-editor" spellcheck="false"></textarea>
   <button id="save-bible-btn" onclick="saveBible()">Save Bible</button>
@@ -154,6 +194,7 @@
   </div>
 
 </main>
+</div>
 
 <script>
   // ── state ─────────────────────────────────────────────────────────────────
@@ -165,29 +206,40 @@
 
   function chNum() { return parseInt(document.getElementById('chapter-num').value) || 1; }
 
+  // ── auth + project state ────────────────────────────────────────────────────
+  let token = localStorage.getItem('maya_token') || '';
+  let projectId = localStorage.getItem('maya_project') || '';
+  let authMode = 'login';  // 'login' | 'register'
+
+  function authHeaders(extra = {}) {
+    return token ? {...extra, 'Authorization': 'Bearer ' + token} : {...extra};
+  }
+  // Build a project-scoped URL.
+  function P(path) { return `/projects/${projectId}${path}`; }
+
   // ── bible ─────────────────────────────────────────────────────────────────
   async function loadBible() {
-    const res = await fetch('/bible');
+    const res = await fetch(P('/bible'), {headers: authHeaders()});
     const data = await res.json();
-    document.getElementById('bible-editor').value = data.content;
+    document.getElementById('bible-editor').value = data.content || '';
   }
 
   async function saveBible() {
     const content = document.getElementById('bible-editor').value;
-    const res = await fetch('/bible', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content})});
+    const res = await fetch(P('/bible'), {method:'PUT', headers:authHeaders({'Content-Type':'application/json'}), body:JSON.stringify({content})});
     setStatus(res.ok ? 'Bible saved.' : 'Error saving bible.', !res.ok);
   }
 
   // ── outline ───────────────────────────────────────────────────────────────
   async function loadOutline() {
-    const res = await fetch('/outline');
+    const res = await fetch(P('/outline'), {headers: authHeaders()});
     const data = await res.json();
-    document.getElementById('outline-editor').value = data.content;
+    document.getElementById('outline-editor').value = data.content || '';
   }
 
   async function saveOutline() {
     const content = document.getElementById('outline-editor').value;
-    const res = await fetch('/outline', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content})});
+    const res = await fetch(P('/outline'), {method:'PUT', headers:authHeaders({'Content-Type':'application/json'}), body:JSON.stringify({content})});
     setStatus(res.ok ? 'Outline saved.' : 'Error saving outline.', !res.ok);
   }
 
@@ -202,9 +254,9 @@
     resetWorkflow();
     let chapter = null, state = null;
     try {
-      const cRes = await fetch(`/chapter/${chNum()}`);
+      const cRes = await fetch(P(`/chapters/${chNum()}`), {headers: authHeaders()});
       if (cRes.ok) chapter = await cRes.json();
-      const sRes = await fetch(`/chapter/${chNum()}/state`);
+      const sRes = await fetch(P(`/chapters/${chNum()}/state`), {headers: authHeaders()});
       if (sRes.ok) state = await sRes.json();
     } catch (_) {}
     // We're overwriting iff a saved chapter already exists on disk.
@@ -428,7 +480,7 @@
   async function generatePlan() {
     busy(true);
     try {
-      const res = await post(`/chapter/${chNum()}/plan`, null);
+      const res = await post(P(`/chapters/${chNum()}/plan`), null);
       wfPlan = res.scene_plan;
       renderStep('plan');  // renderStep adds "Generate Draft" button when wfPlan is set
       setStatus('Plan generated. Edit fields then continue.');
@@ -450,7 +502,7 @@
     ta.value = '';
     busy(true);  // after renderStep so the freshly-rendered buttons get disabled
     try {
-      await streamPost(`/chapter/${chNum()}/draft/stream`, {scene_plan: wfPlan}, {
+      await streamPost(P(`/chapters/${chNum()}/draft/stream`), {scene_plan: wfPlan}, {
         onDelta: text => { ta.value += text; ta.scrollTop = ta.scrollHeight; },
         onDone: draft => { wfDraft = draft; ta.value = draft; },
       });
@@ -463,7 +515,7 @@
     wfDraft = document.getElementById('draft-textarea').value;
     busy(true);
     try {
-      const res = await post(`/chapter/${chNum()}/check`, {draft: wfDraft});
+      const res = await post(P(`/chapters/${chNum()}/check`), {draft: wfDraft});
       wfIssues = res.issues;
       renderStep('check');
       const count = wfIssues.length;
@@ -481,7 +533,7 @@
     ta.value = '';
     busy(true);  // after renderStep so the freshly-rendered buttons get disabled
     try {
-      await streamPost(`/chapter/${chNum()}/revise/stream`, {draft: prevDraft, issues: wfIssues}, {
+      await streamPost(P(`/chapters/${chNum()}/revise/stream`), {draft: prevDraft, issues: wfIssues}, {
         onDelta: text => { ta.value += text; ta.scrollTop = ta.scrollHeight; },
         onDone: draft => { wfDraft = draft; ta.value = draft; },
       });
@@ -494,7 +546,7 @@
     wfIssues = getIssuesFromCards();
     busy(true);
     try {
-      await post(`/chapter/${chNum()}/accept?overwrite=${wfOverwrite}`, {scene_plan: wfPlan, draft: wfDraft, issues: wfIssues}, 'PUT');
+      await post(P(`/chapters/${chNum()}/accept?overwrite=${wfOverwrite}`), {scene_plan: wfPlan, draft: wfDraft, issues: wfIssues}, 'PUT');
       await loadChapterView();  // re-render as the now-locked saved chapter
       setStatus(`Chapter ${chNum()} saved.`);
     } catch (e) { setStatus(e.message, true); }
@@ -503,7 +555,7 @@
 
   // ── helpers ───────────────────────────────────────────────────────────────
   async function post(url, body, method='POST') {
-    const opts = {method, headers:{'Content-Type':'application/json'}};
+    const opts = {method, headers:authHeaders({'Content-Type':'application/json'})};
     if (body !== null) opts.body = JSON.stringify(body);
     const res = await fetch(url, opts);
     if (!res.ok) {
@@ -515,7 +567,7 @@
 
   // Read an SSE stream of {type:'delta'|'done'|'error'} frames from a POST.
   async function streamPost(url, body, {onDelta, onDone}) {
-    const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+    const res = await fetch(url, {method:'POST', headers:authHeaders({'Content-Type':'application/json'}),
       body: body ? JSON.stringify(body) : null});
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -558,11 +610,97 @@
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  // ── auth + project bootstrap ────────────────────────────────────────────────
+  function showLogin() {
+    document.getElementById('auth-page').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+  }
+  function hideLogin() {
+    document.getElementById('auth-page').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+  }
+
+  function toggleAuthMode() {
+    authMode = authMode === 'login' ? 'register' : 'login';
+    document.getElementById('login-title').textContent = authMode === 'login' ? 'Sign in to Maya' : 'Create your account';
+    document.getElementById('login-submit').textContent = authMode === 'login' ? 'Sign in' : 'Register';
+    document.getElementById('login-toggle').textContent = authMode === 'login' ? 'Need an account? Register' : 'Have an account? Sign in';
+    document.getElementById('login-error').textContent = '';
+  }
+
+  function logout() {
+    token = ''; projectId = '';
+    localStorage.removeItem('maya_token');
+    localStorage.removeItem('maya_project');
+    showLogin();
+  }
+
+  async function submitAuth() {
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    const errEl = document.getElementById('login-error');
+    errEl.textContent = '';
+    try {
+      if (authMode === 'register') {
+        const r = await fetch('/auth/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email, password})});
+        if (!r.ok && r.status !== 409) { errEl.textContent = (await r.json().catch(()=>({}))).detail || 'Registration failed'; return; }
+      }
+      const r = await fetch('/auth/token', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email, password})});
+      if (!r.ok) { errEl.textContent = 'Invalid email or password'; return; }
+      token = (await r.json()).access_token;
+      localStorage.setItem('maya_token', token);
+      hideLogin();
+      await bootProjectsThenLoad();
+    } catch (e) { errEl.textContent = e.message; }
+  }
+
+  async function fetchProjects() {
+    const res = await fetch('/projects', {headers: authHeaders()});
+    if (res.status === 401) { logout(); return null; }
+    return res.json();
+  }
+
+  function renderProjectSelector(projects) {
+    const sel = document.getElementById('project-select');
+    sel.innerHTML = projects.map(p => `<option value="${p.project_id}"${p.project_id===projectId?' selected':''}>${esc(p.name)}</option>`).join('');
+  }
+
+  async function switchProject(id) {
+    projectId = id;
+    localStorage.setItem('maya_project', id);
+    await loadBible(); await loadOutline(); await loadChapterView();
+  }
+
+  async function newProject() {
+    const name = prompt('New project name:', 'Untitled Novel');
+    if (!name) return;
+    const r = await post('/projects', {name});
+    const projects = await fetchProjects();
+    renderProjectSelector(projects);
+    await switchProject(r.project_id);
+  }
+
+  // After we have a token: ensure a project is selected (create one if none), then load.
+  async function bootProjectsThenLoad() {
+    let projects = await fetchProjects();
+    if (projects === null) return;  // logged out on 401
+    if (!projects.length) {
+      await post('/projects', {name: 'My Novel'});
+      projects = await fetchProjects();
+    }
+    if (!projectId || !projects.some(p => p.project_id === projectId)) {
+      projectId = projects[0].project_id;
+      localStorage.setItem('maya_project', projectId);
+    }
+    renderProjectSelector(projects);
+    await loadBible(); await loadOutline(); await loadChapterView();
+  }
+
   // ── init ──────────────────────────────────────────────────────────────────
   async function init() {
-    await loadBible();
-    await loadOutline();
-    await loadChapterView();
+    if (!token) { showLogin(); return; }
+    // A stored token is validated inside bootProjectsThenLoad (401 → login).
+    await bootProjectsThenLoad();
   }
 
   init();

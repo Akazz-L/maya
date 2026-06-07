@@ -1,4 +1,7 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from backend.agents.planner import planner_node
 
 
@@ -22,10 +25,11 @@ VALID_PLAN = {
 }
 
 
-def test_planner_returns_scene_plan(base_state):
+@pytest.mark.asyncio
+async def test_planner_returns_scene_plan(base_state):
     mock_response = _mock_tool_response(VALID_PLAN)
-    with patch("backend.agents.planner.client.messages.create", return_value=mock_response):
-        result = planner_node(base_state)
+    with patch("backend.agents.planner.client.messages.create", new_callable=AsyncMock, return_value=mock_response):
+        result = await planner_node(base_state)
     assert "scene_plan" in result
     assert result["scene_plan"]["goal"] == "Elena arrives and is blocked"
     assert result["scene_plan"]["pov_character"] == "Elena"
@@ -33,27 +37,30 @@ def test_planner_returns_scene_plan(base_state):
     assert len(result["scene_plan"]["beats"]) > 0
 
 
-def test_planner_calls_claude_with_tool_choice(base_state):
+@pytest.mark.asyncio
+async def test_planner_calls_claude_with_tool_choice(base_state):
     mock_response = _mock_tool_response(VALID_PLAN)
-    with patch("backend.agents.planner.client.messages.create", return_value=mock_response) as mock_create:
-        planner_node(base_state)
+    with patch("backend.agents.planner.client.messages.create", new_callable=AsyncMock, return_value=mock_response) as mock_create:
+        await planner_node(base_state)
     call_kwargs = mock_create.call_args.kwargs
     assert call_kwargs["tool_choice"] == {"type": "tool", "name": "create_scene_plan"}
     assert call_kwargs["model"] == "claude-sonnet-4-6"
 
 
-def test_planner_includes_outline_beat_in_prompt(base_state):
+@pytest.mark.asyncio
+async def test_planner_includes_outline_beat_in_prompt(base_state):
     mock_response = _mock_tool_response(VALID_PLAN)
-    with patch("backend.agents.planner.client.messages.create", return_value=mock_response) as mock_create:
-        planner_node(base_state)
+    with patch("backend.agents.planner.client.messages.create", new_callable=AsyncMock, return_value=mock_response) as mock_create:
+        await planner_node(base_state)
     prompt_text = mock_create.call_args.kwargs["messages"][0]["content"]
     assert base_state["outline_beat"] in prompt_text
 
 
-def test_planner_includes_previous_summaries(base_state):
+@pytest.mark.asyncio
+async def test_planner_includes_previous_summaries(base_state):
     base_state["previous_summaries"] = ["Chapter 1: Elena left the Wastes."]
     mock_response = _mock_tool_response(VALID_PLAN)
-    with patch("backend.agents.planner.client.messages.create", return_value=mock_response) as mock_create:
-        planner_node(base_state)
+    with patch("backend.agents.planner.client.messages.create", new_callable=AsyncMock, return_value=mock_response) as mock_create:
+        await planner_node(base_state)
     prompt_text = mock_create.call_args.kwargs["messages"][0]["content"]
     assert "Elena left the Wastes" in prompt_text

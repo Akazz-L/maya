@@ -6,3 +6,5 @@ summaries/
 .pytest_cache/
 NOTES.md
 .python-version
+*.db
+*.db-journal
