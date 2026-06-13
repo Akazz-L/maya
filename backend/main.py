@@ -46,7 +46,8 @@ from backend.models import (
 )
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
-
+_DIST_DIR = _FRONTEND_DIR / "dist"
+_INDEX_HTML = _DIST_DIR / "index.html"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,6 +56,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Maya", lifespan=lifespan)
+# Hashed JS/CSS emitted by `vite build`. check_dir=False so the backend still
+# boots before the first `npm run build` has produced frontend/dist.
+app.mount("/assets", StaticFiles(directory=str(_DIST_DIR / "assets"), check_dir=False), name="assets")
+# Backwards-compatible mount for any /static/* assets referenced directly.
 app.mount("/static", StaticFiles(directory=str(_FRONTEND_DIR), check_dir=False), name="static")
 
 
@@ -433,4 +438,9 @@ async def get_chapter(
 
 @app.get("/")
 def root():
-    return FileResponse(_FRONTEND_DIR / "index.html")
+    if not _INDEX_HTML.exists():
+        raise HTTPException(
+            status_code=503,
+            detail="Frontend build not found. Run `npm run build` in frontend/ first.",
+        )
+    return FileResponse(_INDEX_HTML)
