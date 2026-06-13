@@ -34,11 +34,26 @@ export interface DraftState {
   issues: Issue[];
 }
 
-/** A saved chapter, from GET /chapter/{n}. */
+/** A saved chapter, from GET /projects/{id}/chapters/{n}. */
 export interface SavedChapter {
   plan: ScenePlan;
   draft: string;
   issues: Issue[];
+}
+
+/** A project in the list, from GET /projects. */
+export interface ProjectSummary {
+  project_id: string;
+  name: string;
+  created_at: string;
+}
+
+/** A single project with its bible/outline, from GET /projects/{id}. */
+export interface ProjectDetail {
+  project_id: string;
+  name: string;
+  bible_content: string;
+  outline_content: string;
 }
 
 export const EMPTY_PLAN: ScenePlan = {

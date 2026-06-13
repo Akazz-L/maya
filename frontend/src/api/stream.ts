@@ -2,6 +2,8 @@
 // response body stream directly and parse `data: {...}\n\n` frames.
 // Ported from the old index.html `streamPost()`.
 
+import { authHeaders, handleUnauthorized } from '../auth/token';
+
 export interface StreamCallbacks {
   onDelta: (text: string) => void;
   onDone: (draft: string) => void;
@@ -28,9 +30,13 @@ export async function streamPost(
 ): Promise<void> {
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: body ? JSON.stringify(body) : null,
   });
+  if (res.status === 401) {
+    handleUnauthorized();
+    throw new Error('Your session has expired. Please sign in again.');
+  }
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { detail?: string };
     throw new Error(err.detail || res.statusText);

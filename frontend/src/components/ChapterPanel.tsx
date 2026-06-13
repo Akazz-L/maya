@@ -3,9 +3,11 @@ import { useMutation } from '@tanstack/react-query';
 import {
   acceptChapter,
   checkDraft,
+  draftStreamUrl,
   generatePlan,
   getChapter,
   getDraftState,
+  reviseStreamUrl,
 } from '../api/endpoints';
 import type { DraftState, SavedChapter, ScenePlan } from '../api/types';
 import { useDraftStream } from '../hooks/useDraftStream';
@@ -41,7 +43,7 @@ function cleanPlan(plan: ScenePlan): ScenePlan {
   };
 }
 
-export function ChapterPanel() {
+export function ChapterPanel({ projectId }: { projectId: string }) {
   const [chapter, setChapter] = useState(1);
   const [state, dispatch] = useReducer(workflowReducer, initialState);
   const [status, setStatus] = useState<Status>(NO_STATUS);
@@ -57,12 +59,12 @@ export function ChapterPanel() {
     let chapterData: SavedChapter | null = null;
     let stateData: DraftState | null = null;
     try {
-      chapterData = await getChapter(chapter);
+      chapterData = await getChapter(projectId, chapter);
     } catch {
       /* no saved chapter */
     }
     try {
-      stateData = await getDraftState(chapter);
+      stateData = await getDraftState(projectId, chapter);
     } catch {
       /* no in-progress workflow */
     }
@@ -70,7 +72,7 @@ export function ChapterPanel() {
     const overwrite = Boolean(chapterData);
     if (stateData) dispatch({ type: 'resume', draftState: stateData, overwrite });
     else if (chapterData) dispatch({ type: 'showSaved', chapter: chapterData });
-  }, [chapter]);
+  }, [projectId, chapter]);
 
   useEffect(() => {
     // Loading a chapter from the server on mount / chapter change is a genuine
@@ -81,7 +83,7 @@ export function ChapterPanel() {
 
   // ── non-streaming actions (TanStack mutations) ────────────────────────────
   const planMut = useMutation({
-    mutationFn: () => generatePlan(chapter),
+    mutationFn: () => generatePlan(projectId, chapter),
     onSuccess: (res) => {
       dispatch({ type: 'planGenerated', plan: res.scene_plan });
       setStatus({ text: 'Plan generated. Edit fields then continue.', isError: false });
@@ -90,7 +92,7 @@ export function ChapterPanel() {
   });
 
   const checkMut = useMutation({
-    mutationFn: () => checkDraft(chapter, state.draft),
+    mutationFn: () => checkDraft(projectId, chapter, state.draft),
     onSuccess: (res) => {
       dispatch({ type: 'issuesChecked', issues: res.issues });
       const n = res.issues.length;
@@ -107,6 +109,7 @@ export function ChapterPanel() {
   const acceptMut = useMutation({
     mutationFn: () =>
       acceptChapter(
+        projectId,
         chapter,
         { scene_plan: state.plan, draft: state.draft, issues: state.issues },
         state.overwrite,
@@ -125,7 +128,7 @@ export function ChapterPanel() {
     dispatch({ type: 'draftStarted' });
     try {
       await stream.run(
-        `/chapter/${chapter}/draft/stream`,
+        draftStreamUrl(projectId, chapter),
         { scene_plan: cleaned },
         {
           onDelta: (text) => dispatch({ type: 'appendDraft', text }),
@@ -144,7 +147,7 @@ export function ChapterPanel() {
     dispatch({ type: 'draftStarted' });
     try {
       await stream.run(
-        `/chapter/${chapter}/revise/stream`,
+        reviseStreamUrl(projectId, chapter),
         { draft: prevDraft, issues },
         {
           onDelta: (text) => dispatch({ type: 'appendDraft', text }),
