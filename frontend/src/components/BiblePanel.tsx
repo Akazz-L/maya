@@ -8,11 +8,11 @@ function SaveState({ isError, isSuccess }: { isError: boolean; isSuccess: boolea
   return null;
 }
 
-export function BiblePanel() {
-  const bible = useBible();
-  const outline = useOutline();
-  const saveBible = useSaveBible();
-  const saveOutline = useSaveOutline();
+export function BiblePanel({ projectId }: { projectId: string }) {
+  const bible = useBible(projectId);
+  const outline = useOutline(projectId);
+  const saveBible = useSaveBible(projectId);
+  const saveOutline = useSaveOutline(projectId);
 
   // Track only the user's edits; fall back to the loaded server content until
   // they type. This derives the editor value without a seeding effect.

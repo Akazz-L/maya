@@ -436,11 +436,23 @@ async def get_chapter(
 # Frontend
 # ---------------------------------------------------------------------------
 
-@app.get("/")
-def root():
+def _serve_spa() -> FileResponse:
     if not _INDEX_HTML.exists():
         raise HTTPException(
             status_code=503,
             detail="Frontend build not found. Run `npm run build` in frontend/ first.",
         )
     return FileResponse(_INDEX_HTML)
+
+
+@app.get("/")
+def root():
+    return _serve_spa()
+
+
+# Client-side routes (e.g. /projects/{id}) must resolve to the SPA on a hard
+# reload. This catch-all is registered last, so it only handles GET paths that
+# no API route or static mount matched; unknown API paths still 404 normally.
+@app.get("/{full_path:path}")
+def spa_fallback(full_path: str):
+    return _serve_spa()

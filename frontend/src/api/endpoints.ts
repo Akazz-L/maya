@@ -1,36 +1,90 @@
-// Thin, typed wrappers around the backend REST routes. Streaming routes
-// (draft/revise) live in stream.ts and are driven by useDraftStream.
+// Thin, typed wrappers around the backend REST routes. Every data route is
+// scoped to a project and requires auth; the streaming routes (draft/revise)
+// live in stream.ts and are driven by useDraftStream.
 
 import { request } from './client';
-import type { DraftState, Issue, SavedChapter, ScenePlan } from './types';
+import type {
+  DraftState,
+  Issue,
+  ProjectDetail,
+  ProjectSummary,
+  SavedChapter,
+  ScenePlan,
+} from './types';
 
-// ── bible / outline (raw YAML text) ─────────────────────────────────────────
-export const getBible = () => request<{ content: string }>('/bible');
-export const saveBible = (content: string) =>
-  request<{ status: string }>('/bible', { method: 'PUT', body: { content } });
+// ── auth (unauthenticated) ───────────────────────────────────────────────────
+export const login = (email: string, password: string) =>
+  request<{ access_token: string; token_type: string }>('/auth/token', {
+    method: 'POST',
+    body: { email, password },
+    authed: false,
+  });
 
-export const getOutline = () => request<{ content: string }>('/outline');
-export const saveOutline = (content: string) =>
-  request<{ status: string }>('/outline', { method: 'PUT', body: { content } });
+export const register = (email: string, password: string) =>
+  request<{ user_id: string }>('/auth/register', {
+    method: 'POST',
+    body: { email, password },
+    authed: false,
+  });
 
-// ── chapter / workflow ──────────────────────────────────────────────────────
-export const getChapter = (n: number) => request<SavedChapter>(`/chapter/${n}`);
+// ── projects ─────────────────────────────────────────────────────────────────
+export const listProjects = () => request<ProjectSummary[]>('/projects');
+
+export const createProject = (name: string, bible_content = '', outline_content = '') =>
+  request<{ project_id: string; name: string }>('/projects', {
+    method: 'POST',
+    body: { name, bible_content, outline_content },
+  });
+
+export const getProject = (projectId: string) =>
+  request<ProjectDetail>(`/projects/${projectId}`);
+
+// ── bible / outline (raw YAML text, per project) ─────────────────────────────
+export const getBible = (projectId: string) =>
+  request<{ content: string }>(`/projects/${projectId}/bible`);
+export const saveBible = (projectId: string, content: string) =>
+  request<{ status: string }>(`/projects/${projectId}/bible`, { method: 'PUT', body: { content } });
+
+export const getOutline = (projectId: string) =>
+  request<{ content: string }>(`/projects/${projectId}/outline`);
+export const saveOutline = (projectId: string, content: string) =>
+  request<{ status: string }>(`/projects/${projectId}/outline`, {
+    method: 'PUT',
+    body: { content },
+  });
+
+// ── chapter / workflow (per project) ─────────────────────────────────────────
+export const getChapter = (projectId: string, n: number) =>
+  request<SavedChapter>(`/projects/${projectId}/chapters/${n}`);
 
 /** Returns null when there is no in-progress workflow for the chapter. */
-export const getDraftState = (n: number) => request<DraftState | null>(`/chapter/${n}/state`);
+export const getDraftState = (projectId: string, n: number) =>
+  request<DraftState | null>(`/projects/${projectId}/chapters/${n}/state`);
 
-export const generatePlan = (n: number) =>
-  request<{ scene_plan: ScenePlan }>(`/chapter/${n}/plan`, { method: 'POST' });
+export const generatePlan = (projectId: string, n: number) =>
+  request<{ scene_plan: ScenePlan }>(`/projects/${projectId}/chapters/${n}/plan`, {
+    method: 'POST',
+  });
 
-export const checkDraft = (n: number, draft: string) =>
-  request<{ issues: Issue[] }>(`/chapter/${n}/check`, { method: 'POST', body: { draft } });
+export const checkDraft = (projectId: string, n: number, draft: string) =>
+  request<{ issues: Issue[] }>(`/projects/${projectId}/chapters/${n}/check`, {
+    method: 'POST',
+    body: { draft },
+  });
 
 export const acceptChapter = (
+  projectId: string,
   n: number,
   payload: { scene_plan: ScenePlan; draft: string; issues: Issue[] },
   overwrite: boolean,
 ) =>
-  request<{ status: string }>(`/chapter/${n}/accept?overwrite=${overwrite}`, {
-    method: 'PUT',
-    body: payload,
-  });
+  request<{ status: string }>(
+    `/projects/${projectId}/chapters/${n}/accept?overwrite=${overwrite}`,
+    { method: 'PUT', body: payload },
+  );
+
+/** SSE stream URLs (driven by useDraftStream / stream.ts). */
+export const draftStreamUrl = (projectId: string, n: number) =>
+  `/projects/${projectId}/chapters/${n}/draft/stream`;
+export const reviseStreamUrl = (projectId: string, n: number) =>
+  `/projects/${projectId}/chapters/${n}/revise/stream`;
