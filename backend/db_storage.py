@@ -1,11 +1,19 @@
+import json
 import uuid
 
-import yaml
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db_models import Chapter, DraftState, Project, Summary
+
+
+EMPTY_BIBLE: dict = {
+    "characters": [],
+    "world": {"locations": [], "rules": []},
+    "style_guide": {"voice": "", "avoid": []},
+    "timeline": [],
+}
 
 
 async def _get_project(db: AsyncSession, project_id: uuid.UUID) -> Project:
@@ -30,39 +38,33 @@ async def _get_or_create_chapter(db: AsyncSession, project_id: uuid.UUID, chapte
 
 async def load_bible(db: AsyncSession, project_id: uuid.UUID) -> dict:
     project = await _get_project(db, project_id)
-    return yaml.safe_load(project.bible_content) or {}
+    try:
+        return json.loads(project.bible_content) or EMPTY_BIBLE
+    except (json.JSONDecodeError, ValueError):
+        return dict(EMPTY_BIBLE)
 
 
-async def load_bible_text(db: AsyncSession, project_id: uuid.UUID) -> str:
+async def save_bible(db: AsyncSession, project_id: uuid.UUID, data: dict) -> None:
+    if not isinstance(data, dict):
+        raise ValueError("Bible must be a dict")
     project = await _get_project(db, project_id)
-    return project.bible_content
-
-
-async def save_bible(db: AsyncSession, project_id: uuid.UUID, content: str) -> None:
-    parsed = yaml.safe_load(content)
-    if not isinstance(parsed, dict):
-        raise ValueError("Bible must be a YAML mapping")
-    project = await _get_project(db, project_id)
-    project.bible_content = content
+    project.bible_content = json.dumps(data)
     await db.commit()
 
 
 async def load_outline(db: AsyncSession, project_id: uuid.UUID) -> dict:
     project = await _get_project(db, project_id)
-    return yaml.safe_load(project.outline_content) or {}
+    try:
+        return json.loads(project.outline_content) or {"chapters": []}
+    except (json.JSONDecodeError, ValueError):
+        return {"chapters": []}
 
 
-async def load_outline_text(db: AsyncSession, project_id: uuid.UUID) -> str:
+async def save_outline(db: AsyncSession, project_id: uuid.UUID, data: dict) -> None:
+    if not isinstance(data, dict) or "chapters" not in data:
+        raise ValueError("Outline must be a dict with a 'chapters' key")
     project = await _get_project(db, project_id)
-    return project.outline_content
-
-
-async def save_outline(db: AsyncSession, project_id: uuid.UUID, content: str) -> None:
-    parsed = yaml.safe_load(content)
-    if not isinstance(parsed, dict) or "chapters" not in parsed:
-        raise ValueError("Outline must be a YAML mapping with a 'chapters' key")
-    project = await _get_project(db, project_id)
-    project.outline_content = content
+    project.outline_content = json.dumps(data)
     await db.commit()
 
 

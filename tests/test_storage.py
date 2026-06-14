@@ -1,8 +1,8 @@
+import json
 import uuid
 
 import pytest
 import pytest_asyncio
-import yaml
 
 from backend import db_storage as storage
 from backend.db_models import Project, User
@@ -11,24 +11,24 @@ from backend.auth import hash_password
 
 @pytest_asyncio.fixture
 async def project(db) -> tuple:
-    """Create a test user and project, return (db, project_id)."""
+    """Create a test user and project seeded with JSON content."""
     user = User(email="writer@example.com", hashed_password=hash_password("pw"))
     db.add(user)
     await db.flush()
 
-    bible_yaml = yaml.dump({
+    bible_json = json.dumps({
         "characters": [{"name": "Elena", "traits": ["determined", "left-handed"], "dialogue_examples": ["I won't wait.", "The Citadel takes."]}],
         "world": {"locations": ["The Citadel", "The Wastes"], "rules": ["Magic requires physical cost"]},
         "timeline": [],
         "style_guide": {"voice": "sparse and precise", "avoid": ["adverbs ending in -ly"]},
     })
-    outline_yaml = "chapters:\n  - Elena arrives at the gates\n  - Elena finds lodging\n"
+    outline_json = json.dumps({"chapters": ["Elena arrives at the gates", "Elena finds lodging"]})
 
     proj = Project(
         user_id=user.id,
         name="Test Novel",
-        bible_content=bible_yaml,
-        outline_content=outline_yaml,
+        bible_content=bible_json,
+        outline_content=outline_json,
     )
     db.add(proj)
     await db.commit()
@@ -43,11 +43,56 @@ async def test_load_bible(project):
 
 
 @pytest.mark.asyncio
+async def test_load_bible_returns_empty_on_non_json(db):
+    """Old YAML content falls back to EMPTY_BIBLE rather than crashing."""
+    user = User(email="x@x.com", hashed_password=hash_password("pw"))
+    db.add(user)
+    await db.flush()
+    proj = Project(user_id=user.id, name="x", bible_content="characters:\n  - name: Elena\n", outline_content="{}")
+    db.add(proj)
+    await db.commit()
+    result = await storage.load_bible(db, proj.id)
+    assert result["characters"] == []
+    assert result["world"] == {"locations": [], "rules": []}
+
+
+@pytest.mark.asyncio
 async def test_load_outline(project):
     db, project_id = project
     result = await storage.load_outline(db, project_id)
     assert len(result["chapters"]) == 2
     assert "Elena" in result["chapters"][0]
+
+
+@pytest.mark.asyncio
+async def test_save_bible_and_reload(project, sample_bible):
+    db, project_id = project
+    new_data = {**sample_bible, "world": {"locations": ["New Place"], "rules": []}}
+    await storage.save_bible(db, project_id, new_data)
+    result = await storage.load_bible(db, project_id)
+    assert result["world"]["locations"] == ["New Place"]
+
+
+@pytest.mark.asyncio
+async def test_save_bible_rejects_non_dict(project):
+    db, project_id = project
+    with pytest.raises(ValueError):
+        await storage.save_bible(db, project_id, ["list", "item"])
+
+
+@pytest.mark.asyncio
+async def test_save_outline_and_reload(project):
+    db, project_id = project
+    await storage.save_outline(db, project_id, {"chapters": ["Elena arrives", "Elena departs"]})
+    result = await storage.load_outline(db, project_id)
+    assert result["chapters"] == ["Elena arrives", "Elena departs"]
+
+
+@pytest.mark.asyncio
+async def test_save_outline_rejects_missing_chapters(project):
+    db, project_id = project
+    with pytest.raises(ValueError):
+        await storage.save_outline(db, project_id, {"title": "My Book"})
 
 
 @pytest.mark.asyncio
@@ -102,22 +147,6 @@ async def test_load_chapter_not_found(project):
 
 
 @pytest.mark.asyncio
-async def test_save_bible_and_reload(project, sample_bible):
-    db, project_id = project
-    new_content = yaml.dump({**sample_bible, "world": {"locations": ["New Place"], "rules": []}})
-    await storage.save_bible(db, project_id, new_content)
-    result = await storage.load_bible(db, project_id)
-    assert result["world"]["locations"] == ["New Place"]
-
-
-@pytest.mark.asyncio
-async def test_save_bible_rejects_non_dict_yaml(project):
-    db, project_id = project
-    with pytest.raises(ValueError):
-        await storage.save_bible(db, project_id, "- list item\n")
-
-
-@pytest.mark.asyncio
 async def test_draft_state_roundtrip(project):
     db, project_id = project
     await storage.save_chapter(db, project_id, 1, {}, None, [])
@@ -147,21 +176,6 @@ async def test_save_and_load_summary(project):
     result = await storage.load_summaries(db, project_id, 2)
     assert len(result) == 1
     assert "Elena reached the gates." in result[0]
-
-
-@pytest.mark.asyncio
-async def test_save_outline_and_reload(project):
-    db, project_id = project
-    await storage.save_outline(db, project_id, "chapters:\n  - Elena arrives\n  - Elena departs\n")
-    result = await storage.load_outline(db, project_id)
-    assert result["chapters"] == ["Elena arrives", "Elena departs"]
-
-
-@pytest.mark.asyncio
-async def test_save_outline_rejects_missing_chapters(project):
-    db, project_id = project
-    with pytest.raises(ValueError):
-        await storage.save_outline(db, project_id, "title: My Book\n")
 
 
 @pytest.mark.asyncio
