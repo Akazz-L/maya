@@ -2,6 +2,7 @@ characters:
   - name: Elena
     traits:
       - determined
+      - funny
       - left-handed
       - distrustful of authority
     dialogue_examples:
