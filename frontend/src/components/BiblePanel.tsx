@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { useBible, useOutline, useSaveBible, useSaveOutline } from '../hooks/queries';
+import { EMPTY_BIBLE, EMPTY_OUTLINE } from '../api/bible-types';
 import { Button } from './ui/button';
 
 function SaveState({ isError, isSuccess }: { isError: boolean; isSuccess: boolean }) {
@@ -8,18 +8,16 @@ function SaveState({ isError, isSuccess }: { isError: boolean; isSuccess: boolea
   return null;
 }
 
+// NOTE: This component is a placeholder — it will be replaced by StoryBiblePage
+// in Task 13. Until then it renders a minimal JSON preview of the typed data.
 export function BiblePanel({ projectId }: { projectId: string }) {
   const bible = useBible(projectId);
   const outline = useOutline(projectId);
   const saveBible = useSaveBible(projectId);
   const saveOutline = useSaveOutline(projectId);
 
-  // Track only the user's edits; fall back to the loaded server content until
-  // they type. This derives the editor value without a seeding effect.
-  const [bibleEdit, setBibleEdit] = useState<string | null>(null);
-  const [outlineEdit, setOutlineEdit] = useState<string | null>(null);
-  const bibleText = bibleEdit ?? bible.data?.content ?? '';
-  const outlineText = outlineEdit ?? outline.data?.content ?? '';
+  const bibleData = bible.data ?? EMPTY_BIBLE;
+  const outlineData = outline.data ?? EMPTY_OUTLINE;
 
   return (
     <aside className="flex w-80 min-w-[220px] flex-col gap-2 border-r border-gray-200 bg-white p-4">
@@ -28,12 +26,12 @@ export function BiblePanel({ projectId }: { projectId: string }) {
         <SaveState isError={saveBible.isError} isSuccess={saveBible.isSuccess} />
       </div>
       <textarea
-        value={bibleText}
-        onChange={(e) => setBibleEdit(e.target.value)}
+        value={JSON.stringify(bibleData, null, 2)}
+        readOnly
         spellCheck={false}
         className="flex-[2] resize-none rounded-md border border-gray-300 p-2 font-mono text-xs"
       />
-      <Button variant="dark" onClick={() => saveBible.mutate(bibleText)} disabled={saveBible.isPending}>
+      <Button variant="dark" onClick={() => saveBible.mutate(bibleData)} disabled={saveBible.isPending}>
         Save Bible
       </Button>
 
@@ -42,14 +40,14 @@ export function BiblePanel({ projectId }: { projectId: string }) {
         <SaveState isError={saveOutline.isError} isSuccess={saveOutline.isSuccess} />
       </div>
       <textarea
-        value={outlineText}
-        onChange={(e) => setOutlineEdit(e.target.value)}
+        value={JSON.stringify(outlineData, null, 2)}
+        readOnly
         spellCheck={false}
         className="flex-1 resize-none rounded-md border border-gray-300 p-2 font-mono text-xs"
       />
       <Button
         variant="dark"
-        onClick={() => saveOutline.mutate(outlineText)}
+        onClick={() => saveOutline.mutate(outlineData)}
         disabled={saveOutline.isPending}
       >
         Save Outline

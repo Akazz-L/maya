@@ -1,8 +1,6 @@
-// TanStack Query hooks for server state. Queries cover the bible/outline text
-// for a project; mutations cover saving. Keys are scoped by project id.
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getBible, getOutline, saveBible, saveOutline } from '../api/endpoints';
+import type { BibleData, OutlineData } from '../api/bible-types';
 
 export const bibleKey = (projectId: string) => ['bible', projectId] as const;
 export const outlineKey = (projectId: string) => ['outline', projectId] as const;
@@ -18,7 +16,7 @@ export function useOutline(projectId: string) {
 export function useSaveBible(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (content: string) => saveBible(projectId, content),
+    mutationFn: (data: BibleData) => saveBible(projectId, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: bibleKey(projectId) }),
   });
 }
@@ -26,7 +24,7 @@ export function useSaveBible(projectId: string) {
 export function useSaveOutline(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (content: string) => saveOutline(projectId, content),
+    mutationFn: (data: OutlineData) => saveOutline(projectId, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: outlineKey(projectId) }),
   });
 }

@@ -3,6 +3,7 @@
 // live in stream.ts and are driven by useDraftStream.
 
 import { request } from './client';
+import type { BibleData, OutlineData } from './bible-types';
 import type {
   DraftState,
   Issue,
@@ -39,19 +40,18 @@ export const createProject = (name: string, bible_content = '', outline_content 
 export const getProject = (projectId: string) =>
   request<ProjectDetail>(`/projects/${projectId}`);
 
-// ── bible / outline (raw YAML text, per project) ─────────────────────────────
+// ── bible / outline (typed JSON, per project) ────────────────────────────────
 export const getBible = (projectId: string) =>
-  request<{ content: string }>(`/projects/${projectId}/bible`);
-export const saveBible = (projectId: string, content: string) =>
-  request<{ status: string }>(`/projects/${projectId}/bible`, { method: 'PUT', body: { content } });
+  request<BibleData>(`/projects/${projectId}/bible`);
+
+export const saveBible = (projectId: string, data: BibleData) =>
+  request<{ status: string }>(`/projects/${projectId}/bible`, { method: 'PUT', body: data });
 
 export const getOutline = (projectId: string) =>
-  request<{ content: string }>(`/projects/${projectId}/outline`);
-export const saveOutline = (projectId: string, content: string) =>
-  request<{ status: string }>(`/projects/${projectId}/outline`, {
-    method: 'PUT',
-    body: { content },
-  });
+  request<OutlineData>(`/projects/${projectId}/outline`);
+
+export const saveOutline = (projectId: string, data: OutlineData) =>
+  request<{ status: string }>(`/projects/${projectId}/outline`, { method: 'PUT', body: data });
 
 // ── chapter / workflow (per project) ─────────────────────────────────────────
 export const getChapter = (projectId: string, n: number) =>
