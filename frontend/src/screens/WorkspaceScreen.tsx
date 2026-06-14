@@ -1,15 +1,18 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { getProject } from '../api/endpoints';
 import { useAuth } from '../auth/AuthContext';
-import { BiblePanel } from '../components/BiblePanel';
 import { ChapterPanel } from '../components/ChapterPanel';
+import { NavBar, type View } from '../components/NavBar';
 import { Button } from '../components/ui/button';
+import { StoryBiblePage } from './StoryBiblePage';
 
 export function WorkspaceScreen() {
   const { projectId } = useParams<{ projectId: string }>();
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const [view, setView] = useState<View>('write');
 
   const project = useQuery({
     queryKey: ['project', projectId],
@@ -18,7 +21,6 @@ export function WorkspaceScreen() {
   });
 
   if (!projectId) return <Navigate to="/" replace />;
-  // A missing/forbidden project (404) sends the user back to the manager.
   if (project.isError) return <Navigate to="/" replace />;
 
   return (
@@ -38,8 +40,12 @@ export function WorkspaceScreen() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <BiblePanel projectId={projectId} />
-        <ChapterPanel projectId={projectId} />
+        <NavBar view={view} onViewChange={setView} />
+        {view === 'write' ? (
+          <ChapterPanel projectId={projectId} />
+        ) : (
+          <StoryBiblePage projectId={projectId} activeSection={view} />
+        )}
       </div>
     </div>
   );
