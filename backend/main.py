@@ -24,11 +24,9 @@ from backend.db_storage import (
     chapter_exists,
     delete_draft_state,
     load_bible,
-    load_bible_text,
     load_chapter,
     load_draft_state,
     load_outline,
-    load_outline_text,
     load_summaries,
     save_bible,
     save_chapter,
@@ -191,7 +189,7 @@ async def get_bible(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_project(project_id, current_user, db)
-    return {"content": await load_bible_text(db, project_id)}
+    return await load_bible(db, project_id)
 
 
 @app.put("/projects/{project_id}/bible")
@@ -202,7 +200,7 @@ async def update_bible(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_project(project_id, current_user, db)
-    await save_bible(db, project_id, request.content)
+    await save_bible(db, project_id, request.model_dump())
     return {"status": "saved"}
 
 
@@ -217,7 +215,7 @@ async def get_outline(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_project(project_id, current_user, db)
-    return {"content": await load_outline_text(db, project_id)}
+    return await load_outline(db, project_id)
 
 
 @app.put("/projects/{project_id}/outline")
@@ -228,7 +226,7 @@ async def update_outline(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_project(project_id, current_user, db)
-    await save_outline(db, project_id, request.content)
+    await save_outline(db, project_id, request.model_dump())
     return {"status": "saved"}
 
 

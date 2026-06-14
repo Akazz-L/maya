@@ -19,12 +19,31 @@ class GenerateResponse(BaseModel):
     continuity_issues: list[dict]
 
 
+class CharacterData(BaseModel):
+    name: str = ""
+    traits: list[str] = []
+    dialogue_examples: list[str] = []
+
+
+class WorldData(BaseModel):
+    locations: list[str] = []
+    rules: list[str] = []
+
+
+class StyleGuideData(BaseModel):
+    voice: str = ""
+    avoid: list[str] = []
+
+
 class BibleUpdateRequest(BaseModel):
-    content: str
+    characters: list[CharacterData] = []
+    world: WorldData = WorldData()
+    style_guide: StyleGuideData = StyleGuideData()
+    timeline: list[str] = []
 
 
 class OutlineUpdateRequest(BaseModel):
-    content: str
+    chapters: list[str] = []
 
 
 class DraftRequest(BaseModel):

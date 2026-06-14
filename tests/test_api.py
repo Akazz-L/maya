@@ -1,6 +1,5 @@
 import json
 import pytest
-import yaml
 from unittest.mock import patch
 
 
@@ -50,14 +49,15 @@ async def test_get_bible(authed_client):
     client, project_id = authed_client
     resp = await client.get(f"/projects/{project_id}/bible")
     assert resp.status_code == 200
-    assert "Elena" in resp.json()["content"]
+    data = resp.json()
+    assert any(c["name"] == "Elena" for c in data["characters"])
 
 
 @pytest.mark.asyncio
 async def test_put_bible(authed_client):
     client, project_id = authed_client
     new_bible = {"characters": [], "world": {"locations": [], "rules": []}, "timeline": [], "style_guide": {"voice": "new", "avoid": []}}
-    resp = await client.put(f"/projects/{project_id}/bible", json={"content": yaml.dump(new_bible)})
+    resp = await client.put(f"/projects/{project_id}/bible", json=new_bible)
     assert resp.status_code == 200
     assert resp.json() == {"status": "saved"}
 
@@ -259,10 +259,11 @@ async def test_outline_get_and_put(authed_client):
     client, project_id = authed_client
     resp = await client.get(f"/projects/{project_id}/outline")
     assert resp.status_code == 200
-    assert "Elena" in resp.json()["content"]
+    chapters = resp.json()["chapters"]
+    assert any("Elena" in ch for ch in chapters)
 
-    new_outline = "chapters:\n  - Elena arrives\n  - Elena departs\n"
-    resp = await client.put(f"/projects/{project_id}/outline", json={"content": new_outline})
+    new_outline = {"chapters": ["Elena arrives", "Elena departs"]}
+    resp = await client.put(f"/projects/{project_id}/outline", json=new_outline)
     assert resp.status_code == 200
     resp = await client.get(f"/projects/{project_id}/outline")
-    assert "Elena departs" in resp.json()["content"]
+    assert "Elena departs" in resp.json()["chapters"]

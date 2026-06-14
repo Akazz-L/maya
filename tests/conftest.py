@@ -1,7 +1,7 @@
+import json
 import os
 import pytest
 import pytest_asyncio
-import yaml
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -47,13 +47,13 @@ async def authed_client(db):
         # Create project
         resp = await client.post("/projects", json={
             "name": "Test Novel",
-            "bible_content": yaml.dump({
+            "bible_content": json.dumps({
                 "characters": [{"name": "Elena", "traits": ["determined", "left-handed"], "dialogue_examples": ["I won't wait.", "The Citadel takes."]}],
                 "world": {"locations": ["The Citadel", "The Wastes"], "rules": ["Magic requires physical cost"]},
-                "timeline": [{"event": "Elena leaves home", "chapter": 0, "location": "The Wastes", "characters": ["Elena"]}],
-                "style_guide": {"voice": "sparse and precise", "avoid": ["adverbs ending in -ly", "passive voice"]},
+                "style_guide": {"voice": "sparse and precise", "avoid": ["adverbs ending in -ly"]},
+                "timeline": [],
             }),
-            "outline_content": "chapters:\n  - Elena arrives at the gates\n  - Elena finds lodging\n",
+            "outline_content": json.dumps({"chapters": ["Elena arrives at the gates", "Elena finds lodging"]}),
         })
         project_id = resp.json()["project_id"]
 
@@ -80,14 +80,7 @@ def sample_bible():
             "locations": ["The Citadel", "The Wastes"],
             "rules": ["Magic requires physical cost"],
         },
-        "timeline": [
-            {
-                "event": "Elena leaves home",
-                "chapter": 0,
-                "location": "The Wastes",
-                "characters": ["Elena"],
-            }
-        ],
+        "timeline": ["Elena leaves home"],
         "style_guide": {
             "voice": "sparse and precise",
             "avoid": ["adverbs ending in -ly", "passive voice"],
