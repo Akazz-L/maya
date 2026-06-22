@@ -443,6 +443,11 @@ def _serve_spa() -> FileResponse:
     return FileResponse(_INDEX_HTML)
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.get("/")
 def root():
     return _serve_spa()
