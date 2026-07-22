@@ -42,6 +42,7 @@ from backend.models import (
     DraftStateResponse,
     ReviseRequest,
 )
+from backend.settings import get_jwt_secret
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 _DIST_DIR = _FRONTEND_DIR / "dist"
@@ -49,6 +50,10 @@ _INDEX_HTML = _DIST_DIR / "index.html"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail the deploy here rather than at the first login attempt: a missing
+    # JWT_SECRET otherwise looks like a healthy service until a user tries to
+    # sign in and gets a 500.
+    get_jwt_secret()
     await init_db()
     yield
 

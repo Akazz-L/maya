@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.agents.planner import planner_node
+from backend.settings import get_model
 
 
 def _mock_tool_response(input_data: dict) -> MagicMock:
@@ -44,7 +45,9 @@ async def test_planner_calls_claude_with_tool_choice(base_state):
         await planner_node(base_state)
     call_kwargs = mock_create.call_args.kwargs
     assert call_kwargs["tool_choice"] == {"type": "tool", "name": "create_scene_plan"}
-    assert call_kwargs["model"] == "claude-sonnet-4-6"
+    # Assert against the configured model rather than a literal, so changing
+    # settings.json doesn't break this test.
+    assert call_kwargs["model"] == get_model()
 
 
 @pytest.mark.asyncio

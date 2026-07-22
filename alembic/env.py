@@ -1,5 +1,4 @@
 import asyncio
-import os
 from logging.config import fileConfig
 
 from dotenv import load_dotenv
@@ -15,9 +14,13 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-database_url = os.getenv("DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+from backend.settings import get_database_url  # noqa: E402
+
+# Share the app's resolution so migrations hit the same database with the same
+# async driver — including the postgres:// -> postgresql+asyncpg:// rewrite that
+# hosted providers require. escape %% so ConfigParser doesn't read a password
+# containing '%' as interpolation syntax.
+config.set_main_option("sqlalchemy.url", get_database_url().replace("%", "%%"))
 
 from backend.db_models import Base  # noqa: E402
 

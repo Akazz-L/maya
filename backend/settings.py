@@ -28,7 +28,28 @@ def get_model() -> str:
 def get_database_url() -> str:
     # Default to an on-disk SQLite file so the app runs with zero setup and
     # persists data across restarts. Override with DATABASE_URL for PostgreSQL.
-    return os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./maya.db")
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        return "sqlite+aiosqlite:///./maya.db"
+    return _normalize_async_url(url)
+
+
+def _normalize_async_url(url: str) -> str:
+    """Rewrite a stock Postgres URL to the asyncpg driver SQLAlchemy needs.
+
+    Hosted providers (Railway, Heroku, Fly) hand out `postgres://` or
+    `postgresql://`, both of which SQLAlchemy resolves to the *sync* psycopg2
+    driver and then rejects under create_async_engine. Left alone this fails at
+    startup with a confusing "InvalidRequestError: The asyncio extension
+    requires an async driver". Anything already carrying an explicit `+driver`
+    is passed through untouched.
+    """
+    scheme, sep, rest = url.partition("://")
+    if not sep or "+" in scheme:
+        return url
+    if scheme in ("postgres", "postgresql"):
+        return f"postgresql+asyncpg://{rest}"
+    return url
 
 
 def get_jwt_secret() -> str:
