@@ -10,13 +10,15 @@ install: ## Install all dependencies (Python + frontend)
 	uv sync
 	cd frontend && npm install
 
-dev: ## Start backend and frontend together (Ctrl-C stops both)
+# dev/backend depend on migrate so a fresh clone still starts with zero setup
+# now that Alembic (not create_all) owns the schema.
+dev: migrate ## Start backend and frontend together (Ctrl-C stops both)
 	@trap 'kill 0' SIGINT SIGTERM; \
 	uv run uvicorn backend.main:app --reload --port 8000 & \
 	(cd frontend && npm run dev) & \
 	wait
 
-backend: ## Start the backend only (port 8000, with reload)
+backend: migrate ## Start the backend only (port 8000, with reload)
 	uv run uvicorn backend.main:app --reload --port 8000
 
 frontend: ## Start the frontend only (port 5173)

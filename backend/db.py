@@ -22,11 +22,23 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Create any missing tables. Idempotent — safe to call on every startup.
-    Lets the app run against a fresh on-disk SQLite file with zero setup;
-    for PostgreSQL you can still manage schema with `alembic upgrade head`."""
-    from backend.db_models import Base
+    """Verify the schema has been migrated. Alembic is the only thing that
+    writes DDL; this deliberately does not call create_all, which would be a
+    second, competing source of schema truth.
+
+    Checks for alembic_version rather than creating anything, so a database
+    that was never migrated fails at startup with an actionable message
+    instead of "no such table: users" on the first request.
+    """
+    from sqlalchemy import inspect
 
     engine, _ = _get_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async with engine.connect() as conn:
+        migrated = await conn.run_sync(
+            lambda sync_conn: inspect(sync_conn).has_table("alembic_version")
+        )
+    if not migrated:
+        raise RuntimeError(
+            "Database schema is not initialized. Run `make migrate` "
+            "(alembic upgrade head) before starting the app."
+        )
