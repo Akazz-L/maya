@@ -1,8 +1,10 @@
 [build]
-builder = "nixpacks"
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
 
+# No startCommand: the Dockerfile CMD owns startup, so there is a single source
+# of truth for how the app boots (migrations, then uvicorn on $PORT).
 [deploy]
-startCommand = "uv run alembic upgrade head && uv run uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
