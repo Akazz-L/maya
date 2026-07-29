@@ -212,8 +212,16 @@ project returns `404`.
 | `POST` | `/projects/{pid}/documents/{did}/plan` | — | `{plan}` |
 | `POST` | `/projects/{pid}/documents/{did}/draft/stream` | `{plan}` | SSE: `delta`, `done`, `error` |
 | `POST` | `/projects/{pid}/documents/{did}/check` | — | `{issues}` |
+| `POST` | `/projects/{pid}/documents/{did}/revise/stream` | — | SSE: `delta`, `done`, `error` |
 
-All three return `400` when the target document's `kind` is not `chapter`.
+All four return `400` when the target document's `kind` is not `chapter`.
+
+`revise/stream` is what makes Check actionable: it feeds `Document.body` and
+`Document.issues` to the drafter's existing revision branch (`is_revision` in
+`_build_messages`), which would otherwise be unreachable. Unlike draft, **revise
+replaces `body` wholesale** rather than appending — it returns a revision of the
+whole text, not a continuation — so the UI puts it behind a confirm and offers it
+from the Issues tab only when issues are present.
 
 `plan` persists the result to `Document.plan`. `draft/stream` persists the plan it
 receives in the request body to `Document.plan` before generating, so an edit made
