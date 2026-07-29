@@ -1,0 +1,233 @@
+import json
+from unittest.mock import AsyncMock, patch
+
+import pytest
+import pytest_asyncio
+
+
+def _parse_sse(text: str) -> list[dict]:
+    return [
+        json.loads(chunk.replace("data: ", ""))
+        for chunk in text.split("\n\n")
+        if chunk.strip()
+    ]
+
+
+@pytest_asyncio.fixture
+async def chapter(authed_client):
+    """(client, project_id, document_id) for a chapter with a brief."""
+    client, project_id = authed_client
+    doc_id = (
+        await client.post(f"/projects/{project_id}/documents", json={"title": "Chapter 1"})
+    ).json()["id"]
+    await client.patch(
+        f"/projects/{project_id}/documents/{doc_id}",
+        json={"brief": "Elena reaches the gates."},
+    )
+    return client, project_id, doc_id
+
+
+@pytest.mark.asyncio
+async def test_generate_plan_persists_to_the_document(chapter, sample_scene_plan):
+    client, project_id, doc_id = chapter
+    with patch(
+        "backend.routes.generate.planner_node",
+        new=AsyncMock(return_value={"scene_plan": sample_scene_plan}),
+    ):
+        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
+    assert resp.status_code == 200
+    assert resp.json()["plan"]["pov_character"] == "Elena"
+
+    doc = (await client.get(f"/projects/{project_id}/documents/{doc_id}")).json()
+    assert doc["plan"]["pov_character"] == "Elena"
+
+
+@pytest.mark.asyncio
+async def test_plan_uses_the_document_brief_not_an_outline(chapter, sample_scene_plan):
+    client, project_id, doc_id = chapter
+    mock = AsyncMock(return_value={"scene_plan": sample_scene_plan})
+    with patch("backend.routes.generate.planner_node", new=mock):
+        await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
+    assert mock.call_args.args[0]["outline_beat"] == "Elena reaches the gates."
+
+
+@pytest.mark.asyncio
+async def test_plan_passes_the_bible_document_body(chapter, sample_scene_plan):
+    client, project_id, doc_id = chapter
+    bible_id = (await client.get(f"/projects/{project_id}/documents")).json()[0]["id"]
+    await client.patch(
+        f"/projects/{project_id}/documents/{bible_id}", json={"body": "## Characters\n\n### Elena"}
+    )
+
+    mock = AsyncMock(return_value={"scene_plan": sample_scene_plan})
+    with patch("backend.routes.generate.planner_node", new=mock):
+        await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
+    assert "### Elena" in mock.call_args.args[0]["story_bible"]
+
+
+@pytest.mark.asyncio
+async def test_plan_on_a_note_returns_400(authed_client):
+    client, project_id = authed_client
+    note = (
+        await client.post(f"/projects/{project_id}/documents", json={"kind": "note"})
+    ).json()["id"]
+    resp = await client.post(f"/projects/{project_id}/documents/{note}/plan")
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_draft_stream_appends_to_the_body(chapter, sample_scene_plan):
+    client, project_id, doc_id = chapter
+    await client.patch(f"/projects/{project_id}/documents/{doc_id}", json={"body": "Existing."})
+
+    async def fake_stream(state):
+        for text in ["New ", "prose."]:
+            yield text
+
+    with patch("backend.routes.generate.drafter_token_stream", new=fake_stream):
+        resp = await client.post(
+            f"/projects/{project_id}/documents/{doc_id}/draft/stream",
+            json={"plan": sample_scene_plan},
+        )
+    frames = _parse_sse(resp.text)
+    assert [f["text"] for f in frames if f["type"] == "delta"] == ["New ", "prose."]
+    done = next(f for f in frames if f["type"] == "done")
+    assert done["body"] == "Existing.\n\nNew prose."
+
+    doc = (await client.get(f"/projects/{project_id}/documents/{doc_id}")).json()
+    assert doc["body"] == "Existing.\n\nNew prose."
+
+
+@pytest.mark.asyncio
+async def test_draft_stream_fills_an_empty_body_without_leading_blank_lines(
+    chapter, sample_scene_plan
+):
+    client, project_id, doc_id = chapter
+
+    async def fake_stream(state):
+        yield "Only prose."
+
+    with patch("backend.routes.generate.drafter_token_stream", new=fake_stream):
+        resp = await client.post(
+            f"/projects/{project_id}/documents/{doc_id}/draft/stream",
+            json={"plan": sample_scene_plan},
+        )
+    done = next(f for f in _parse_sse(resp.text) if f["type"] == "done")
+    assert done["body"] == "Only prose."
+
+
+@pytest.mark.asyncio
+async def test_draft_stream_persists_the_plan_it_receives(chapter, sample_scene_plan):
+    client, project_id, doc_id = chapter
+
+    async def fake_stream(state):
+        yield "x"
+
+    with patch("backend.routes.generate.drafter_token_stream", new=fake_stream):
+        await client.post(
+            f"/projects/{project_id}/documents/{doc_id}/draft/stream",
+            json={"plan": sample_scene_plan},
+        )
+    doc = (await client.get(f"/projects/{project_id}/documents/{doc_id}")).json()
+    assert doc["plan"]["goal"] == sample_scene_plan["goal"]
+
+
+@pytest.mark.asyncio
+async def test_draft_stream_emits_an_error_frame(chapter, sample_scene_plan):
+    client, project_id, doc_id = chapter
+
+    async def boom(state):
+        raise RuntimeError("model exploded")
+        yield  # pragma: no cover — makes this an async generator
+
+    with patch("backend.routes.generate.drafter_token_stream", new=boom):
+        resp = await client.post(
+            f"/projects/{project_id}/documents/{doc_id}/draft/stream",
+            json={"plan": sample_scene_plan},
+        )
+    error = next(f for f in _parse_sse(resp.text) if f["type"] == "error")
+    assert "model exploded" in error["detail"]
+
+
+@pytest.mark.asyncio
+async def test_check_reads_the_body_and_persists_issues(chapter, sample_scene_plan):
+    client, project_id, doc_id = chapter
+    await client.patch(
+        f"/projects/{project_id}/documents/{doc_id}",
+        json={"body": "Elena raised her right hand.", "plan": sample_scene_plan},
+    )
+    issues = [
+        {
+            "issue": "Elena is left-handed",
+            "severity": "critical",
+            "location": "para 1",
+            "suggested_fix": "left hand",
+        }
+    ]
+    mock = AsyncMock(return_value={"continuity_issues": issues})
+    with patch("backend.routes.generate.checker_node", new=mock):
+        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/check")
+
+    assert resp.json()["issues"] == issues
+    assert mock.call_args.args[0]["draft"] == "Elena raised her right hand."
+    doc = (await client.get(f"/projects/{project_id}/documents/{doc_id}")).json()
+    assert doc["issues"] == issues
+
+
+@pytest.mark.asyncio
+async def test_revise_stream_replaces_the_body(chapter, sample_scene_plan):
+    client, project_id, doc_id = chapter
+    await client.patch(
+        f"/projects/{project_id}/documents/{doc_id}",
+        json={
+            "body": "Elena raised her right hand.",
+            "plan": sample_scene_plan,
+            "issues": [
+                {
+                    "issue": "handedness",
+                    "severity": "critical",
+                    "location": "p1",
+                    "suggested_fix": "left",
+                }
+            ],
+        },
+    )
+
+    async def fake_stream(state):
+        yield "Elena raised her left hand."
+
+    with patch("backend.routes.generate.drafter_token_stream", new=fake_stream):
+        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/revise/stream")
+    done = next(f for f in _parse_sse(resp.text) if f["type"] == "done")
+    assert done["body"] == "Elena raised her left hand."
+
+
+@pytest.mark.asyncio
+async def test_generation_uses_preceding_chapter_summaries(chapter, sample_scene_plan):
+    client, project_id, doc_id = chapter
+    # A chapter before this one, with prose to summarize.
+    earlier = (
+        await client.post(f"/projects/{project_id}/documents", json={"title": "Chapter 0"})
+    ).json()["id"]
+    await client.patch(
+        f"/projects/{project_id}/documents/{earlier}", json={"body": "Elena left home."}
+    )
+    await client.put(
+        f"/projects/{project_id}/documents/order",
+        json={
+            "document_ids": [
+                (await client.get(f"/projects/{project_id}/documents")).json()[0]["id"],
+                earlier,
+                doc_id,
+            ]
+        },
+    )
+
+    planner = AsyncMock(return_value={"scene_plan": sample_scene_plan})
+    with (
+        patch("backend.context.summarize_node", new=AsyncMock(return_value="Elena departed.")),
+        patch("backend.routes.generate.planner_node", new=planner),
+    ):
+        await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
+
+    assert planner.call_args.args[0]["previous_summaries"] == ["Elena departed."]

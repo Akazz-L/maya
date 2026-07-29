@@ -1,4 +1,3 @@
-import json
 import os
 import pytest
 import pytest_asyncio
@@ -44,17 +43,8 @@ async def authed_client(db):
         token = resp.json()["access_token"]
         client.headers["Authorization"] = f"Bearer {token}"
 
-        # Create project
-        resp = await client.post("/projects", json={
-            "name": "Test Novel",
-            "bible_content": json.dumps({
-                "characters": [{"name": "Elena", "traits": ["determined", "left-handed"], "dialogue_examples": ["I won't wait.", "The Citadel takes."]}],
-                "world": {"locations": ["The Citadel", "The Wastes"], "rules": ["Magic requires physical cost"]},
-                "style_guide": {"voice": "sparse and precise", "avoid": ["adverbs ending in -ly"]},
-                "timeline": [],
-            }),
-            "outline_content": json.dumps({"chapters": ["Elena arrives at the gates", "Elena finds lodging"]}),
-        })
+        # Create project. The story bible document is seeded server-side.
+        resp = await client.post("/projects", json={"name": "Test Novel"})
         project_id = resp.json()["project_id"]
 
         yield client, project_id
@@ -68,30 +58,25 @@ async def authed_client(db):
 
 @pytest.fixture
 def sample_bible():
-    return {
-        "characters": [
-            {
-                "name": "Elena",
-                "traits": ["determined", "left-handed"],
-                "dialogue_examples": ["I won't wait.", "The Citadel takes."],
-            }
-        ],
-        "world": {
-            "locations": ["The Citadel", "The Wastes"],
-            "rules": ["Magic requires physical cost"],
-        },
-        "timeline": ["Elena leaves home"],
-        "style_guide": {
-            "voice": "sparse and precise",
-            "avoid": ["adverbs ending in -ly", "passive voice"],
-        },
-    }
+    """The story bible as a document body — markdown, not a structured dict."""
+    return (
+        "## Characters\n\n"
+        "### Elena\n\n"
+        "Traits:\n- determined\n- left-handed\n\n"
+        'Dialogue examples:\n- "I won\'t wait."\n- "The Citadel takes."\n\n'
+        "## World\n\n"
+        "Locations:\n- The Citadel\n- The Wastes\n\n"
+        "Rules:\n- Magic requires physical cost\n\n"
+        "## Style\n\n"
+        "Voice: sparse and precise\n\n"
+        "Avoid:\n- adverbs ending in -ly\n- passive voice\n\n"
+        "## Timeline\n\n- Elena leaves home\n"
+    )
 
 
 @pytest.fixture
 def base_state(sample_bible):
     return {
-        "chapter_number": 1,
         "outline_beat": "Elena arrives at the Citadel gates and confronts the Gatekeeper",
         "story_bible": sample_bible,
         "previous_summaries": [],

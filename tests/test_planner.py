@@ -67,3 +67,13 @@ async def test_planner_includes_previous_summaries(base_state):
         await planner_node(base_state)
     prompt_text = mock_create.call_args.kwargs["messages"][0]["content"]
     assert "Elena left the Wastes" in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_planner_sends_the_bible_markdown_and_brief(base_state):
+    mock_response = _mock_tool_response(VALID_PLAN)
+    with patch("backend.agents.planner.client.messages.create", new_callable=AsyncMock, return_value=mock_response) as mock_create:
+        await planner_node(base_state)
+    content = mock_create.call_args.kwargs["messages"][0]["content"]
+    assert "### Elena" in content
+    assert "Elena arrives at the Citadel gates" in content

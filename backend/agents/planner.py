@@ -1,4 +1,3 @@
-import yaml
 import anthropic
 from backend.settings import get_model
 
@@ -31,7 +30,6 @@ _PLAN_TOOL = {
 
 
 async def planner_node(state: dict) -> dict:
-    bible = state["story_bible"]
     summaries = state["previous_summaries"]
 
     summaries_text = (
@@ -55,9 +53,7 @@ async def planner_node(state: dict) -> dict:
                 "content": (
                     f"Create a scene plan for this chapter beat:\n\n"
                     f"OUTLINE BEAT: {state['outline_beat']}\n\n"
-                    f"CHARACTERS:\n{yaml.dump(bible.get('characters', []))}\n\n"
-                    f"WORLD:\n{yaml.dump(bible.get('world', {}))}\n\n"
-                    f"TIMELINE SO FAR:\n{yaml.dump(bible.get('timeline', []))}\n\n"
+                    f"STORY BIBLE:\n{state['story_bible']}\n\n"
                     f"PREVIOUS CHAPTERS:\n{summaries_text}"
                 ),
             }
