@@ -1,9 +1,15 @@
 # Maya
 
 An iterative, chapter-by-chapter novel-writing assistant. Instead of generating a
-book in one shot, Maya keeps persistent state — a story bible, an outline, and
-previous-chapter summaries — and runs each chapter through separate agent passes
+book in one shot, Maya keeps a project as a list of documents — a story bible plus
+chapters and notes — and runs each chapter through separate agent passes
 (planner → drafter → checker), each with a narrow job.
+
+Documents are plain text with a name, added and reordered freely from a sidebar.
+Every project has one pinned Story Bible. Chapter documents carry a short brief
+("what happens in this chapter") and get Generate Plan, Generate Draft, and Check
+actions, with the scene plan and any continuity issues in a resizable panel below
+the prose. Prior chapters are summarized automatically and fed back in as context.
 
 FastAPI + SQLAlchemy backend, React + Vite frontend.
 

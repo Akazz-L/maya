@@ -1,6 +1,6 @@
-// TypeScript mirror of the backend Pydantic models (backend/models.py).
-// The backend types scene_plan / issues loosely as `dict`, but the UI works
-// with these concrete shapes.
+// TypeScript mirror of the backend response shapes. The backend types
+// plan / issues loosely as `dict` / `list`, but the UI works with these
+// concrete shapes.
 
 export type Severity = 'critical' | 'minor' | 'style';
 
@@ -23,22 +23,24 @@ export interface Issue {
   suggested_fix: string;
 }
 
-/** The three workflow steps the backend persists in draft_state.json. */
-export type Step = 'plan' | 'draft' | 'check';
+export type DocumentKind = 'bible' | 'chapter' | 'note';
 
-/** Resumable in-progress workflow, from GET /chapter/{n}/state. */
-export interface DraftState {
-  step: Step;
-  scene_plan: ScenePlan;
-  draft: string;
-  issues: Issue[];
+/** A row in the sidebar, from GET /projects/{id}/documents. Bodies are omitted. */
+export interface DocumentSummary {
+  id: string;
+  title: string;
+  kind: DocumentKind;
+  position: number;
+  updated_at: string;
 }
 
-/** A saved chapter, from GET /projects/{id}/chapters/{n}. */
-export interface SavedChapter {
-  plan: ScenePlan;
-  draft: string;
-  issues: Issue[];
+/** A single open document, from GET /projects/{id}/documents/{did}. */
+export interface DocumentDetail extends DocumentSummary {
+  body: string;
+  /** Chapter only — the planner's outline beat. Empty on bible and note documents. */
+  brief: string;
+  plan: ScenePlan | null;
+  issues: Issue[] | null;
 }
 
 /** A project in the list, from GET /projects. */
@@ -48,12 +50,10 @@ export interface ProjectSummary {
   created_at: string;
 }
 
-/** A single project with its bible/outline, from GET /projects/{id}. */
+/** A single project, from GET /projects/{id}. */
 export interface ProjectDetail {
   project_id: string;
   name: string;
-  bible_content: string;
-  outline_content: string;
 }
 
 export const EMPTY_PLAN: ScenePlan = {

@@ -16,6 +16,7 @@ export function App() {
       <Route element={<RequireAuth />}>
         <Route path="/" element={<ProjectsScreen />} />
         <Route path="/p/:projectId" element={<WorkspaceScreen />} />
+        <Route path="/p/:projectId/d/:documentId" element={<WorkspaceScreen />} />
       </Route>
       <Route path="*" element={<Navigate to={isAuthenticated ? '/' : '/login'} replace />} />
     </Routes>
