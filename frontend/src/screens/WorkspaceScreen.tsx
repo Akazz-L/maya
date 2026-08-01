@@ -41,9 +41,10 @@ export function WorkspaceScreen() {
   const [panelHeight, setPanelHeight] = useState(
     () => Number(localStorage.getItem(HEIGHT_KEY)) || 240,
   );
-  // Keyed by document id rather than a boolean, so switching documents closes
-  // the panel without an effect that resets state.
-  const [panelOpenFor, setPanelOpenFor] = useState<string | null>(null);
+  // The panel is open by default whenever the document has a plan or issues, so a
+  // saved plan survives a reload. This override records a deliberate show/hide,
+  // scoped to one document so switching documents falls back to the default.
+  const [panelOverride, setPanelOverride] = useState<{ id: string; open: boolean } | null>(null);
   // Bumped whenever the server rewrites the body, to remount the editor onto it.
   const [docVersion, setDocVersion] = useState(0);
   const [streamBody, setStreamBody] = useState<string | undefined>(undefined);
@@ -107,7 +108,7 @@ export function WorkspaceScreen() {
     mutationFn: () => generatePlan(projectId!, documentId!),
     onSuccess: (res) => {
       patchCache({ plan: res.plan });
-      setPanelOpenFor(documentId!);
+      setPanelOverride({ id: documentId!, open: true });
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -117,7 +118,7 @@ export function WorkspaceScreen() {
     mutationFn: () => pendingSave.current.then(() => checkDocument(projectId!, documentId!)),
     onSuccess: (res) => {
       patchCache({ issues: res.issues });
-      setPanelOpenFor(documentId!);
+      setPanelOverride({ id: documentId!, open: true });
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -152,7 +153,7 @@ export function WorkspaceScreen() {
         return; // planMut.onError already surfaced it
       }
     }
-    setPanelOpenFor(documentId!);
+    setPanelOverride({ id: documentId!, open: true });
     await runStream(draftStreamUrl(projectId!, documentId!), { plan });
   };
 
@@ -163,7 +164,10 @@ export function WorkspaceScreen() {
 
   const doc = document.data;
   const isChapter = doc?.kind === 'chapter';
-  const panelOpen = panelOpenFor === documentId;
+  // A dropped plan leaves nothing to show, so the panel closes on its own.
+  const hasPanelContent = Boolean(doc?.plan || doc?.issues?.length);
+  const overrideApplies = panelOverride !== null && panelOverride.id === documentId;
+  const panelOpen = hasPanelContent && (!overrideApplies || panelOverride.open);
   const busy = planMut.isPending || checkMut.isPending || stream.isStreaming || deleteDoc.isPending;
 
   return (
@@ -221,6 +225,11 @@ export function WorkspaceScreen() {
               onGeneratePlan={() => planMut.mutate()}
               onGenerateDraft={generateDraft}
               onCheck={() => checkMut.mutate()}
+              hasPanelContent={hasPanelContent}
+              panelOpen={panelOpen}
+              onTogglePanel={() =>
+                setPanelOverride({ id: documentId!, open: !panelOpen })
+              }
             />
           )}
 
@@ -265,7 +274,7 @@ export function WorkspaceScreen() {
               onDrop={() => {
                 patchCache({ plan: null });
                 save({ plan: null });
-                setPanelOpenFor(null);
+                setPanelOverride({ id: documentId!, open: false });
               }}
               onGenerateDraft={generateDraft}
               onRevise={revise}

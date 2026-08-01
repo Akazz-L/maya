@@ -10,6 +10,9 @@ describe('ChapterToolbar', () => {
       onGeneratePlan: vi.fn(),
       onGenerateDraft: vi.fn(),
       onCheck: vi.fn(),
+      hasPanelContent: false,
+      panelOpen: false,
+      onTogglePanel: vi.fn(),
     };
     render(<ChapterToolbar {...props} />);
 
@@ -24,8 +27,48 @@ describe('ChapterToolbar', () => {
 
   it('disables everything while busy', () => {
     render(
-      <ChapterToolbar busy onGeneratePlan={vi.fn()} onGenerateDraft={vi.fn()} onCheck={vi.fn()} />,
+      <ChapterToolbar
+        busy
+        onGeneratePlan={vi.fn()}
+        onGenerateDraft={vi.fn()}
+        onCheck={vi.fn()}
+        hasPanelContent={false}
+        panelOpen={false}
+        onTogglePanel={vi.fn()}
+      />,
     );
     screen.getAllByRole('button').forEach((b) => expect(b).toBeDisabled());
+  });
+
+  it('disables the panel toggle when there is nothing to show', () => {
+    render(
+      <ChapterToolbar
+        busy={false}
+        onGeneratePlan={vi.fn()}
+        onGenerateDraft={vi.fn()}
+        onCheck={vi.fn()}
+        hasPanelContent={false}
+        panelOpen={false}
+        onTogglePanel={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /show plan/i })).toBeDisabled();
+  });
+
+  it('toggles a saved plan back into view', async () => {
+    const onTogglePanel = vi.fn();
+    render(
+      <ChapterToolbar
+        busy={false}
+        onGeneratePlan={vi.fn()}
+        onGenerateDraft={vi.fn()}
+        onCheck={vi.fn()}
+        hasPanelContent
+        panelOpen={false}
+        onTogglePanel={onTogglePanel}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: /show plan/i }));
+    expect(onTogglePanel).toHaveBeenCalled();
   });
 });

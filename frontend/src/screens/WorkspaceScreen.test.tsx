@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { WorkspaceScreen } from './WorkspaceScreen';
 import { AuthProvider } from '../auth/AuthContext';
 import { clearToken } from '../auth/token';
+import { EMPTY_PLAN } from '../api/types';
 
 const DOCS = [
   { id: 'b', title: 'Story Bible', kind: 'bible', position: 0, updated_at: '2026-01-01' },
@@ -103,5 +104,23 @@ describe('WorkspaceScreen', () => {
     renderAt('/p/p1/d/c1');
     await screen.findByDisplayValue('The rain.');
     expect(screen.queryByRole('button', { name: /drop/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /show plan/i })).toBeDisabled();
+  });
+
+  it('reopens a saved plan on load, so a reload does not strand it', async () => {
+    // Regression: the panel used to be a plain boolean reset on mount, which
+    // left a persisted plan unreachable without regenerating it.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/documents')) return json(DOCS);
+      if (url.includes('/documents/c1'))
+        return json({ ...CHAPTER, plan: { ...EMPTY_PLAN, goal: 'Reach the gate' } });
+      return json({ project_id: 'p1', name: 'Novel' });
+    });
+
+    renderAt('/p/p1/d/c1');
+
+    expect(await screen.findByDisplayValue('Reach the gate')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /hide plan/i })).toBeEnabled();
   });
 });
