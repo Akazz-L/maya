@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { cn } from '../lib/utils';
 
-// eslint-disable-next-line react-refresh/only-export-components
-export const PRESETS: { label: string; instruction: string }[] = [
+const PRESETS: { label: string; instruction: string }[] = [
   { label: 'Tighten', instruction: 'Tighten this passage. Cut every word that is not pulling weight.' },
   { label: 'More tension', instruction: 'Raise the tension. Keep what happens the same.' },
   {
@@ -37,7 +36,7 @@ export function RewritePrompt({ initialInstruction, onSubmit, onCancel }: Rewrit
     if (e.key === 'Escape') {
       e.preventDefault();
       onCancel();
-    } else if (e.key === 'Enter') {
+    } else if (e.key === 'Enter' && e.target === input.current) {
       e.preventDefault();
       submit();
     }

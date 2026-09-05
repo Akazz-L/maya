@@ -43,4 +43,15 @@ describe('RewritePrompt', () => {
     await userEvent.click(screen.getByRole('button', { name: /^rewrite$/i }));
     expect(onSubmit).toHaveBeenCalledWith('Raise the tension. Keep what happens the same.');
   });
+
+  it('Enter on a focused preset chip fills the input instead of submitting', async () => {
+    const onSubmit = vi.fn();
+    render(<RewritePrompt initialInstruction="" onSubmit={onSubmit} onCancel={vi.fn()} />);
+    screen.getByRole('button', { name: 'Tighten' }).focus();
+    await userEvent.keyboard('{Enter}');
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Rewrite instruction')).toHaveValue(
+      'Tighten this passage. Cut every word that is not pulling weight.',
+    );
+  });
 });
