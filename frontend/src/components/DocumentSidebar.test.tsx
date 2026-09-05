@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DocumentSidebar } from './DocumentSidebar';
 import type { DocumentSummary } from '../api/types';
@@ -116,5 +116,48 @@ describe('DocumentSidebar', () => {
   it('collapses to icons only', () => {
     setup({ collapsed: true });
     expect(screen.queryByText('Chapter 1')).not.toBeInTheDocument();
+  });
+
+  describe('sections', () => {
+    it('groups chapters and notes under their own headings', () => {
+      setup();
+      expect(screen.getByText('Chapters')).toBeInTheDocument();
+      expect(screen.getByText('Notes')).toBeInTheDocument();
+    });
+
+    it('hides the Notes heading when the project has no notes', () => {
+      setup({ documents: DOCS.filter((d) => d.kind !== 'note') });
+      expect(screen.getByText('Chapters')).toBeInTheDocument();
+      expect(screen.queryByText('Notes')).not.toBeInTheDocument();
+    });
+
+    it('says so when there are no chapters yet', () => {
+      setup({ documents: DOCS.filter((d) => d.kind !== 'chapter') });
+      expect(screen.getByText('No chapters yet.')).toBeInTheDocument();
+    });
+
+    it('drops section headings when collapsed', () => {
+      setup({ collapsed: true });
+      expect(screen.queryByText('Chapters')).not.toBeInTheDocument();
+      expect(screen.queryByText('Notes')).not.toBeInTheDocument();
+    });
+
+    it('reorders within a section', () => {
+      const docs: DocumentSummary[] = [
+        ...DOCS,
+        { id: 'c2', title: 'Chapter 2', kind: 'chapter', position: 3, updated_at: '2026-01-01' },
+      ];
+      const props = setup({ documents: docs });
+      fireEvent.dragStart(screen.getByText('Chapter 2').closest('li')!);
+      fireEvent.drop(screen.getByText('Chapter 1').closest('li')!);
+      expect(props.onReorder).toHaveBeenCalledWith(['b', 'c2', 'c1', 'n1']);
+    });
+
+    it('refuses a drag from one section into another', () => {
+      const props = setup();
+      fireEvent.dragStart(screen.getByText('Research').closest('li')!);
+      fireEvent.drop(screen.getByText('Chapter 1').closest('li')!);
+      expect(props.onReorder).not.toHaveBeenCalled();
+    });
   });
 });

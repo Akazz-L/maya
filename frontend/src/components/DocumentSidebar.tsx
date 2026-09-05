@@ -68,15 +68,36 @@ export function DocumentSidebar({
 
   const drop = (targetId: string) => {
     if (!draggingId || draggingId === targetId) return;
+    const dragged = documents.find((d) => d.id === draggingId);
+    const target = documents.find((d) => d.id === targetId);
+    // A drag across sections would silently move a document out of the group
+    // its kind puts it in, so confine reordering to one section.
+    if (!dragged || !target || dragged.kind !== target.kind) {
+      setDraggingId(null);
+      return;
+    }
     const ids = documents.map((d) => d.id).filter((id) => id !== draggingId);
     ids.splice(ids.indexOf(targetId), 0, draggingId);
     onReorder(ids);
     setDraggingId(null);
   };
 
-  // The bible is pinned above a divider and cannot be dragged or deleted.
+  // Three sections, because a chapter and a note are read very differently by
+  // the agents: chapter order is story order, and notes are context-invisible.
+  // The bible is pinned to the top and cannot be dragged or deleted.
   const bible = documents.filter((d) => d.kind === 'bible');
-  const rest = documents.filter((d) => d.kind !== 'bible');
+  const chapters = documents.filter((d) => d.kind === 'chapter');
+  const notes = documents.filter((d) => d.kind === 'note');
+
+  const sectionHeading = (label: string, count: number) =>
+    collapsed ? null : (
+      <div className="flex items-baseline justify-between px-2 pt-2 pb-1">
+        <span className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">
+          {label}
+        </span>
+        <span className="text-[10px] text-gray-300 tabular-nums">{count}</span>
+      </div>
+    );
 
   const row = (doc: DocumentSummary, draggable: boolean) => (
     <li
@@ -110,7 +131,12 @@ export function DocumentSidebar({
             type="button"
             onClick={() => onSelect(doc.id)}
             onDoubleClick={() => setRenamingId(doc.id)}
-            className="min-w-0 flex-1 truncate text-left"
+            className={cn(
+              'min-w-0 flex-1 truncate text-left',
+              // Notes are not story text and never reach an agent, so they read
+              // as marginalia rather than as another chapter.
+              doc.kind === 'note' && 'italic',
+            )}
           >
             {doc.title}
           </button>
@@ -157,9 +183,22 @@ export function DocumentSidebar({
 
       <ul className="flex flex-col gap-0.5">{bible.map((d) => row(d, false))}</ul>
       {!collapsed && <div className="my-1 border-t border-gray-200" />}
-      <ul className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
-        {rest.map((d) => row(d, true))}
-      </ul>
+
+      <div className="flex-1 overflow-y-auto">
+        {sectionHeading('Chapters', chapters.length)}
+        <ul className="flex flex-col gap-0.5">{chapters.map((d) => row(d, true))}</ul>
+        {chapters.length === 0 && !collapsed && (
+          <p className="px-2 py-1 text-xs text-gray-300">No chapters yet.</p>
+        )}
+
+        {notes.length > 0 && (
+          <>
+            {!collapsed && <div className="mt-2 border-t border-gray-200" />}
+            {sectionHeading('Notes', notes.length)}
+            <ul className="flex flex-col gap-0.5">{notes.map((d) => row(d, true))}</ul>
+          </>
+        )}
+      </div>
 
       {/* Split button: the common case (a chapter) stays one click, while the
           caret reaches the other kinds. Without it, notes are uncreatable. */}
