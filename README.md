@@ -99,6 +99,13 @@ Frontend extras: `npm run test:watch`, `npm run typecheck`, `npm run lint`,
 | `make seed` | Demo account + sample novel (safe to re-run) |
 | `make help` | List all targets |
 
+## Diagrams
+
+[`docs/diagrams/`](docs/diagrams/) holds mermaid diagrams of the architecture — the
+container view, the database schema, the agent workflows, and the frontend's
+component tree and data flows.
+They render directly on GitHub and in most editors.
+
 ## Notes
 
 - Alembic owns the schema. `make dev` and `make backend` run `make migrate` first,
