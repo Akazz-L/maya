@@ -1,0 +1,49 @@
+from collections.abc import AsyncIterator
+
+import anthropic
+from backend.settings import get_model
+
+client = anthropic.AsyncAnthropic()
+
+
+def _build_rewrite_messages(state: dict) -> tuple[str, str]:
+    """Build (system_prompt, user_content) for a span rewrite.
+
+    The model sees only the selected passage plus read-only context and must
+    return only the replacement. The surrounding text is spliced back in
+    client-side, so everything outside the selection is preserved by
+    construction rather than by trusting the model.
+    """
+    bible = state["story_bible"]
+
+    system_prompt = (
+        "You are rewriting a passage of literary fiction.\n"
+        "Follow the voice and prose rules given in the story bible below.\n\n"
+        f"STORY BIBLE:\n{bible}\n\n"
+        "Rewrite ONLY the passage marked PASSAGE TO REWRITE, following the instruction.\n"
+        "The context before and after is shown for continuity only: do not rewrite or repeat it.\n"
+        "Write only the replacement prose. No commentary, no meta-text, no titles."
+    )
+    user_content = (
+        f"INSTRUCTION:\n{state['instruction']}\n\n"
+        f"CONTEXT BEFORE (do not rewrite):\n{state['before']}\n\n"
+        f"PASSAGE TO REWRITE:\n{state['selection']}\n\n"
+        f"CONTEXT AFTER (do not rewrite):\n{state['after']}"
+    )
+    return system_prompt, user_content
+
+
+async def rewriter_token_stream(state: dict) -> AsyncIterator[str]:
+    """Yield replacement text deltas as the model writes them. Owns the API
+    call only; SSE framing is the endpoint's responsibility."""
+    system_prompt, user_content = _build_rewrite_messages(state)
+
+    async with client.messages.stream(
+        model=get_model(),
+        max_tokens=4096,
+        temperature=0.9,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_content}],
+    ) as stream:
+        async for text in stream.text_stream:
+            yield text
