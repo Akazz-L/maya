@@ -16,21 +16,22 @@ function streamingResponse(chunks: string[]): Response {
 describe('streamPost', () => {
   it('parses delta frames then a done frame, even across split chunks', async () => {
     // The "done" frame is split across two network chunks to exercise buffering.
+    // It carries the document's full new body, not just the generated draft.
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       streamingResponse([
         'data: {"type":"delta","text":"Hello "}\n\n',
         'data: {"type":"delta","text":"world"}\n\n',
-        'data: {"type":"done","dra',
-        'ft":"Hello world"}\n\n',
+        'data: {"type":"done","bo',
+        'dy":"Existing.\\n\\nHello world"}\n\n',
       ]),
     );
 
     const deltas: string[] = [];
     let done = '';
-    await streamPost('/x', {}, { onDelta: (t) => deltas.push(t), onDone: (d) => (done = d) });
+    await streamPost('/x', {}, { onDelta: (t) => deltas.push(t), onDone: (b) => (done = b) });
 
     expect(deltas).toEqual(['Hello ', 'world']);
-    expect(done).toBe('Hello world');
+    expect(done).toBe('Existing.\n\nHello world');
   });
 
   it('throws on an error frame', async () => {

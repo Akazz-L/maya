@@ -65,3 +65,14 @@ async def test_checker_includes_draft_and_characters_in_prompt(base_state, sampl
     assert "She raised her hand." in prompt
     assert "Elena" in prompt
     assert "left-handed" in prompt
+
+
+@pytest.mark.asyncio
+async def test_checker_sends_the_bible_markdown(base_state):
+    base_state["draft"] = "Elena raised her right hand."
+    mock_response = _mock_tool_response([])
+    with patch("backend.agents.checker.client.messages.create", new_callable=AsyncMock, return_value=mock_response) as mock_create:
+        await checker_node(base_state)
+    content = mock_create.call_args.kwargs["messages"][0]["content"]
+    assert "### Elena" in content
+    assert "Magic requires physical cost" in content

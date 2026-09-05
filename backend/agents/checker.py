@@ -1,4 +1,3 @@
-import yaml
 import anthropic
 from backend.settings import get_model
 
@@ -33,7 +32,6 @@ _CHECK_TOOL = {
 
 
 async def checker_node(state: dict) -> dict:
-    bible = state["story_bible"]
     summaries = state["previous_summaries"]
 
     summaries_text = (
@@ -62,11 +60,9 @@ async def checker_node(state: dict) -> dict:
                     f"POV: {state['scene_plan'].get('pov_character', '')}\n"
                     f"Location: {state['scene_plan'].get('location', '')}\n"
                     f"Beats: {', '.join(state['scene_plan'].get('beats', []))}\n\n"
-                    f"CHARACTER FACTS:\n{yaml.dump(bible.get('characters', []))}\n\n"
-                    f"WORLD RULES:\n{yaml.dump(bible.get('world', {}))}\n\n"
-                    f"TIMELINE:\n{yaml.dump(bible.get('timeline', []))}\n\n"
+                    f"STORY BIBLE (character facts, world rules, timeline, style rules):\n"
+                    f"{state['story_bible']}\n\n"
                     f"PREVIOUS CHAPTERS:\n{summaries_text}\n\n"
-                    f"STYLE RULES TO ENFORCE:\n{yaml.dump(bible.get('style_guide', {}))}\n\n"
                     "Check for: physical trait contradictions, timeline inconsistencies, "
                     "character knowledge errors (knowing something they shouldn't), "
                     "location consistency errors."

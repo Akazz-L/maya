@@ -1,6 +1,9 @@
 __pycache__/
 *.pyc
-.env
+# Every .env variant carries secrets, including Finder/editor duplicates such as
+# ".env copy.example". Only the committed template is exempt.
+.env*
+!.env.example
 chapters/
 summaries/
 .pytest_cache/
@@ -8,3 +11,8 @@ NOTES.md
 .python-version
 *.db
 *.db-journal
+# Agent scratch space. Worktrees under here are live checkouts of other
+# branches; committed as gitlinks they became broken submodule pointers to
+# paths that exist on one machine. Plans and specs under .claude stay tracked.
+.claude/worktrees/
+.superpowers/brainstorm/

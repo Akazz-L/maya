@@ -1,9 +1,15 @@
 # Maya
 
 An iterative, chapter-by-chapter novel-writing assistant. Instead of generating a
-book in one shot, Maya keeps persistent state — a story bible, an outline, and
-previous-chapter summaries — and runs each chapter through separate agent passes
+book in one shot, Maya keeps a project as a list of documents — a story bible plus
+chapters and notes — and runs each chapter through separate agent passes
 (planner → drafter → checker), each with a narrow job.
+
+Documents are plain text with a name, added and reordered freely from a sidebar.
+Every project has one pinned Story Bible. Chapter documents carry a short brief
+("what happens in this chapter") and get Generate Plan, Generate Draft, and Check
+actions, with the scene plan and any continuity issues in a resizable panel below
+the prose. Prior chapters are summarized automatically and fed back in as context.
 
 FastAPI + SQLAlchemy backend, React + Vite frontend.
 
@@ -43,6 +49,33 @@ backend, so `:5173` is the URL you want — `:8000` serves the API but not the d
 
 To run just one side: `make backend` or `make frontend`.
 
+## Demo data
+
+```bash
+make seed
+```
+
+Creates a demo account — **demo@maya.local** / **demo1234** — owning one project,
+`Demo — The Salt Road`, whose documents are each left in a different state so
+every toolbar action has something to act on:
+
+| Document | State | What it exercises |
+|---|---|---|
+| Story Bible | Filled in, not the empty template | Context for every agent |
+| Chapter 1 | Prose plus a pre-cached summary | **Check**, and prior-chapter context |
+| Chapter 2 | Scene plan saved, body empty | **Generate Draft** from an existing plan |
+| Chapter 3 | Brief only | **Generate Plan**, then the plan-to-draft path |
+| Research note | Scratch notes | Notes are excluded from all agent context |
+
+Chapter 1's summary is seeded already hashed, so drafting a later chapter costs
+no summarizer call.
+Re-running replaces the demo project and resets the demo password, leaving any
+other project on the account untouched.
+Pass `--email`, `--password`, or `--project` to `scripts/seed_demo.py` to seed a
+different account.
+
+Generation itself still needs `ANTHROPIC_API_KEY` in `.env`; seeding does not.
+
 ## Tests
 
 ```bash
@@ -63,6 +96,7 @@ Frontend extras: `npm run test:watch`, `npm run typecheck`, `npm run lint`,
 | `make install` | Install Python + frontend dependencies |
 | `make test` | Backend test suite |
 | `make migrate` | `alembic upgrade head` |
+| `make seed` | Demo account + sample novel (safe to re-run) |
 | `make help` | List all targets |
 
 ## Notes

@@ -11,19 +11,9 @@ def _build_messages(state: dict) -> tuple[str, str]:
     blocking node and the streaming generator so prompt logic stays identical."""
     bible = state["story_bible"]
     plan = state["scene_plan"]
-    style = bible.get("style_guide", {})
     summaries = state["previous_summaries"]
 
-    avoid_lines = "\n".join(f"- {t}" for t in style.get("avoid", []))
     last_summary = summaries[-1] if summaries else "This is the first chapter."
-
-    dialogue_blocks = []
-    for char in bible.get("characters", []):
-        examples = char.get("dialogue_examples", [])[:5]
-        if examples:
-            lines = "\n".join(f'  "{e}"' for e in examples)
-            dialogue_blocks.append(f"{char['name']}:\n{lines}")
-
     beats_text = "\n".join(f"- {b}" for b in plan.get("beats", []))
 
     existing_draft = state.get("draft", "")
@@ -36,9 +26,9 @@ def _build_messages(state: dict) -> tuple[str, str]:
             for i in issues
         )
         system_prompt = (
-            f"You are revising a chapter of literary fiction.\n"
-            f"Voice: {style.get('voice', 'precise and immersive')}\n\n"
-            f"Prose patterns to avoid:\n{avoid_lines if avoid_lines else 'None specified.'}\n\n"
+            "You are revising a chapter of literary fiction.\n"
+            "Follow the voice and prose rules given in the story bible below.\n\n"
+            f"STORY BIBLE:\n{bible}\n\n"
             "Fix all continuity issues listed below while preserving the overall narrative, characters, and style.\n"
             "Write only the revised prose. No commentary, no meta-text, no titles."
         )
@@ -53,9 +43,10 @@ def _build_messages(state: dict) -> tuple[str, str]:
         )
     else:
         system_prompt = (
-            f"You are writing literary fiction.\n"
-            f"Voice: {style.get('voice', 'precise and immersive')}\n\n"
-            f"Prose patterns to avoid:\n{avoid_lines if avoid_lines else 'None specified.'}\n\n"
+            "You are writing literary fiction.\n"
+            "Follow the voice and prose rules given in the story bible below, and give "
+            "each character the speech patterns their dialogue examples establish.\n\n"
+            f"STORY BIBLE:\n{bible}\n\n"
             "Write only the prose. No commentary, no meta-text, no titles."
         )
         user_content = (
@@ -69,8 +60,7 @@ def _build_messages(state: dict) -> tuple[str, str]:
             f"Closing image: {plan.get('closing_image', '')}\n"
             f"Sensory anchor: {plan.get('sensory_anchor', '')}\n\n"
             f"PREVIOUS CHAPTER:\n{last_summary}\n\n"
-            f"CHARACTER VOICES:\n"
-            + ("\n\n".join(dialogue_blocks) if dialogue_blocks else "No examples available.")
+            f"STORY BIBLE:\n{bible}"
         )
 
     return system_prompt, user_content

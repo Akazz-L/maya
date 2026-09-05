@@ -6,7 +6,8 @@ import { authHeaders, handleUnauthorized } from '../auth/token';
 
 export interface StreamCallbacks {
   onDelta: (text: string) => void;
-  onDone: (draft: string) => void;
+  /** The document's full new body, as persisted by the server. */
+  onDone: (body: string) => void;
 }
 
 interface DeltaFrame {
@@ -15,7 +16,7 @@ interface DeltaFrame {
 }
 interface DoneFrame {
   type: 'done';
-  draft: string;
+  body: string;
 }
 interface ErrorFrame {
   type: 'error';
@@ -61,7 +62,7 @@ export async function streamPost(
       if (!raw) continue;
       const evt = JSON.parse(raw) as Frame;
       if (evt.type === 'delta') onDelta(evt.text);
-      else if (evt.type === 'done') onDone(evt.draft);
+      else if (evt.type === 'done') onDone(evt.body);
       else if (evt.type === 'error') throw new Error(evt.detail);
     }
   }

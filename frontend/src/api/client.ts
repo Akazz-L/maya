@@ -5,7 +5,7 @@
 import { authHeaders, handleUnauthorized } from '../auth/token';
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   /**
    * Whether to attach the auth token and treat a 401 as session-expired

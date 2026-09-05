@@ -3,13 +3,13 @@
 // live in stream.ts and are driven by useDraftStream.
 
 import { request } from './client';
-import type { BibleData, OutlineData } from './bible-types';
 import type {
-  DraftState,
+  DocumentDetail,
+  DocumentKind,
+  DocumentSummary,
   Issue,
   ProjectDetail,
   ProjectSummary,
-  SavedChapter,
   ScenePlan,
 } from './types';
 
@@ -31,60 +31,69 @@ export const register = (email: string, password: string) =>
 // ── projects ─────────────────────────────────────────────────────────────────
 export const listProjects = () => request<ProjectSummary[]>('/projects');
 
-export const createProject = (name: string, bible_content = '', outline_content = '') =>
+/** Creating a project also seeds its Story Bible document, server-side. */
+export const createProject = (name: string) =>
   request<{ project_id: string; name: string }>('/projects', {
     method: 'POST',
-    body: { name, bible_content, outline_content },
+    body: { name },
   });
 
 export const getProject = (projectId: string) =>
   request<ProjectDetail>(`/projects/${projectId}`);
 
-// ── bible / outline (typed JSON, per project) ────────────────────────────────
-export const getBible = (projectId: string) =>
-  request<BibleData>(`/projects/${projectId}/bible`);
+// ── documents ────────────────────────────────────────────────────────────────
+export const listDocuments = (projectId: string) =>
+  request<DocumentSummary[]>(`/projects/${projectId}/documents`);
 
-export const saveBible = (projectId: string, data: BibleData) =>
-  request<{ status: string }>(`/projects/${projectId}/bible`, { method: 'PUT', body: data });
+export const getDocument = (projectId: string, documentId: string) =>
+  request<DocumentDetail>(`/projects/${projectId}/documents/${documentId}`);
 
-export const getOutline = (projectId: string) =>
-  request<OutlineData>(`/projects/${projectId}/outline`);
-
-export const saveOutline = (projectId: string, data: OutlineData) =>
-  request<{ status: string }>(`/projects/${projectId}/outline`, { method: 'PUT', body: data });
-
-// ── chapter / workflow (per project) ─────────────────────────────────────────
-export const getChapter = (projectId: string, n: number) =>
-  request<SavedChapter>(`/projects/${projectId}/chapters/${n}`);
-
-/** Returns null when there is no in-progress workflow for the chapter. */
-export const getDraftState = (projectId: string, n: number) =>
-  request<DraftState | null>(`/projects/${projectId}/chapters/${n}/state`);
-
-export const generatePlan = (projectId: string, n: number) =>
-  request<{ scene_plan: ScenePlan }>(`/projects/${projectId}/chapters/${n}/plan`, {
-    method: 'POST',
-  });
-
-export const checkDraft = (projectId: string, n: number, draft: string) =>
-  request<{ issues: Issue[] }>(`/projects/${projectId}/chapters/${n}/check`, {
-    method: 'POST',
-    body: { draft },
-  });
-
-export const acceptChapter = (
+export const createDocument = (
   projectId: string,
-  n: number,
-  payload: { scene_plan: ScenePlan; draft: string; issues: Issue[] },
-  overwrite: boolean,
+  title?: string,
+  kind: DocumentKind = 'chapter',
 ) =>
-  request<{ status: string }>(
-    `/projects/${projectId}/chapters/${n}/accept?overwrite=${overwrite}`,
-    { method: 'PUT', body: payload },
-  );
+  request<DocumentDetail>(`/projects/${projectId}/documents`, {
+    method: 'POST',
+    body: { title, kind },
+  });
+
+export type DocumentPatch = Partial<
+  Pick<DocumentDetail, 'title' | 'body' | 'brief' | 'plan' | 'issues' | 'kind'>
+>;
+
+export const updateDocument = (
+  projectId: string,
+  documentId: string,
+  patch: DocumentPatch,
+) =>
+  request<DocumentDetail>(`/projects/${projectId}/documents/${documentId}`, {
+    method: 'PATCH',
+    body: patch,
+  });
+
+export const deleteDocument = (projectId: string, documentId: string) =>
+  request<null>(`/projects/${projectId}/documents/${documentId}`, { method: 'DELETE' });
+
+export const reorderDocuments = (projectId: string, documentIds: string[]) =>
+  request<null>(`/projects/${projectId}/documents/order`, {
+    method: 'PUT',
+    body: { document_ids: documentIds },
+  });
+
+// ── generation (per document) ────────────────────────────────────────────────
+export const generatePlan = (projectId: string, documentId: string) =>
+  request<{ plan: ScenePlan }>(`/projects/${projectId}/documents/${documentId}/plan`, {
+    method: 'POST',
+  });
+
+export const checkDocument = (projectId: string, documentId: string) =>
+  request<{ issues: Issue[] }>(`/projects/${projectId}/documents/${documentId}/check`, {
+    method: 'POST',
+  });
 
 /** SSE stream URLs (driven by useDraftStream / stream.ts). */
-export const draftStreamUrl = (projectId: string, n: number) =>
-  `/projects/${projectId}/chapters/${n}/draft/stream`;
-export const reviseStreamUrl = (projectId: string, n: number) =>
-  `/projects/${projectId}/chapters/${n}/revise/stream`;
+export const draftStreamUrl = (projectId: string, documentId: string) =>
+  `/projects/${projectId}/documents/${documentId}/draft/stream`;
+export const reviseStreamUrl = (projectId: string, documentId: string) =>
+  `/projects/${projectId}/documents/${documentId}/revise/stream`;
