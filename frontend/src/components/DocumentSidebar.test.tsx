@@ -43,10 +43,39 @@ describe('DocumentSidebar', () => {
     expect(props.onSelect).toHaveBeenCalledWith('n1');
   });
 
-  it('creates a document from the new button', async () => {
+  it('creates a chapter from the main half of the split button', async () => {
     const props = setup();
-    await userEvent.click(screen.getByRole('button', { name: /new document/i }));
-    expect(props.onCreate).toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'New chapter' }));
+    expect(props.onCreate).toHaveBeenCalledWith('chapter');
+  });
+
+  it('creates a note from the kind menu', async () => {
+    const props = setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Choose document type' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: /new note/i }));
+    expect(props.onCreate).toHaveBeenCalledWith('note');
+  });
+
+  it('keeps the kind menu closed until the caret is pressed', async () => {
+    setup();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Choose document type' }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+  });
+
+  it('closes the kind menu on Escape without creating anything', async () => {
+    const props = setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Choose document type' }));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(props.onCreate).not.toHaveBeenCalled();
+  });
+
+  it('closes the kind menu on an outside press', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Choose document type' }));
+    await userEvent.click(screen.getByText('Chapter 1'));
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
   it('renames on double-click and Enter', async () => {

@@ -196,9 +196,9 @@ export function WorkspaceScreen() {
             })
           }
           onSelect={(id) => navigate(`/p/${projectId}/d/${id}`)}
-          onCreate={() =>
+          onCreate={(kind) =>
             createDoc.mutate(
-              { title: 'Untitled', kind: 'chapter' },
+              { title: kind === 'note' ? 'Untitled note' : 'Untitled', kind },
               { onSuccess: (d) => navigate(`/p/${projectId}/d/${d.id}`) },
             )
           }

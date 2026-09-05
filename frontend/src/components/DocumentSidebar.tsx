@@ -1,8 +1,13 @@
-import { useState } from 'react';
-import type { DocumentSummary } from '../api/types';
+import { useEffect, useRef, useState } from 'react';
+import type { DocumentKind, DocumentSummary } from '../api/types';
 import { cn } from '../lib/utils';
 
 const KIND_ICON: Record<string, string> = { bible: '⊙', chapter: '•', note: '▫' };
+// Creatable kinds, in menu order. The bible is seeded with the project, never here.
+const NEW_KINDS: { kind: DocumentKind; label: string }[] = [
+  { kind: 'chapter', label: 'chapter' },
+  { kind: 'note', label: 'note' },
+];
 
 interface DocumentSidebarProps {
   documents: DocumentSummary[];
@@ -10,7 +15,7 @@ interface DocumentSidebarProps {
   collapsed: boolean;
   onToggleCollapsed: () => void;
   onSelect: (id: string) => void;
-  onCreate: () => void;
+  onCreate: (kind: DocumentKind) => void;
   onRename: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   onReorder: (ids: string[]) => void;
@@ -29,6 +34,31 @@ export function DocumentSidebar({
 }: DocumentSidebarProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Dismiss the kind menu on an outside press or Escape. Listeners are bound
+  // only while it is open, so a closed menu costs nothing.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen]);
+
+  const create = (kind: DocumentKind) => {
+    setMenuOpen(false);
+    onCreate(kind);
+  };
 
   const commitRename = (id: string, value: string) => {
     const trimmed = value.trim();
@@ -131,15 +161,52 @@ export function DocumentSidebar({
         {rest.map((d) => row(d, true))}
       </ul>
 
-      <button
-        type="button"
-        onClick={onCreate}
-        title="New document"
-        aria-label="New document"
-        className="mt-1 rounded-md border border-dashed border-gray-300 py-1.5 text-[13px] text-gray-400 hover:bg-gray-100"
-      >
-        {collapsed ? '+' : '+ New document'}
-      </button>
+      {/* Split button: the common case (a chapter) stays one click, while the
+          caret reaches the other kinds. Without it, notes are uncreatable. */}
+      <div ref={menuRef} className="relative mt-1">
+        {menuOpen && (
+          <div
+            role="menu"
+            className="absolute bottom-full left-0 z-10 mb-1 min-w-36 overflow-hidden rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+          >
+            {NEW_KINDS.map(({ kind, label }) => (
+              <button
+                key={kind}
+                type="button"
+                role="menuitem"
+                onClick={() => create(kind)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-gray-700 hover:bg-gray-100"
+              >
+                <span className="w-3 text-center text-xs text-gray-400">{KIND_ICON[kind]}</span>
+                New {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex rounded-md border border-dashed border-gray-300 text-[13px] text-gray-400">
+          <button
+            type="button"
+            onClick={() => create('chapter')}
+            title="New chapter"
+            aria-label="New chapter"
+            className="min-w-0 flex-1 rounded-l-md py-1.5 hover:bg-gray-100"
+          >
+            {collapsed ? '+' : '+ New chapter'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            title="Choose document type"
+            aria-label="Choose document type"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            className="flex-shrink-0 rounded-r-md border-l border-dashed border-gray-300 px-1.5 hover:bg-gray-100"
+          >
+            ▾
+          </button>
+        </div>
+      </div>
     </nav>
   );
 }
