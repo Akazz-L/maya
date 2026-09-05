@@ -51,4 +51,43 @@ describe('streamPost', () => {
       streamPost('/x', {}, { onDelta: () => {}, onDone: () => {} }),
     ).rejects.toThrow('bad request');
   });
+
+  it('resolves silently when the request is aborted before it starts', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' }),
+    );
+    await expect(
+      streamPost('/x', {}, { onDelta: () => {}, onDone: () => {} }, controller.signal),
+    ).resolves.toBeUndefined();
+  });
+
+  it('stops reading and resolves when aborted mid-stream', async () => {
+    const controller = new AbortController();
+    const encoder = new TextEncoder();
+    // A body that delivers one delta, then stays open forever.
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(encoder.encode('data: {"type":"delta","text":"one"}\n\n'));
+      },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, { status: 200 }));
+
+    const deltas: string[] = [];
+    const run = streamPost(
+      '/x',
+      {},
+      {
+        onDelta: (t) => {
+          deltas.push(t);
+          controller.abort();
+        },
+        onDone: () => {},
+      },
+      controller.signal,
+    );
+    await expect(run).resolves.toBeUndefined();
+    expect(deltas).toEqual(['one']);
+  });
 });
