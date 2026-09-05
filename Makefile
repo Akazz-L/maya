@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install dev backend frontend test migrate
+.PHONY: help install dev backend frontend test migrate seed
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -29,3 +29,6 @@ test: ## Run the test suite
 
 migrate: ## Run database migrations (alembic upgrade head)
 	uv run alembic upgrade head
+
+seed: migrate ## Create the demo account and its sample novel (safe to re-run)
+	uv run python scripts/seed_demo.py

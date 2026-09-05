@@ -15,9 +15,18 @@ def _get_engine():
     return _engine, _session_factory
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Session factory for code outside the request cycle, such as scripts.
+
+    Route handlers should depend on `get_db` instead; this exists so a script
+    does not have to reach into the private engine accessor.
+    """
     _, factory = _get_engine()
-    async with factory() as session:
+    return factory
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with get_session_factory()() as session:
         yield session
 
 
