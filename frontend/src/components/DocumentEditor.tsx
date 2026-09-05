@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DocumentDetail } from '../api/types';
+import { ProseEditor } from './ProseEditor';
 
 export const AUTOSAVE_MS = 800;
 
@@ -106,15 +107,15 @@ export function DocumentEditor({
         />
       )}
 
-      <textarea
+      <ProseEditor
         value={bodyOverride ?? body}
-        disabled={readOnly}
-        aria-label="Document body"
-        onChange={(e) => {
-          setBody(e.target.value);
-          queueSave({ body: e.target.value });
+        readOnly={readOnly}
+        ariaLabel="Document body"
+        placeholder={document.kind === 'chapter' ? 'Write, or generate a draft…' : undefined}
+        onChange={(text) => {
+          setBody(text);
+          queueSave({ body: text });
         }}
-        className="flex-1 resize-none bg-white px-6 py-6 font-serif text-[15px] leading-[1.8] text-gray-800 outline-none disabled:bg-gray-50"
       />
     </main>
   );

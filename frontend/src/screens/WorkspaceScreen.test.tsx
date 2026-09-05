@@ -82,7 +82,7 @@ describe('WorkspaceScreen', () => {
   it('opens the document named in the route', async () => {
     mockApi();
     renderAt('/p/p1/d/c1');
-    expect(await screen.findByDisplayValue('The rain.')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Document body')).toHaveTextContent('The rain.');
     expect(screen.getByDisplayValue('Mara waits.')).toBeInTheDocument();
   });
 
@@ -95,14 +95,14 @@ describe('WorkspaceScreen', () => {
   it('hides the generate toolbar on the bible', async () => {
     mockApi();
     renderAt('/p/p1/d/b');
-    expect(await screen.findByDisplayValue('## Characters')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Document body')).toHaveTextContent('## Characters');
     expect(screen.queryByRole('button', { name: /generate plan/i })).not.toBeInTheDocument();
   });
 
   it('keeps the plan panel closed until a plan exists', async () => {
     mockApi();
     renderAt('/p/p1/d/c1');
-    await screen.findByDisplayValue('The rain.');
+    expect(await screen.findByLabelText('Document body')).toHaveTextContent('The rain.');
     expect(screen.queryByRole('button', { name: /drop/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /show plan/i })).toBeDisabled();
   });
