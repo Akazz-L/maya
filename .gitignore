@@ -1,6 +1,9 @@
 __pycache__/
 *.pyc
-.env
+# Every .env variant carries secrets, including Finder/editor duplicates such as
+# ".env copy.example". Only the committed template is exempt.
+.env*
+!.env.example
 chapters/
 summaries/
 .pytest_cache/
