@@ -73,6 +73,13 @@ describe('stripContextEcho', () => {
   it('never strips the whole reply', () => {
     expect(stripContextEcho(after.trim(), '', after)).toBe(after.trim());
   });
+
+  it('keeps a reply a strip would reduce to whitespace', () => {
+    // The length guard leaves a character behind, but that character can be a
+    // space; an all-whitespace result would surface as "empty rewrite".
+    const reply = ` ${after.trimStart().slice(0, 30)}`;
+    expect(stripContextEcho(reply, before, after)).toBe(reply);
+  });
 });
 
 describe('wordDiff', () => {

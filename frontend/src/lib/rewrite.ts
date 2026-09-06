@@ -41,7 +41,8 @@ export function matchEdgeWhitespace(original: string, replacement: string): stri
  * selection. The prompt forbids it, but a model that starts a line early or
  * runs a sentence long would otherwise duplicate prose on accept. Only
  * overlaps of at least `minChars` count, so a shared word or two survives.
- * The reply is never emptied: an overlap that would consume it all is kept.
+ * The reply is never emptied: an overlap that would consume it all, or leave
+ * nothing but whitespace, is kept.
  */
 export function stripContextEcho(
   replacement: string,
@@ -54,7 +55,8 @@ export function stripContextEcho(
   const lead = before.trimEnd();
   for (let len = Math.min(lead.length, out.length - 1); len >= minChars; len--) {
     if (out.startsWith(lead.slice(lead.length - len))) {
-      out = out.slice(len).trimStart();
+      const stripped = out.slice(len).trimStart();
+      if (stripped) out = stripped;
       break;
     }
   }
@@ -62,7 +64,8 @@ export function stripContextEcho(
   const trail = after.trimStart();
   for (let len = Math.min(trail.length, out.length - 1); len >= minChars; len--) {
     if (out.endsWith(trail.slice(0, len))) {
-      out = out.slice(0, out.length - len).trimEnd();
+      const stripped = out.slice(0, out.length - len).trimEnd();
+      if (stripped) out = stripped;
       break;
     }
   }
