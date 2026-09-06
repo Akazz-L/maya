@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contextWindows, matchEdgeWhitespace, spliceText, wordDiff } from './rewrite';
+import { contextWindows, matchEdgeWhitespace, spliceText, stripContextEcho, wordDiff } from './rewrite';
 
 describe('spliceText', () => {
   it('replaces only the range and keeps everything else byte-for-byte', () => {
@@ -39,6 +39,39 @@ describe('matchEdgeWhitespace', () => {
 
   it('does not double whitespace when the original is only whitespace', () => {
     expect(matchEdgeWhitespace('  ', 'New.')).toBe('  New.');
+  });
+});
+
+describe('stripContextEcho', () => {
+  const before = 'The hall was empty, and had been empty for hours. ';
+  const after = ' A clock ticked somewhere in the dark house.';
+
+  it('removes a trailing echo of the after-context', () => {
+    const reply = 'She froze by the door. A clock ticked somewhere in the dark house.';
+    expect(stripContextEcho(reply, before, after)).toBe('She froze by the door.');
+  });
+
+  it('removes a leading echo of the before-context', () => {
+    const reply = 'The hall was empty, and had been empty for hours. She froze by the door.';
+    expect(stripContextEcho(reply, before, after)).toBe('She froze by the door.');
+  });
+
+  it('removes a partial echo, as long as it is longer than the threshold', () => {
+    const reply = 'She froze by the door. A clock ticked somewhere in';
+    expect(stripContextEcho(reply, before, after)).toBe('She froze by the door.');
+  });
+
+  it('ignores short overlaps that are just shared words', () => {
+    const reply = 'She froze by the door. A clock';
+    expect(stripContextEcho(reply, before, after)).toBe('She froze by the door. A clock');
+  });
+
+  it('leaves a reply with no echo alone', () => {
+    expect(stripContextEcho('She froze.', before, after)).toBe('She froze.');
+  });
+
+  it('never strips the whole reply', () => {
+    expect(stripContextEcho(after.trim(), '', after)).toBe(after.trim());
   });
 });
 

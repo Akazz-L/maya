@@ -22,6 +22,8 @@ def _build_rewrite_messages(state: dict) -> tuple[str, str]:
         f"STORY BIBLE:\n{bible}\n\n"
         "Rewrite ONLY the passage marked PASSAGE TO REWRITE, following the instruction.\n"
         "The context before and after is shown for continuity only: do not rewrite or repeat it.\n"
+        "Your reply must begin where the passage begins and end where the passage ends. "
+        "Do not repeat any of the context before or continue into the context after.\n"
         "Write only the replacement prose. No commentary, no meta-text, no titles."
     )
     user_content = (

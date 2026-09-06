@@ -38,6 +38,12 @@ def test_user_content_carries_instruction_selection_and_context(sample_bible):
     assert "CONTEXT AFTER (do not rewrite):\n A clock ticked somewhere." in user
 
 
+def test_prompt_pins_the_reply_to_the_passage_boundaries(sample_bible):
+    system, user = _build_rewrite_messages(_state(sample_bible))
+    assert "begin where the passage begins and end where the passage ends" in system
+    assert "Do not repeat any of the context before or continue into the context after" in system
+
+
 @pytest.mark.asyncio
 async def test_token_stream_yields_text_deltas(sample_bible):
     async def fake_text_stream():

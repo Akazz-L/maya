@@ -36,6 +36,40 @@ export function matchEdgeWhitespace(original: string, replacement: string): stri
   return lead + replacement.trim() + trail;
 }
 
+/**
+ * Drop any part of the reply that merely repeats the context around the
+ * selection. The prompt forbids it, but a model that starts a line early or
+ * runs a sentence long would otherwise duplicate prose on accept. Only
+ * overlaps of at least `minChars` count, so a shared word or two survives.
+ * The reply is never emptied: an overlap that would consume it all is kept.
+ */
+export function stripContextEcho(
+  replacement: string,
+  before: string,
+  after: string,
+  minChars = 24,
+): string {
+  let out = replacement;
+
+  const lead = before.trimEnd();
+  for (let len = Math.min(lead.length, out.length - 1); len >= minChars; len--) {
+    if (out.startsWith(lead.slice(lead.length - len))) {
+      out = out.slice(len).trimStart();
+      break;
+    }
+  }
+
+  const trail = after.trimStart();
+  for (let len = Math.min(trail.length, out.length - 1); len >= minChars; len--) {
+    if (out.endsWith(trail.slice(0, len))) {
+      out = out.slice(0, out.length - len).trimEnd();
+      break;
+    }
+  }
+
+  return out;
+}
+
 export interface DiffPart {
   value: string;
   added: boolean;

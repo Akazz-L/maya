@@ -125,6 +125,24 @@ describe('useSelectionRewrite', () => {
     expect(result.current.state).toEqual(initialRewriteState);
   });
 
+  it('strips echoed context from the reply before reviewing', async () => {
+    vi.spyOn(streamApi, 'streamPost').mockImplementation(async (_url, _body, cb) => {
+      cb.onDone('New text. A clock ticked somewhere in the dark house.');
+    });
+    const { result } = renderHook(() => useSelectionRewrite({ projectId: 'p', documentId: 'd' }));
+
+    act(() => result.current.open(RANGE, 'Old text'));
+    await act(() =>
+      result.current.submit('tighten', {
+        selection: 'Old text',
+        before: '',
+        after: ' A clock ticked somewhere in the dark house.',
+      }),
+    );
+
+    expect(result.current.state.replacement).toBe('New text.');
+  });
+
   it('aborts on unmount', () => {
     let seenSignal: AbortSignal | undefined;
     vi.spyOn(streamApi, 'streamPost').mockImplementation(

@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { rewriteStreamUrl } from '../api/endpoints';
 import { streamPost } from '../api/stream';
-import { matchEdgeWhitespace, type TextRange } from '../lib/rewrite';
+import { matchEdgeWhitespace, stripContextEcho, type TextRange } from '../lib/rewrite';
 
 export type RewritePhase = 'idle' | 'prompting' | 'streaming' | 'reviewing';
 
@@ -105,7 +105,11 @@ export function useSelectionRewrite({
           { instruction, ...context },
           {
             onDelta: (text) => dispatch({ type: 'delta', text }),
-            onDone: (text) => dispatch({ type: 'done', text }),
+            onDone: (text) =>
+              dispatch({
+                type: 'done',
+                text: stripContextEcho(text, context.before, context.after),
+              }),
           },
           controller.signal,
         );
