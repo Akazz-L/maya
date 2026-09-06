@@ -39,8 +39,8 @@ function renderChapter(over: Partial<Parameters<typeof DocumentEditor>[0]> = {})
     onBusyChange: vi.fn(),
     ...over,
   };
-  render(<DocumentEditor {...props} />);
-  return props;
+  const { unmount } = render(<DocumentEditor {...props} />);
+  return { ...props, unmount };
 }
 
 async function openPrompt() {
@@ -82,17 +82,14 @@ describe('selection rewrite flow', () => {
     const input = await openPrompt();
     await userEvent.type(input, 'more tense{Enter}');
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      '/projects/p1/documents/c1/rewrite/stream',
-      expect.objectContaining({
-        body: JSON.stringify({
-          instruction: 'more tense',
-          selection: 'She waited by the door.',
-          before: 'The hall was empty. ',
-          after: ' A clock ticked.',
-        }),
-      }),
-    );
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe('/projects/p1/documents/c1/rewrite/stream');
+    expect(JSON.parse(init!.body as string)).toEqual({
+      instruction: 'more tense',
+      selection: 'She waited by the door.',
+      before: 'The hall was empty. ',
+      after: ' A clock ticked.',
+    });
     expect(props.onBusyChange).toHaveBeenLastCalledWith(true);
 
     const accept = await screen.findByRole('button', { name: /accept/i });
@@ -160,6 +157,46 @@ describe('selection rewrite flow', () => {
     await openPrompt();
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByLabelText('Rewrite instruction')).toBeNull();
+  });
+
+  it('reports not-busy when the editor unmounts mid-rewrite', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(sse([{ type: 'done', body: 'She froze.' }]));
+    const props = renderChapter();
+
+    const input = await openPrompt();
+    await userEvent.type(input, 'tighten{Enter}');
+    await screen.findByRole('button', { name: /accept/i });
+    expect(props.onBusyChange).toHaveBeenLastCalledWith(true);
+
+    // Switching documents unmounts the editor; the workspace must not stay busy.
+    act(() => props.unmount());
+    expect(props.onBusyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('anchors the review bar below the last line of a span that wraps', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(sse([{ type: 'done', body: 'She froze.' }]));
+    renderChapter();
+
+    const input = await openPrompt();
+    await userEvent.type(input, 'tighten{Enter}');
+    const bar = await screen.findByRole('toolbar', { name: /review rewrite/i });
+
+    const view = viewFor('Document body');
+    const widget = view.contentDOM.querySelector('.cm-rewrite-widget')!;
+    // Two rects: the reviewed span wraps onto a second line.
+    const rects = [
+      { top: 100, bottom: 120, left: 40 },
+      { top: 130, bottom: 150, left: 24 },
+    ];
+
+    act(() => {
+      widget.getClientRects = () => rects as unknown as DOMRectList;
+      view.dom.getBoundingClientRect = () => ({ top: 0, left: 0, width: 1000 }) as DOMRect;
+      view.scrollDOM.dispatchEvent(new Event('scroll'));
+    });
+
+    // Below the LAST rect, not the first, so the bar never covers the diff.
+    expect(bar.parentElement).toHaveStyle({ top: '156px', left: '40px' });
   });
 
   it('does not offer the pill while the editor is read-only', () => {

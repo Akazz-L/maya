@@ -31,17 +31,34 @@ const FALLBACK: Anchor = { top: 16, bottom: 40, left: 24 };
 const PILL_HEIGHT = 30;
 const GAP = 6;
 
-/** Where a document range sits, relative to the editor box. Null before layout. */
-function anchorFor(view: EditorView, range: TextRange): Anchor | null {
+/**
+ * Where a document range sits, relative to the editor box. Null before layout.
+ *
+ * While the overlay replaces the span with a widget, `coordsAtPos` answers with
+ * the widget's first client rect, so a span that wraps would put the card on top
+ * of its own second line. Measure the rendered widget instead: first rect for the
+ * top edge, last rect for the bottom, so the card clears the whole span.
+ */
+function anchorFor(view: EditorView, range: TextRange, widget: boolean): Anchor | null {
+  const box = view.dom.getBoundingClientRect();
+  const relative = (top: number, bottom: number, left: number): Anchor => ({
+    top: top - box.top,
+    bottom: bottom - box.top,
+    left: Math.max(16, Math.min(left - box.left, box.width - 440)),
+  });
+
+  if (widget) {
+    const rects = view.contentDOM.querySelector('.cm-rewrite-widget')?.getClientRects();
+    if (rects?.length) {
+      const first = rects[0];
+      return relative(first.top, rects[rects.length - 1].bottom, first.left);
+    }
+  }
+
   const start = view.coordsAtPos(range.from);
   const end = view.coordsAtPos(range.to, -1);
   if (!start || !end) return null;
-  const box = view.dom.getBoundingClientRect();
-  return {
-    top: start.top - box.top,
-    bottom: end.bottom - box.top,
-    left: Math.max(16, Math.min(start.left - box.left, box.width - 440)),
-  };
+  return relative(start.top, end.bottom, start.left);
 }
 
 export function RewriteLayer({
@@ -86,8 +103,7 @@ export function RewriteLayer({
 
   const submit = (text: string) => {
     if (!range) return;
-    const { before, selection: selected, after } = contextWindows(view.state.doc.toString(), range);
-    void rewrite.submit(text, { selection: selected, before, after });
+    void rewrite.submit(text, contextWindows(view.state.doc.toString(), range));
   };
 
   // The extension and the window listener fire outside React's render, so
@@ -110,8 +126,11 @@ export function RewriteLayer({
     };
   });
 
+  // The cleanup matters on unmount: switching documents mid-stream would
+  // otherwise leave the workspace believing a rewrite is still running.
   useEffect(() => {
     onBusyChange(busy);
+    return () => onBusyChange(false);
   }, [busy, onBusyChange]);
 
   // Mirror the state machine into the editor's overlay field, then place the
@@ -119,6 +138,9 @@ export function RewriteLayer({
   // the DOM directly instead of going through state, so a streamed token
   // costs one render, not two.
   const anchorRange = phase === 'idle' ? selection : range;
+  // The overlay draws a replacing widget in exactly these phases; the others
+  // only mark the untouched text, where the document positions are accurate.
+  const widgetShown = phase === 'streaming' || (phase === 'reviewing' && error === null);
   useLayoutEffect(() => {
     view.dispatch({
       effects: setRewriteOverlay.of(
@@ -130,7 +152,7 @@ export function RewriteLayer({
     const place = () => {
       const el = card.current;
       if (!el || !anchorRange) return;
-      const at = anchorFor(view, anchorRange) ?? FALLBACK;
+      const at = anchorFor(view, anchorRange, widgetShown) ?? FALLBACK;
       const top = phase === 'idle' ? Math.max(4, at.top - PILL_HEIGHT - GAP) : at.bottom + GAP;
       el.style.top = `${top}px`;
       el.style.left = `${at.left}px`;
@@ -138,7 +160,7 @@ export function RewriteLayer({
     place();
     view.scrollDOM.addEventListener('scroll', place);
     return () => view.scrollDOM.removeEventListener('scroll', place);
-  }, [view, phase, range, original, replacement, showDiff, error, anchorRange]);
+  }, [view, phase, range, original, replacement, showDiff, error, anchorRange, widgetShown]);
 
   // Review keys work wherever focus landed after the prompt closed.
   useEffect(() => {
