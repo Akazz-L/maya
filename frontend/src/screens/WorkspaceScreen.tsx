@@ -49,6 +49,7 @@ export function WorkspaceScreen() {
   const [docVersion, setDocVersion] = useState(0);
   const [streamBody, setStreamBody] = useState<string | undefined>(undefined);
   const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [rewriteBusy, setRewriteBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Holds the in-flight autosave so a stream can wait for it to land before the
@@ -168,7 +169,12 @@ export function WorkspaceScreen() {
   const hasPanelContent = Boolean(doc?.plan || doc?.issues?.length);
   const overrideApplies = panelOverride !== null && panelOverride.id === documentId;
   const panelOpen = hasPanelContent && (!overrideApplies || panelOverride.open);
-  const busy = planMut.isPending || checkMut.isPending || stream.isStreaming || deleteDoc.isPending;
+  const busy =
+    planMut.isPending ||
+    checkMut.isPending ||
+    stream.isStreaming ||
+    deleteDoc.isPending ||
+    rewriteBusy;
 
   return (
     <div className="flex h-screen flex-col bg-[#f5f5f0]">
@@ -237,10 +243,12 @@ export function WorkspaceScreen() {
             <DocumentEditor
               key={`${doc.id}:${docVersion}`}
               document={doc}
+              projectId={projectId}
               readOnly={stream.isStreaming}
               onSave={save}
               saveState={saveState}
               bodyOverride={streamBody}
+              onBusyChange={setRewriteBusy}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400">

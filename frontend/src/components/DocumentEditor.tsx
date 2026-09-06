@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { EditorView } from '@codemirror/view';
 import type { DocumentDetail } from '../api/types';
+import { rewriteExtension, type RewriteHost } from '../editor/rewriteExtension';
 import { ProseEditor } from './ProseEditor';
+import { RewriteLayer } from './RewriteLayer';
 
 export const AUTOSAVE_MS = 800;
 
@@ -14,11 +17,14 @@ export interface EditorPatch {
 
 interface DocumentEditorProps {
   document: DocumentDetail;
+  projectId: string;
   readOnly: boolean;
   onSave: (patch: EditorPatch) => void;
   saveState: SaveState;
   /** Live text during a stream. Bypasses local state so the server stays authoritative. */
   bodyOverride?: string;
+  /** True while a selection rewrite is streaming or under review. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 function SaveIndicator({ state }: { state: SaveState }) {
@@ -36,14 +42,41 @@ function SaveIndicator({ state }: { state: SaveState }) {
  */
 export function DocumentEditor({
   document,
+  projectId,
   readOnly,
   onSave,
   saveState,
   bodyOverride,
+  onBusyChange,
 }: DocumentEditorProps) {
   const [title, setTitle] = useState(document.title);
   const [brief, setBrief] = useState(document.brief);
   const [body, setBody] = useState(document.body);
+
+  const isChapter = document.kind === 'chapter';
+  const [view, setView] = useState<EditorView | null>(null);
+  const [rewriteBusy, setRewriteBusy] = useState(false);
+  // A plain box rather than useRef: the rewrite extension keeps hold of it for
+  // the view's whole life, and RewriteLayer fills in its callbacks each render.
+  const [rewriteHost] = useState<{ current: RewriteHost }>(() => ({
+    current: {
+      onSelectionChange: () => {},
+      onRequestOpen: () => false,
+      onEscape: () => false,
+    },
+  }));
+  const extensions = useMemo(
+    () => (isChapter ? [rewriteExtension(rewriteHost)] : []),
+    [isChapter, rewriteHost],
+  );
+  const onBusyChangeRef = useRef(onBusyChange);
+  useEffect(() => {
+    onBusyChangeRef.current = onBusyChange;
+  });
+  const handleBusy = useCallback((busy: boolean) => {
+    setRewriteBusy(busy);
+    onBusyChangeRef.current?.(busy);
+  }, []);
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<EditorPatch | null>(null);
@@ -94,7 +127,7 @@ export function DocumentEditor({
         <SaveIndicator state={saveState} />
       </div>
 
-      {document.kind === 'chapter' && (
+      {isChapter && (
         <input
           value={brief}
           placeholder="What happens in this chapter…"
@@ -109,14 +142,27 @@ export function DocumentEditor({
 
       <ProseEditor
         value={bodyOverride ?? body}
-        readOnly={readOnly}
+        readOnly={readOnly || rewriteBusy}
         ariaLabel="Document body"
-        placeholder={document.kind === 'chapter' ? 'Write, or generate a draft…' : undefined}
+        placeholder={isChapter ? 'Write, or generate a draft…' : undefined}
+        extensions={extensions}
+        onViewReady={setView}
         onChange={(text) => {
           setBody(text);
           queueSave({ body: text });
         }}
-      />
+      >
+        {isChapter && view && (
+          <RewriteLayer
+            view={view}
+            hostRef={rewriteHost}
+            projectId={projectId}
+            documentId={document.id}
+            enabled={!readOnly}
+            onBusyChange={handleBusy}
+          />
+        )}
+      </ProseEditor>
     </main>
   );
 }
