@@ -11,6 +11,10 @@ Every project has one pinned Story Bible. Chapter documents carry a short brief
 actions, with the scene plan and any continuity issues in a resizable panel below
 the prose. Prior chapters are summarized automatically and fed back in as context.
 
+Inside a chapter, select any passage and press ⌘K (or click the Rewrite pill) to ask
+for a targeted rewrite; the suggestion streams in place and shows as a diff you can
+accept or discard.
+
 FastAPI + SQLAlchemy backend, React + Vite frontend.
 
 ## Prerequisites

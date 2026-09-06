@@ -147,3 +147,31 @@ Without it, the first generation on chapter 30 fires 29 model calls.
 With it, the planner and checker see the ten most recent chapters — a deliberate trade of long-range continuity for a bounded bill.
 
 **Empty documents are skipped entirely**, so an outlined-but-unwritten chapter in the middle of the book costs nothing and contributes nothing.
+
+## Selection rewrite
+
+`/rewrite/stream` is the one generation route that writes nothing.
+The client sends the selected span plus a window of prose on each side; the rewriter returns only the replacement; the client splices it in when the writer accepts, and the ordinary autosave persists it.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (RewriteLayer)
+    participant R as routes/generate.py
+    participant A as agents/rewriter.py
+    participant M as Anthropic
+
+    B->>R: POST /rewrite/stream {instruction, selection, before, after}
+    R->>R: _require_chapter · get_bible_body
+    R->>A: rewriter_token_stream(state)
+    A->>M: messages.stream(system=bible + rules, user=instruction + context + passage)
+    loop each token
+        M-->>A: text delta
+        A-->>R: yield text
+        R-->>B: data: {"type":"delta","text"}
+    end
+    R-->>B: data: {"type":"done","body": replacement}
+    Note over B: writer reviews the diff in place
+    B->>B: Accept → one editor transaction → autosave PATCH /documents/{id}
+```
+
+The model never sees the rest of the chapter and never emits it, so everything outside the selection is preserved by construction.
