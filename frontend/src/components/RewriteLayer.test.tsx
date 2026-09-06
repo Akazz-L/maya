@@ -171,6 +171,39 @@ describe('selection rewrite flow', () => {
     expect(screen.getByLabelText('Rewrite instruction')).toHaveValue('tighten');
   });
 
+  it('accepts a review with Mod-Enter, wherever focus landed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(sse([{ type: 'done', body: 'She froze.' }]));
+    renderChapter();
+
+    const input = await openPrompt();
+    await userEvent.type(input, 'tighten{Enter}');
+    await screen.findByRole('toolbar', { name: /review rewrite/i });
+
+    // Focus off the autofocused Accept button, so only the window-wide
+    // shortcut can do this — a plain Enter on the button would too.
+    act(() => (globalThis.document.activeElement as HTMLElement).blur());
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}');
+
+    expect(viewFor('Document body').state.doc.toString()).toBe(
+      'The hall was empty. She froze. A clock ticked.',
+    );
+    expect(screen.queryByRole('toolbar', { name: /review rewrite/i })).toBeNull();
+  });
+
+  it('discards a review with Escape', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(sse([{ type: 'done', body: 'She froze.' }]));
+    renderChapter();
+
+    const input = await openPrompt();
+    await userEvent.type(input, 'tighten{Enter}');
+    await screen.findByRole('toolbar', { name: /review rewrite/i });
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(viewFor('Document body').state.doc.toString()).toBe(BODY);
+    expect(screen.queryByRole('toolbar', { name: /review rewrite/i })).toBeNull();
+  });
+
   it('Escape in the prompt closes it', async () => {
     renderChapter();
     await openPrompt();
