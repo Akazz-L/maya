@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import pytest_asyncio
 
+from backend.agents.rewriter import RewriteTruncatedError
+
 
 def _parse_sse(text: str) -> list[dict]:
     return [
@@ -303,6 +305,33 @@ async def test_rewrite_stream_emits_an_error_frame(chapter):
         )
     error = next(f for f in _parse_sse(resp.text) if f["type"] == "error")
     assert "model exploded" in error["detail"]
+
+
+@pytest.mark.asyncio
+async def test_rewrite_stream_reports_a_truncated_reply_as_an_error(chapter):
+    """A rewrite cut off at max_tokens must reach the client as an error, not as
+    a half-finished replacement the writer could accept over their own prose."""
+    client, project_id, doc_id = chapter
+    body = "The hall was empty. She waited by the door. A clock ticked."
+    await client.patch(f"/projects/{project_id}/documents/{doc_id}", json={"body": body})
+
+    async def truncated(state):
+        yield "She froze and then"
+        raise RewriteTruncatedError("cut off")
+
+    with patch("backend.routes.generate.rewriter_token_stream", new=truncated):
+        resp = await client.post(
+            f"/projects/{project_id}/documents/{doc_id}/rewrite/stream",
+            json={"instruction": "tighten", "selection": "She waited by the door."},
+        )
+
+    frames = _parse_sse(resp.text)
+    assert [f["text"] for f in frames if f["type"] == "delta"] == ["She froze and then"]
+    assert "cut off" in next(f for f in frames if f["type"] == "error")["detail"]
+    assert not [f for f in frames if f["type"] == "done"]
+
+    doc = (await client.get(f"/projects/{project_id}/documents/{doc_id}")).json()
+    assert doc["body"] == body
 
 
 @pytest.mark.asyncio

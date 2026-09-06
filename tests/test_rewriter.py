@@ -1,9 +1,13 @@
 from contextlib import asynccontextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.agents.rewriter import _build_rewrite_messages, rewriter_token_stream
+from backend.agents.rewriter import (
+    RewriteTruncatedError,
+    _build_rewrite_messages,
+    rewriter_token_stream,
+)
 
 
 def _state(sample_bible, **over):
@@ -52,6 +56,7 @@ async def test_token_stream_yields_text_deltas(sample_bible):
 
     stream = MagicMock()
     stream.text_stream = fake_text_stream()
+    stream.get_final_message = AsyncMock(return_value=MagicMock(stop_reason="end_turn"))
 
     @asynccontextmanager
     async def fake_stream(**kwargs):
@@ -60,3 +65,24 @@ async def test_token_stream_yields_text_deltas(sample_bible):
     with patch("backend.agents.rewriter.client.messages.stream", new=fake_stream):
         out = [t async for t in rewriter_token_stream(_state(sample_bible))]
     assert out == ["She ", "froze."]
+
+
+@pytest.mark.asyncio
+async def test_token_stream_raises_when_the_reply_is_truncated(sample_bible):
+    """A max_tokens stop leaves a half-finished passage; accepting it would
+    silently truncate the writer's prose, so the stream fails loudly instead."""
+
+    async def fake_text_stream():
+        yield "She froze and then"
+
+    stream = MagicMock()
+    stream.text_stream = fake_text_stream()
+    stream.get_final_message = AsyncMock(return_value=MagicMock(stop_reason="max_tokens"))
+
+    @asynccontextmanager
+    async def fake_stream(**kwargs):
+        yield stream
+
+    with patch("backend.agents.rewriter.client.messages.stream", new=fake_stream):
+        with pytest.raises(RewriteTruncatedError, match="shorter passage"):
+            [t async for t in rewriter_token_stream(_state(sample_bible))]

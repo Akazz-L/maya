@@ -6,6 +6,10 @@ from backend.settings import get_model
 client = anthropic.AsyncAnthropic()
 
 
+class RewriteTruncatedError(RuntimeError):
+    """The model hit max_tokens before finishing the passage; the partial reply is unusable."""
+
+
 def _build_rewrite_messages(state: dict) -> tuple[str, str]:
     """Build (system_prompt, user_content) for a span rewrite.
 
@@ -49,3 +53,12 @@ async def rewriter_token_stream(state: dict) -> AsyncIterator[str]:
     ) as stream:
         async for text in stream.text_stream:
             yield text
+
+        # A reply cut off at max_tokens ends mid-passage. Splicing that over the
+        # writer's prose would quietly delete the tail of their selection, so
+        # fail instead and let the client keep the original.
+        final = await stream.get_final_message()
+        if final.stop_reason == "max_tokens":
+            raise RewriteTruncatedError(
+                "The rewrite was cut off before the passage ended. Select a shorter passage."
+            )
