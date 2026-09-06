@@ -204,6 +204,22 @@ describe('selection rewrite flow', () => {
     expect(screen.queryByRole('toolbar', { name: /review rewrite/i })).toBeNull();
   });
 
+  it('leaves the review alone when Escape is pressed in a text field', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(sse([{ type: 'done', body: 'She froze.' }]));
+    renderChapter();
+
+    const input = await openPrompt();
+    await userEvent.type(input, 'tighten{Enter}');
+    await screen.findByRole('toolbar', { name: /review rewrite/i });
+
+    // Escape is how you back out of a text field; it must not also throw away
+    // the rewrite the writer has not looked at yet.
+    await userEvent.click(screen.getByLabelText('Document title'));
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.getByRole('toolbar', { name: /review rewrite/i })).toBeInTheDocument();
+  });
+
   it('Escape in the prompt closes it', async () => {
     renderChapter();
     await openPrompt();

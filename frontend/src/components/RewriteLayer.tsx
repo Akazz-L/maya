@@ -181,6 +181,10 @@ export function RewriteLayer({
   useEffect(() => {
     if (!busy) return;
     const onKey = (e: KeyboardEvent) => {
+      // Escape backs out of a text field; the title and brief inputs get to
+      // keep it rather than losing the writer's unreviewed rewrite.
+      const target = e.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         latest.current.discard();
