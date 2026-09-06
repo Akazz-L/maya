@@ -28,15 +28,6 @@ async def test_drafter_returns_draft(base_state, sample_scene_plan):
 
 
 @pytest.mark.asyncio
-async def test_drafter_uses_high_temperature(base_state, sample_scene_plan):
-    base_state["scene_plan"] = sample_scene_plan
-    mock_response = _mock_text_response(DRAFT_TEXT)
-    with patch("backend.agents.drafter.client.messages.create", new_callable=AsyncMock, return_value=mock_response) as mock_create:
-        await drafter_node(base_state, MODEL_KEY)
-    assert mock_create.call_args.kwargs["temperature"] == 0.9
-
-
-@pytest.mark.asyncio
 async def test_drafter_system_prompt_carries_the_bible_style_rules(base_state, sample_scene_plan):
     base_state["scene_plan"] = sample_scene_plan
     mock_response = _mock_text_response(DRAFT_TEXT)

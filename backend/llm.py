@@ -29,8 +29,8 @@ class ModelSpec:
     hint: str
     input_usd_per_mtok: Decimal
     output_usd_per_mtok: Decimal
-    #: True for the Claude 5 generation, which runs adaptive thinking, supports
-    #: `output_config.effort`, and rejects `temperature` with a 400.
+    #: True for the Claude 5 generation, which runs adaptive thinking and
+    #: supports `output_config.effort`.
     thinks: bool
 
 
@@ -122,14 +122,13 @@ def request_params(model_key: str, *, structured: bool, max_tokens: int) -> dict
     params: dict = {"model": spec.id, "max_tokens": max_tokens}
 
     if not spec.thinks:
-        # Haiku 4.5 takes sampling parameters and has no effort control.
-        if not structured:
-            params["temperature"] = 0.9
+        # Haiku 4.5 does not think and has no effort control, so the defaults
+        # are the whole request.
         return params
 
-    # Sonnet 5 and Opus 5 reject `temperature` outright and think adaptively by
-    # default. Effort keeps that thinking shallow: neither a scene plan nor a
-    # paragraph of fiction is a reasoning problem, and effort is what we pay for.
+    # Sonnet 5 and Opus 5 think adaptively by default. Effort keeps that
+    # thinking shallow: neither a scene plan nor a paragraph of fiction is a
+    # reasoning problem, and effort is what we pay for.
     params["output_config"] = {"effort": "low"}
     if structured:
         # A forced tool call needs no deliberation, and thinking tokens would eat

@@ -61,23 +61,20 @@ def test_a_typical_call_rounds_to_the_microdollar():
     assert cost_usd("opus", Usage(input_tokens=1234, output_tokens=567)) == Decimal("0.020345")
 
 
-def test_haiku_takes_temperature_on_prose_and_no_effort():
-    params = request_params("haiku", structured=False, max_tokens=4096)
-    assert params["temperature"] == 0.9
-    assert params["max_tokens"] == 4096
-    assert "output_config" not in params
+def test_haiku_sends_nothing_beyond_the_model_and_ceiling():
+    """No thinking and no effort control, so the defaults are the whole request."""
+    for structured in (True, False):
+        params = request_params("haiku", structured=structured, max_tokens=4096)
+        assert params == {"model": "claude-haiku-4-5", "max_tokens": 4096}
 
 
-def test_haiku_drops_temperature_on_a_forced_tool_call():
-    assert "temperature" not in request_params("haiku", structured=True, max_tokens=512)
-
-
-@pytest.mark.parametrize("model_key", ["sonnet", "opus"])
-def test_thinking_models_never_send_temperature(model_key):
-    """Sonnet 5 and Opus 5 removed sampling parameters; sending one is a 400."""
+@pytest.mark.parametrize("model_key", ["haiku", "sonnet", "opus"])
+def test_no_model_is_sent_a_sampling_parameter(model_key):
+    """Sonnet 5 and Opus 5 removed sampling parameters — sending one is a 400 —
+    and Haiku is left on the defaults rather than diverging from them."""
     for structured in (True, False):
         params = request_params(model_key, structured=structured, max_tokens=4096)
-        assert "temperature" not in params
+        assert not {"temperature", "top_p", "top_k"} & params.keys()
 
 
 @pytest.mark.parametrize("model_key", ["sonnet", "opus"])
