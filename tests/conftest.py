@@ -1,4 +1,6 @@
 import os
+from types import SimpleNamespace
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -101,3 +103,27 @@ def sample_scene_plan():
         "opening_image": "Elena silhouetted against a bruised sky, gates ahead",
         "closing_image": "Gate slamming shut, Elena alone outside",
     }
+
+
+# ---------------------------------------------------------------------------
+# Model / usage helpers
+# ---------------------------------------------------------------------------
+
+#: The model every agent test runs as. Tests that care about model-specific
+#: request parameters name their own key instead.
+MODEL_KEY = "haiku"
+
+
+def stub_usage(response, input_tokens: int = 120, output_tokens: int = 340):
+    """Give a mocked API response a usage block backend.llm can read.
+
+    Without this a MagicMock hands back MagicMock token counts, which are
+    truthy and silently poison any cost arithmetic downstream.
+    """
+    response.usage = SimpleNamespace(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_input_tokens=0,
+        cache_creation_input_tokens=0,
+    )
+    return response

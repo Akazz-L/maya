@@ -5,6 +5,7 @@ import pytest
 import pytest_asyncio
 
 from backend.agents.rewriter import RewriteTruncatedError
+from backend.llm import Usage
 
 
 def _parse_sse(text: str) -> list[dict]:
@@ -34,7 +35,7 @@ async def test_generate_plan_persists_to_the_document(chapter, sample_scene_plan
     client, project_id, doc_id = chapter
     with patch(
         "backend.routes.generate.planner_node",
-        new=AsyncMock(return_value={"scene_plan": sample_scene_plan}),
+        new=AsyncMock(return_value={"scene_plan": sample_scene_plan, "usage": Usage()}),
     ):
         resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
     assert resp.status_code == 200
@@ -47,7 +48,7 @@ async def test_generate_plan_persists_to_the_document(chapter, sample_scene_plan
 @pytest.mark.asyncio
 async def test_plan_uses_the_document_brief_not_an_outline(chapter, sample_scene_plan):
     client, project_id, doc_id = chapter
-    mock = AsyncMock(return_value={"scene_plan": sample_scene_plan})
+    mock = AsyncMock(return_value={"scene_plan": sample_scene_plan, "usage": Usage()})
     with patch("backend.routes.generate.planner_node", new=mock):
         await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
     assert mock.call_args.args[0]["outline_beat"] == "Elena reaches the gates."
@@ -61,7 +62,7 @@ async def test_plan_passes_the_bible_document_body(chapter, sample_scene_plan):
         f"/projects/{project_id}/documents/{bible_id}", json={"body": "## Characters\n\n### Elena"}
     )
 
-    mock = AsyncMock(return_value={"scene_plan": sample_scene_plan})
+    mock = AsyncMock(return_value={"scene_plan": sample_scene_plan, "usage": Usage()})
     with patch("backend.routes.generate.planner_node", new=mock):
         await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
     assert "### Elena" in mock.call_args.args[0]["story_bible"]
@@ -82,7 +83,7 @@ async def test_draft_stream_appends_to_the_body(chapter, sample_scene_plan):
     client, project_id, doc_id = chapter
     await client.patch(f"/projects/{project_id}/documents/{doc_id}", json={"body": "Existing."})
 
-    async def fake_stream(state):
+    async def fake_stream(state, model_key, on_usage):
         for text in ["New ", "prose."]:
             yield text
 
@@ -106,7 +107,7 @@ async def test_draft_stream_fills_an_empty_body_without_leading_blank_lines(
 ):
     client, project_id, doc_id = chapter
 
-    async def fake_stream(state):
+    async def fake_stream(state, model_key, on_usage):
         yield "Only prose."
 
     with patch("backend.routes.generate.drafter_token_stream", new=fake_stream):
@@ -122,7 +123,7 @@ async def test_draft_stream_fills_an_empty_body_without_leading_blank_lines(
 async def test_draft_stream_persists_the_plan_it_receives(chapter, sample_scene_plan):
     client, project_id, doc_id = chapter
 
-    async def fake_stream(state):
+    async def fake_stream(state, model_key, on_usage):
         yield "x"
 
     with patch("backend.routes.generate.drafter_token_stream", new=fake_stream):
@@ -138,7 +139,7 @@ async def test_draft_stream_persists_the_plan_it_receives(chapter, sample_scene_
 async def test_draft_stream_emits_an_error_frame(chapter, sample_scene_plan):
     client, project_id, doc_id = chapter
 
-    async def boom(state):
+    async def boom(state, model_key, on_usage):
         raise RuntimeError("model exploded")
         yield  # pragma: no cover — makes this an async generator
 
@@ -166,7 +167,7 @@ async def test_check_reads_the_body_and_persists_issues(chapter, sample_scene_pl
             "suggested_fix": "left hand",
         }
     ]
-    mock = AsyncMock(return_value={"continuity_issues": issues})
+    mock = AsyncMock(return_value={"continuity_issues": issues, "usage": Usage()})
     with patch("backend.routes.generate.checker_node", new=mock):
         resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/check")
 
@@ -195,7 +196,7 @@ async def test_revise_stream_replaces_the_body(chapter, sample_scene_plan):
         },
     )
 
-    async def fake_stream(state):
+    async def fake_stream(state, model_key, on_usage):
         yield "Elena raised her left hand."
 
     with patch("backend.routes.generate.drafter_token_stream", new=fake_stream):
@@ -225,9 +226,9 @@ async def test_generation_uses_preceding_chapter_summaries(chapter, sample_scene
         },
     )
 
-    planner = AsyncMock(return_value={"scene_plan": sample_scene_plan})
+    planner = AsyncMock(return_value={"scene_plan": sample_scene_plan, "usage": Usage()})
     with (
-        patch("backend.context.summarize_node", new=AsyncMock(return_value="Elena departed.")),
+        patch("backend.context.summarize_node", new=AsyncMock(return_value=("Elena departed.", Usage()))),
         patch("backend.routes.generate.planner_node", new=planner),
     ):
         await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
@@ -243,7 +244,7 @@ async def test_rewrite_stream_returns_the_replacement_without_persisting(chapter
         json={"body": "The hall was empty. She waited by the door. A clock ticked."},
     )
 
-    async def fake_stream(state):
+    async def fake_stream(state, model_key, on_usage):
         for text in ["She ", "froze."]:
             yield text
 
@@ -274,7 +275,7 @@ async def test_rewrite_stream_passes_the_bible_and_the_request_fields(chapter):
     )
     seen = {}
 
-    async def fake_stream(state):
+    async def fake_stream(state, model_key, on_usage):
         seen.update(state)
         yield "x"
 
@@ -294,7 +295,7 @@ async def test_rewrite_stream_passes_the_bible_and_the_request_fields(chapter):
 async def test_rewrite_stream_emits_an_error_frame(chapter):
     client, project_id, doc_id = chapter
 
-    async def boom(state):
+    async def boom(state, model_key, on_usage):
         raise RuntimeError("model exploded")
         yield  # pragma: no cover — makes this an async generator
 
@@ -315,7 +316,7 @@ async def test_rewrite_stream_reports_a_truncated_reply_as_an_error(chapter):
     body = "The hall was empty. She waited by the door. A clock ticked."
     await client.patch(f"/projects/{project_id}/documents/{doc_id}", json={"body": body})
 
-    async def truncated(state):
+    async def truncated(state, model_key, on_usage):
         yield "She froze and then"
         raise RewriteTruncatedError("cut off")
 

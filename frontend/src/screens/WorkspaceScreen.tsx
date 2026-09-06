@@ -13,6 +13,8 @@ import {
 import type { DocumentDetail, Issue, ScenePlan } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { ChapterToolbar } from '../components/ChapterToolbar';
+import { ModelPicker } from '../components/ModelPicker';
+import { UsageMeter } from '../components/UsageMeter';
 import { DocumentEditor, type SaveState } from '../components/DocumentEditor';
 import { DocumentSidebar } from '../components/DocumentSidebar';
 import { PlanPanel } from '../components/PlanPanel';
@@ -21,11 +23,14 @@ import { useDraftStream } from '../hooks/useDraftStream';
 import {
   documentKey,
   documentsKey,
+  useApplyUsage,
   useCreateDocument,
   useDeleteDocument,
   useDocument,
   useDocuments,
+  useMe,
   useReorderDocuments,
+  useSetModel,
 } from '../hooks/queries';
 
 const COLLAPSE_KEY = 'maya.sidebar.collapsed';
@@ -68,6 +73,9 @@ export function WorkspaceScreen() {
   const deleteDoc = useDeleteDocument(projectId!);
   const reorderDocs = useReorderDocuments(projectId!);
   const stream = useDraftStream();
+  const me = useMe();
+  const setModel = useSetModel();
+  const applyUsage = useApplyUsage();
 
   // With no document in the route, open the bible.
   useEffect(() => {
@@ -109,9 +117,13 @@ export function WorkspaceScreen() {
     mutationFn: () => generatePlan(projectId!, documentId!),
     onSuccess: (res) => {
       patchCache({ plan: res.plan });
+      applyUsage(res.usage);
       setPanelOverride({ id: documentId!, open: true });
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      setError(e.message);
+      me.refetch();
+    },
   });
 
   const checkMut = useMutation({
@@ -119,9 +131,13 @@ export function WorkspaceScreen() {
     mutationFn: () => pendingSave.current.then(() => checkDocument(projectId!, documentId!)),
     onSuccess: (res) => {
       patchCache({ issues: res.issues });
+      applyUsage(res.usage);
       setPanelOverride({ id: documentId!, open: true });
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      setError(e.message);
+      me.refetch();
+    },
   });
 
   /** Flush pending autosave, then stream; the server owns `body` for the duration. */
@@ -132,8 +148,9 @@ export function WorkspaceScreen() {
     try {
       await stream.run(url, body, {
         onDelta: (text) => setStreamBody((prev) => (prev ?? '') + text),
-        onDone: (full) => {
+        onDone: (full, usage) => {
           patchCache({ body: full });
+          applyUsage(usage);
           setStreamBody(undefined);
           setDocVersion((v) => v + 1); // remount the editor onto the server's body
         },
@@ -141,6 +158,7 @@ export function WorkspaceScreen() {
     } catch (e) {
       setError((e as Error).message);
       setStreamBody(undefined);
+      me.refetch();
     }
   };
 
@@ -169,12 +187,16 @@ export function WorkspaceScreen() {
   const hasPanelContent = Boolean(doc?.plan || doc?.issues?.length);
   const overrideApplies = panelOverride !== null && panelOverride.id === documentId;
   const panelOpen = hasPanelContent && (!overrideApplies || panelOverride.open);
+  // The server refuses generation once the budget is spent (402). Folding it
+  // into `busy` disables every affordance that would earn one.
+  const aiBlocked = me.data?.usage.blocked ?? false;
   const busy =
     planMut.isPending ||
     checkMut.isPending ||
     stream.isStreaming ||
     deleteDoc.isPending ||
-    rewriteBusy;
+    rewriteBusy ||
+    aiBlocked;
 
   return (
     <div className="flex h-screen flex-col bg-[#f5f5f0]">
@@ -185,9 +207,22 @@ export function WorkspaceScreen() {
           </Button>
           <h1 className="text-base font-semibold text-gray-800">{project.data?.name ?? '…'}</h1>
         </div>
-        <Button variant="secondary" size="sm" onClick={logout}>
-          Log out
-        </Button>
+        <div className="flex items-center gap-4">
+          {me.data && (
+            <>
+              <ModelPicker
+                models={me.data.models}
+                value={me.data.model_key}
+                saving={setModel.isPending}
+                onChange={(key) => setModel.mutate(key)}
+              />
+              <UsageMeter usage={me.data.usage} />
+            </>
+          )}
+          <Button variant="secondary" size="sm" onClick={logout}>
+            Log out
+          </Button>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -249,6 +284,8 @@ export function WorkspaceScreen() {
               saveState={saveState}
               bodyOverride={streamBody}
               onBusyChange={setRewriteBusy}
+              aiBlocked={aiBlocked}
+              onUsage={applyUsage}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400">

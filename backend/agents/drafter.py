@@ -1,7 +1,8 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 import anthropic
-from backend.settings import get_model
+
+from backend.llm import Usage, request_params, usage_from
 
 client = anthropic.AsyncAnthropic()
 
@@ -66,33 +67,37 @@ def _build_messages(state: dict) -> tuple[str, str]:
     return system_prompt, user_content
 
 
-async def drafter_node(state: dict) -> dict:
+async def drafter_node(state: dict, model_key: str) -> dict:
     system_prompt, user_content = _build_messages(state)
 
     response = await client.messages.create(
-        model=get_model(),
-        max_tokens=4096,
-        temperature=0.9,
+        **request_params(model_key, structured=False, max_tokens=4096),
         system=system_prompt,
         messages=[{"role": "user", "content": user_content}],
     )
 
     if not response.content:
         raise ValueError(f"Drafter received empty content from API (stop_reason={response.stop_reason!r})")
-    return {"draft": response.content[0].text}
+    return {"draft": response.content[0].text, "usage": usage_from(response)}
 
 
-async def drafter_token_stream(state: dict) -> AsyncIterator[str]:
+async def drafter_token_stream(
+    state: dict, model_key: str, on_usage: Callable[[Usage], None]
+) -> AsyncIterator[str]:
     """Yield prose text deltas as the model writes them. Owns the API call only;
-    transport (SSE framing) and persistence are the endpoint's responsibility."""
+    transport (SSE framing) and persistence are the endpoint's responsibility.
+
+    Usage is only known once the stream ends, and an async generator has no
+    return value to carry it, so it arrives through `on_usage` instead.
+    """
     system_prompt, user_content = _build_messages(state)
 
     async with client.messages.stream(
-        model=get_model(),
-        max_tokens=4096,
-        temperature=0.9,
+        **request_params(model_key, structured=False, max_tokens=4096),
         system=system_prompt,
         messages=[{"role": "user", "content": user_content}],
     ) as stream:
         async for text in stream.text_stream:
             yield text
+
+        on_usage(usage_from(await stream.get_final_message()))

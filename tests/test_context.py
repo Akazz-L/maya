@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import pytest_asyncio
 
+from tests.conftest import MODEL_KEY, stub_usage
+
 
 @pytest_asyncio.fixture
 async def project(db):
@@ -33,6 +35,16 @@ async def _chapter(db, project_id, position, body, **kw):
     return doc
 
 
+def _usage():
+    from types import SimpleNamespace
+
+    return stub_usage(SimpleNamespace()).usage
+
+
+def _ignore(_usage) -> None:
+    """Usage sink for the tests that are about summaries, not spend."""
+
+
 @pytest.mark.asyncio
 async def test_summarizes_preceding_chapters_in_order(db, project):
     from backend.context import build_previous_summaries
@@ -40,8 +52,8 @@ async def test_summarizes_preceding_chapters_in_order(db, project):
     await _chapter(db, project.id, 1, "First.")
     await _chapter(db, project.id, 2, "Second.")
 
-    with patch("backend.context.summarize_node", new=AsyncMock(side_effect=lambda t: f"sum:{t}")):
-        result = await build_previous_summaries(db, project.id, position=3)
+    with patch("backend.context.summarize_node", new=AsyncMock(side_effect=lambda t, m: (f"sum:{t}", _usage()))):
+        result = await build_previous_summaries(db, project.id, 3, MODEL_KEY, _ignore)
     assert result == ["sum:First.", "sum:Second."]
 
 
@@ -52,9 +64,9 @@ async def test_reuses_a_cached_summary(db, project):
 
     await _chapter(db, project.id, 1, "First.", summary="cached", summary_hash=body_hash("First."))
 
-    mock = AsyncMock(side_effect=lambda t: "fresh")
+    mock = AsyncMock(side_effect=lambda t, m: ("fresh", _usage()))
     with patch("backend.context.summarize_node", new=mock):
-        result = await build_previous_summaries(db, project.id, position=2)
+        result = await build_previous_summaries(db, project.id, 2, MODEL_KEY, _ignore)
     assert result == ["cached"]
     mock.assert_not_awaited()
 
@@ -65,8 +77,8 @@ async def test_stale_hash_triggers_resummarize(db, project):
 
     await _chapter(db, project.id, 1, "Edited body.", summary="old", summary_hash="deadbeef")
 
-    with patch("backend.context.summarize_node", new=AsyncMock(return_value="fresh")):
-        assert await build_previous_summaries(db, project.id, position=2) == ["fresh"]
+    with patch("backend.context.summarize_node", new=AsyncMock(return_value=("fresh", _usage()))):
+        assert await build_previous_summaries(db, project.id, 2, MODEL_KEY, _ignore) == ["fresh"]
 
 
 @pytest.mark.asyncio
@@ -79,8 +91,8 @@ async def test_skips_notes_empty_bodies_and_later_chapters(db, project):
     await db.commit()
     await _chapter(db, project.id, 4, "Later.")  # after the target
 
-    with patch("backend.context.summarize_node", new=AsyncMock(return_value="s")):
-        assert await build_previous_summaries(db, project.id, position=3) == []
+    with patch("backend.context.summarize_node", new=AsyncMock(return_value=("s", _usage()))):
+        assert await build_previous_summaries(db, project.id, 3, MODEL_KEY, _ignore) == []
 
 
 @pytest.mark.asyncio
@@ -90,8 +102,23 @@ async def test_caps_at_the_ten_nearest(db, project):
     for i in range(1, 15):
         await _chapter(db, project.id, i, f"Body {i}.")
 
-    with patch("backend.context.summarize_node", new=AsyncMock(side_effect=lambda t: t)):
-        result = await build_previous_summaries(db, project.id, position=15)
+    with patch("backend.context.summarize_node", new=AsyncMock(side_effect=lambda t, m: (t, _usage()))):
+        result = await build_previous_summaries(db, project.id, 15, MODEL_KEY, _ignore)
     assert len(result) == MAX_PRIOR_CHAPTERS
     assert result[0] == "Body 5."
     assert result[-1] == "Body 14."
+
+
+@pytest.mark.asyncio
+async def test_reports_usage_for_every_fresh_summary(db, project):
+    """Summarizer calls fire implicitly before every generation. Unmetered,
+    they would be spend the writer never sees."""
+    from backend.context import build_previous_summaries
+
+    await _chapter(db, project.id, 1, "First.")
+    await _chapter(db, project.id, 2, "Second.")
+
+    seen = []
+    with patch("backend.context.summarize_node", new=AsyncMock(side_effect=lambda t, m: (t, _usage()))):
+        await build_previous_summaries(db, project.id, 3, MODEL_KEY, seen.append)
+    assert len(seen) == 2

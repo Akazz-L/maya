@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
-import type { DocumentDetail } from '../api/types';
+import type { DocumentDetail, UsageSnapshot } from '../api/types';
 import { rewriteExtension, type RewriteHost } from '../editor/rewriteExtension';
 import { ProseEditor } from './ProseEditor';
 import { RewriteLayer } from './RewriteLayer';
@@ -25,6 +25,10 @@ interface DocumentEditorProps {
   bodyOverride?: string;
   /** True while a selection rewrite is streaming or under review. */
   onBusyChange?: (busy: boolean) => void;
+  /** True once the month's AI budget is spent. */
+  aiBlocked?: boolean;
+  /** The writer's spend including a finished rewrite. */
+  onUsage?: (usage: UsageSnapshot | undefined) => void;
 }
 
 function SaveIndicator({ state }: { state: SaveState }) {
@@ -48,6 +52,8 @@ export function DocumentEditor({
   saveState,
   bodyOverride,
   onBusyChange,
+  aiBlocked = false,
+  onUsage,
 }: DocumentEditorProps) {
   const [title, setTitle] = useState(document.title);
   const [brief, setBrief] = useState(document.brief);
@@ -160,7 +166,9 @@ export function DocumentEditor({
             projectId={projectId}
             documentId={document.id}
             enabled={!readOnly}
+            aiBlocked={aiBlocked}
             onBusyChange={handleBusy}
+            onUsage={onUsage}
           />
         )}
       </ProseEditor>

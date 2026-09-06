@@ -1,7 +1,8 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 import anthropic
-from backend.settings import get_model
+
+from backend.llm import Usage, request_params, usage_from
 
 client = anthropic.AsyncAnthropic()
 
@@ -39,15 +40,19 @@ def _build_rewrite_messages(state: dict) -> tuple[str, str]:
     return system_prompt, user_content
 
 
-async def rewriter_token_stream(state: dict) -> AsyncIterator[str]:
+async def rewriter_token_stream(
+    state: dict, model_key: str, on_usage: Callable[[Usage], None]
+) -> AsyncIterator[str]:
     """Yield replacement text deltas as the model writes them. Owns the API
-    call only; SSE framing is the endpoint's responsibility."""
+    call only; SSE framing is the endpoint's responsibility.
+
+    Usage arrives through `on_usage` once the stream ends — including when the
+    rewrite is rejected as truncated below, since the call was billed either way.
+    """
     system_prompt, user_content = _build_rewrite_messages(state)
 
     async with client.messages.stream(
-        model=get_model(),
-        max_tokens=4096,
-        temperature=0.9,
+        **request_params(model_key, structured=False, max_tokens=4096),
         system=system_prompt,
         messages=[{"role": "user", "content": user_content}],
     ) as stream:
@@ -58,6 +63,7 @@ async def rewriter_token_stream(state: dict) -> AsyncIterator[str]:
         # writer's prose would quietly delete the tail of their selection, so
         # fail instead and let the client keep the original.
         final = await stream.get_final_message()
+        on_usage(usage_from(final))
         if final.stop_reason == "max_tokens":
             raise RewriteTruncatedError(
                 "The rewrite was cut off before the passage ended. Select a shorter passage."

@@ -1,5 +1,6 @@
 import anthropic
-from backend.settings import get_model
+
+from backend.llm import request_params, usage_from
 
 client = anthropic.AsyncAnthropic()
 
@@ -29,7 +30,7 @@ _PLAN_TOOL = {
 }
 
 
-async def planner_node(state: dict) -> dict:
+async def planner_node(state: dict, model_key: str) -> dict:
     summaries = state["previous_summaries"]
 
     summaries_text = (
@@ -39,8 +40,7 @@ async def planner_node(state: dict) -> dict:
     )
 
     response = await client.messages.create(
-        model=get_model(),
-        max_tokens=1024,
+        **request_params(model_key, structured=True, max_tokens=1024),
         system=(
             "You are a narrative architect. Create precise, concrete scene plans "
             "that give a prose writer everything they need without constraining their language."
@@ -63,4 +63,4 @@ async def planner_node(state: dict) -> dict:
     tool_use = next((b for b in response.content if b.type == "tool_use"), None)
     if tool_use is None:
         raise RuntimeError(f"Claude did not return a tool_use block; content={response.content!r}")
-    return {"scene_plan": tool_use.input}
+    return {"scene_plan": tool_use.input, "usage": usage_from(response)}

@@ -8,9 +8,12 @@ import type {
   DocumentKind,
   DocumentSummary,
   Issue,
+  Me,
+  ModelKey,
   ProjectDetail,
   ProjectSummary,
   ScenePlan,
+  UsageSnapshot,
 } from './types';
 
 // ── auth (unauthenticated) ───────────────────────────────────────────────────
@@ -27,6 +30,14 @@ export const register = (email: string, password: string) =>
     body: { email, password },
     authed: false,
   });
+
+// ── account: model choice and AI budget ──────────────────────────────────────
+export const getMe = () => request<Me>('/me');
+
+/** Takes effect on the next generation; anything already streaming keeps the
+ *  model it started on. */
+export const setModel = (modelKey: ModelKey) =>
+  request<Me>('/me', { method: 'PATCH', body: { model_key: modelKey } });
 
 // ── projects ─────────────────────────────────────────────────────────────────
 export const listProjects = () => request<ProjectSummary[]>('/projects');
@@ -83,14 +94,18 @@ export const reorderDocuments = (projectId: string, documentIds: string[]) =>
 
 // ── generation (per document) ────────────────────────────────────────────────
 export const generatePlan = (projectId: string, documentId: string) =>
-  request<{ plan: ScenePlan }>(`/projects/${projectId}/documents/${documentId}/plan`, {
-    method: 'POST',
-  });
+  request<{ plan: ScenePlan; usage: UsageSnapshot }>(
+    `/projects/${projectId}/documents/${documentId}/plan`,
+    {
+      method: 'POST',
+    },
+  );
 
 export const checkDocument = (projectId: string, documentId: string) =>
-  request<{ issues: Issue[] }>(`/projects/${projectId}/documents/${documentId}/check`, {
-    method: 'POST',
-  });
+  request<{ issues: Issue[]; usage: UsageSnapshot }>(
+    `/projects/${projectId}/documents/${documentId}/check`,
+    { method: 'POST' },
+  );
 
 /** SSE stream URLs (driven by useDraftStream / stream.ts). */
 export const draftStreamUrl = (projectId: string, documentId: string) =>
