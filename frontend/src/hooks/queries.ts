@@ -1,16 +1,51 @@
+import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createDocument,
   deleteDocument,
   getDocument,
+  getMe,
   listDocuments,
   reorderDocuments,
+  setModel,
 } from '../api/endpoints';
-import type { DocumentKind } from '../api/types';
+import type { DocumentKind, Me, ModelKey, UsageSnapshot } from '../api/types';
 
+export const meKey = ['me'] as const;
 export const documentsKey = (projectId: string) => ['documents', projectId] as const;
 export const documentKey = (projectId: string, documentId: string) =>
   ['document', projectId, documentId] as const;
+
+export function useMe() {
+  return useQuery({ queryKey: meKey, queryFn: getMe });
+}
+
+export function useSetModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (modelKey: ModelKey) => setModel(modelKey),
+    onSuccess: (me) => qc.setQueryData(meKey, me),
+  });
+}
+
+/**
+ * Fold the meter an AI call just reported into the cached account.
+ *
+ * Every generation returns the writer's spend including that call, so the
+ * meter moves the moment work finishes. Polling would spend requests to learn
+ * nothing in between: the only events that change the number are ones the
+ * client is already awaiting.
+ */
+export function useApplyUsage() {
+  const qc = useQueryClient();
+  return useCallback(
+    (usage: UsageSnapshot | undefined) => {
+      if (!usage) return;
+      qc.setQueryData(meKey, (old?: Me) => (old ? { ...old, usage } : old));
+    },
+    [qc],
+  );
+}
 
 export function useDocuments(projectId: string) {
   return useQuery({

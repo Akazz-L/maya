@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, Uuid, func, text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, Uuid, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -19,6 +19,14 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
+    # Which of backend.llm.MODELS this writer generates with. A key, not a model
+    # ID, so retargeting "opus" at a newer model never touches user rows.
+    model_key: Mapped[str] = mapped_column(String(16), nullable=False, default="haiku", server_default="haiku")
+    # Per-user override of MONTHLY_BUDGET_USD; NULL means "use the global default".
+    # Micro-dollars, the same unit UsageEvent.cost_micro_usd counts in, so a cap
+    # and a running total are compared without any float in the path. $5 is
+    # 5_000_000 here.
+    monthly_budget_micro_usd: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     projects: Mapped[list["Project"]] = relationship("Project", back_populates="owner", cascade="all, delete-orphan")
@@ -114,3 +122,28 @@ class Summary(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
 
     chapter: Mapped["Chapter"] = relationship("Chapter", back_populates="summary")
+
+
+class UsageEvent(Base):
+    """One billed API call. Append-only; the month's spend is a SUM over these.
+
+    The cost is computed and frozen at write time rather than derived from the
+    token counts on read: a change to the price table should not retroactively
+    rewrite what a writer has already spent.
+    """
+
+    __tablename__ = "usage_events"
+    __table_args__ = (Index("ix_usage_events_user_created", "user_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, server_default=func.now())
+    model_key: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: plan | draft | revise | check | rewrite | summarize
+    operation: Mapped[str] = mapped_column(String(16), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(default=0)
+    output_tokens: Mapped[int] = mapped_column(default=0)
+    cache_read_input_tokens: Mapped[int] = mapped_column(default=0)
+    cache_creation_input_tokens: Mapped[int] = mapped_column(default=0)
+    #: Dollars x 1,000,000. An integer so a month's SUM is exact on every backend.
+    cost_micro_usd: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)

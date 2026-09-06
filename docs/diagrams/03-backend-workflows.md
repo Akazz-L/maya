@@ -82,8 +82,8 @@ sequenceDiagram
     R->>R: remember `existing = document.body`
     R-->>UI: 200 text/event-stream<br/>Cache-Control: no-cache, X-Accel-Buffering: no
 
-    R->>A: drafter_token_stream(state)
-    A->>API: messages.stream(temperature=0.9, max_tokens=4096)
+    R->>A: drafter_token_stream(state, model_key, on_usage)
+    A->>API: messages.stream(**request_params(model_key))
 
     loop for each text delta
         API-->>A: text chunk

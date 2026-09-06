@@ -3,11 +3,17 @@
 // Ported from the old index.html `streamPost()`.
 
 import { authHeaders, handleUnauthorized } from '../auth/token';
+import type { UsageSnapshot } from './types';
 
 export interface StreamCallbacks {
   onDelta: (text: string) => void;
-  /** The completed text of the stream: the document's new body for draft/revise, the replacement span for rewrite. */
-  onDone: (body: string) => void;
+  /**
+   * The completed text of the stream: the document's new body for draft/revise,
+   * the replacement span for rewrite. `usage` is the writer's spend including
+   * this call — token counts are only known once the stream ends, so this is
+   * the first moment the meter can move.
+   */
+  onDone: (body: string, usage?: UsageSnapshot) => void;
 }
 
 interface DeltaFrame {
@@ -17,6 +23,7 @@ interface DeltaFrame {
 interface DoneFrame {
   type: 'done';
   body: string;
+  usage?: UsageSnapshot;
 }
 interface ErrorFrame {
   type: 'error';
@@ -75,7 +82,7 @@ export async function streamPost(
         if (!raw) continue;
         const evt = JSON.parse(raw) as Frame;
         if (evt.type === 'delta') onDelta(evt.text);
-        else if (evt.type === 'done') onDone(evt.body);
+        else if (evt.type === 'done') onDone(evt.body, evt.usage);
         else if (evt.type === 'error') throw new Error(evt.detail);
         if (signal?.aborted) {
           await reader.cancel();

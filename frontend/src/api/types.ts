@@ -65,3 +65,34 @@ export const EMPTY_PLAN: ScenePlan = {
   closing_image: '',
   beats: [],
 };
+
+// ── model choice and AI budget ───────────────────────────────────────────────
+
+export type ModelKey = 'haiku' | 'sonnet' | 'opus';
+
+/** One entry in the picker. Served by the backend so labels and relative cost
+ *  are defined in exactly one place. */
+export interface ModelOption {
+  key: ModelKey;
+  label: string;
+  hint: string;
+}
+
+/** Spend against this month's AI budget, from GET /me and every AI response. */
+export interface UsageSnapshot {
+  spent_usd: number;
+  budget_usd: number;
+  percent: number;
+  /** True once the budget is reached: the server refuses further generation. */
+  blocked: boolean;
+  /** ISO timestamp of the reset — the first instant of next month, UTC. */
+  period_end: string;
+}
+
+/** The signed-in writer, from GET /me. */
+export interface Me {
+  email: string;
+  model_key: ModelKey;
+  models: ModelOption[];
+  usage: UsageSnapshot;
+}

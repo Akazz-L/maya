@@ -1,5 +1,6 @@
 import anthropic
-from backend.settings import get_model
+
+from backend.llm import request_params, usage_from
 
 client = anthropic.AsyncAnthropic()
 
@@ -31,7 +32,7 @@ _CHECK_TOOL = {
 }
 
 
-async def checker_node(state: dict) -> dict:
+async def checker_node(state: dict, model_key: str) -> dict:
     summaries = state["previous_summaries"]
 
     summaries_text = (
@@ -41,8 +42,7 @@ async def checker_node(state: dict) -> dict:
     )
 
     response = await client.messages.create(
-        model=get_model(),
-        max_tokens=2048,
+        **request_params(model_key, structured=True, max_tokens=2048),
         system=(
             "You are a continuity editor. Check for contradictions between the draft "
             "and all established story facts. Be thorough and precise. "
@@ -74,4 +74,4 @@ async def checker_node(state: dict) -> dict:
     tool_use = next((b for b in response.content if b.type == "tool_use"), None)
     if tool_use is None:
         raise RuntimeError(f"Claude did not return a tool_use block; content={response.content!r}")
-    return {"continuity_issues": tool_use.input["issues"]}
+    return {"continuity_issues": tool_use.input["issues"], "usage": usage_from(response)}

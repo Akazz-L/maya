@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.agents.checker import checker_node
+from tests.conftest import MODEL_KEY, stub_usage
 
 
 def _mock_tool_response(issues: list) -> MagicMock:
@@ -11,7 +12,7 @@ def _mock_tool_response(issues: list) -> MagicMock:
     tool_use.input = {"issues": issues}
     response = MagicMock()
     response.content = [tool_use]
-    return response
+    return stub_usage(response)
 
 
 @pytest.mark.asyncio
@@ -20,8 +21,8 @@ async def test_checker_returns_empty_list_when_no_issues(base_state, sample_scen
     base_state["draft"] = "Elena stood at the gates, left hand at her side."
     mock_response = _mock_tool_response([])
     with patch("backend.agents.checker.client.messages.create", new_callable=AsyncMock, return_value=mock_response):
-        result = await checker_node(base_state)
-    assert result == {"continuity_issues": []}
+        result = await checker_node(base_state, MODEL_KEY)
+    assert result["continuity_issues"] == []
 
 
 @pytest.mark.asyncio
@@ -36,7 +37,7 @@ async def test_checker_returns_structured_issues(base_state, sample_scene_plan):
     }
     mock_response = _mock_tool_response([issue])
     with patch("backend.agents.checker.client.messages.create", new_callable=AsyncMock, return_value=mock_response):
-        result = await checker_node(base_state)
+        result = await checker_node(base_state, MODEL_KEY)
     assert len(result["continuity_issues"]) == 1
     assert result["continuity_issues"][0]["severity"] == "critical"
     assert result["continuity_issues"][0]["suggested_fix"] == "Change 'right hand' to 'left hand'"
@@ -48,7 +49,7 @@ async def test_checker_calls_claude_with_tool_choice(base_state, sample_scene_pl
     base_state["draft"] = "Some draft text."
     mock_response = _mock_tool_response([])
     with patch("backend.agents.checker.client.messages.create", new_callable=AsyncMock, return_value=mock_response) as mock_create:
-        await checker_node(base_state)
+        await checker_node(base_state, MODEL_KEY)
     assert mock_create.call_args.kwargs["tool_choice"] == {
         "type": "tool", "name": "report_continuity_issues"
     }
@@ -60,7 +61,7 @@ async def test_checker_includes_draft_and_characters_in_prompt(base_state, sampl
     base_state["draft"] = "She raised her hand."
     mock_response = _mock_tool_response([])
     with patch("backend.agents.checker.client.messages.create", new_callable=AsyncMock, return_value=mock_response) as mock_create:
-        await checker_node(base_state)
+        await checker_node(base_state, MODEL_KEY)
     prompt = mock_create.call_args.kwargs["messages"][0]["content"]
     assert "She raised her hand." in prompt
     assert "Elena" in prompt
@@ -72,7 +73,7 @@ async def test_checker_sends_the_bible_markdown(base_state):
     base_state["draft"] = "Elena raised her right hand."
     mock_response = _mock_tool_response([])
     with patch("backend.agents.checker.client.messages.create", new_callable=AsyncMock, return_value=mock_response) as mock_create:
-        await checker_node(base_state)
+        await checker_node(base_state, MODEL_KEY)
     content = mock_create.call_args.kwargs["messages"][0]["content"]
     assert "### Elena" in content
     assert "Magic requires physical cost" in content

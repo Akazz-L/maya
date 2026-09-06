@@ -15,6 +15,10 @@ Inside a chapter, select any passage and press ⌘K (or click the Rewrite pill) 
 for a targeted rewrite; the suggestion streams in place and shows as a diff you can
 accept or discard.
 
+Each writer picks their own model — Haiku, Sonnet, or Opus — from the editor header,
+and the meter beside it shows what they have spent against this month's budget.
+Generation is refused once the budget is reached.
+
 FastAPI + SQLAlchemy backend, React + Vite frontend.
 
 ## Prerequisites
@@ -33,6 +37,9 @@ make install              # uv sync + npm install
 
 - `ANTHROPIC_API_KEY` — the app boots without it, but every generation call fails at request time.
 - `JWT_SECRET` — generate with `openssl rand -hex 32`. Changing it invalidates existing sessions.
+
+`MONTHLY_BUDGET_USD` is optional and defaults to `5.00`. It is the AI budget each
+writer gets per calendar month (UTC).
 
 `DATABASE_URL` is optional; unset, the app uses an on-disk SQLite file (`./maya.db`)
 that persists across restarts. No database setup needed for local dev.
@@ -119,3 +126,31 @@ They render directly on GitHub and in most editors.
   run `make migrate`. Bare `postgres://` / `postgresql://` URLs (as Railway, Heroku,
   and Fly hand out) are rewritten to the asyncpg driver automatically.
 - `run.md` covers the same ground in more detail.
+
+## Model choice and the AI budget
+
+The model is per user, chosen from the picker in the editor header and applied to
+every AI call — plan, draft, revise, check, rewrite, and the chapter summaries that
+run implicitly before each of those.
+A change takes effect on the next call; anything already streaming keeps the model
+it started on.
+
+Every call's tokens are priced at that model's rates and written to `usage_events`.
+The cost is frozen at write time, so changing the price table never rewrites what
+someone has already spent.
+The meter sums the current calendar month in UTC.
+
+Enforcement is pre-flight: a generation is refused with a `402` once the month's
+spend reaches the budget, but a call already running always finishes.
+A writer can therefore overshoot by at most one call, and never loses a draft
+mid-stream.
+
+To raise one writer's cap without moving everyone's:
+
+```sql
+UPDATE users SET monthly_budget_micro_usd = 20000000 WHERE email = 'them@example.com';
+```
+
+The column is in micro-dollars — the same unit the ledger counts in, so a cap and a
+running total compare without any float in the path.
+`NULL` means "use `MONTHLY_BUDGET_USD`".
