@@ -2,7 +2,7 @@
 // out: the document stays a string with newlines, which is what the backend
 // agents read. Extensions (like the chapter rewrite overlay) are injected by
 // the parent; this component knows nothing about them.
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -55,7 +55,9 @@ export function ProseEditor({
 }: ProseEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const readOnlyComp = useRef(new Compartment());
+  // Lazy state, not a ref: the compartment belongs to the view for its whole
+  // life and is never reassigned, and this way it is built once.
+  const [readOnlyComp] = useState(() => new Compartment());
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -78,7 +80,7 @@ export function ProseEditor({
             autocorrect: 'on',
           }),
           placeholder ? cmPlaceholder(placeholder) : [],
-          readOnlyComp.current.of(readOnlyConfig(readOnly)),
+          readOnlyComp.of(readOnlyConfig(readOnly)),
           EditorView.updateListener.of((u) => {
             if (!u.docChanged) return;
             if (u.transactions.some((t) => t.annotation(external))) return;
@@ -111,9 +113,9 @@ export function ProseEditor({
 
   useEffect(() => {
     viewRef.current?.dispatch({
-      effects: readOnlyComp.current.reconfigure(readOnlyConfig(readOnly)),
+      effects: readOnlyComp.reconfigure(readOnlyConfig(readOnly)),
     });
-  }, [readOnly]);
+  }, [readOnly, readOnlyComp]);
 
   return (
     <div className={cn('relative flex-1 min-h-0', readOnly ? 'bg-gray-50' : 'bg-white')}>

@@ -1,13 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contextWindows, matchEdgeWhitespace, spliceText, stripContextEcho, wordDiff } from './rewrite';
-
-describe('spliceText', () => {
-  it('replaces only the range and keeps everything else byte-for-byte', () => {
-    const text = 'The hall was empty. She waited by the door. A clock ticked.';
-    const out = spliceText(text, { from: 20, to: 43 }, 'She froze.');
-    expect(out).toBe('The hall was empty. She froze. A clock ticked.');
-  });
-});
+import { contextWindows, matchEdgeWhitespace, stripContextEcho, wordDiff } from './rewrite';
 
 describe('contextWindows', () => {
   it('splits text around the range', () => {

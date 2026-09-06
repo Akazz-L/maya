@@ -6,11 +6,6 @@ export interface TextRange {
   to: number;
 }
 
-/** Replace [from, to) with `replacement`; every other character is untouched. */
-export function spliceText(text: string, { from, to }: TextRange, replacement: string): string {
-  return text.slice(0, from) + replacement + text.slice(to);
-}
-
 /** Split text around the range, trimming the context to the given maxima. */
 export function contextWindows(
   text: string,

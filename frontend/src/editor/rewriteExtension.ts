@@ -48,6 +48,8 @@ class RewriteWidget extends WidgetType {
     super();
   }
 
+  // `error` is left out on purpose: decorations() never builds a widget when it
+  // is true, so two widgets can never differ by it alone.
   eq(other: RewriteWidget) {
     const a = this.overlay;
     const b = other.overlay;
