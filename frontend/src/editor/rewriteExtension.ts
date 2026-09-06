@@ -1,7 +1,7 @@
 // Renders the selection-rewrite flow inside the document without touching it.
 // The document is only changed by the one transaction that accepts a rewrite;
 // until then the original text sits underneath a decoration.
-import { Prec, StateEffect, StateField, type Extension } from '@codemirror/state';
+import { Annotation, Prec, StateEffect, StateField, type Extension } from '@codemirror/state';
 import { Decoration, EditorView, keymap, WidgetType, type DecorationSet } from '@codemirror/view';
 import { wordDiff, type TextRange } from '../lib/rewrite';
 
@@ -17,6 +17,8 @@ export interface RewriteOverlay {
 export interface RewriteHost {
   /** The editor's selection changed; null when it is empty. */
   onSelectionChange(range: TextRange | null): void;
+  /** The document changed under the overlay — never for the accept transaction. */
+  onDocChanged(): void;
   /** ⌘K / Ctrl+K pressed. Return true if handled. */
   onRequestOpen(): boolean;
   /** Escape pressed in the editor. Return true if handled. */
@@ -24,6 +26,10 @@ export interface RewriteHost {
 }
 
 export const setRewriteOverlay = StateEffect.define<RewriteOverlay | null>();
+
+/** Marks the one transaction that accepts a rewrite, so it is not mistaken for
+ * an external edit that invalidates the range. */
+export const acceptTx = Annotation.define<boolean>();
 
 export const rewriteOverlayField = StateField.define<RewriteOverlay | null>({
   create: () => null,
@@ -143,6 +149,9 @@ export function rewriteExtension(host: { current: RewriteHost }): Extension {
     theme,
     EditorView.updateListener.of((u) => {
       if (u.selectionSet || u.docChanged) host.current.onSelectionChange(currentRange(u.view));
+      if (u.docChanged && !u.transactions.some((t) => t.annotation(acceptTx))) {
+        host.current.onDocChanged();
+      }
     }),
     Prec.highest(
       keymap.of([

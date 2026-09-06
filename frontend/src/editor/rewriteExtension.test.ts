@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import {
+  acceptTx,
   rewriteExtension,
   rewriteOverlayField,
   setRewriteOverlay,
@@ -16,6 +17,7 @@ function makeView(host: Partial<RewriteHost> = {}) {
   const ref = {
     current: {
       onSelectionChange: vi.fn(),
+      onDocChanged: vi.fn(),
       onRequestOpen: vi.fn(() => true),
       onEscape: vi.fn(() => true),
       ...host,
@@ -63,6 +65,18 @@ describe('rewriteExtension', () => {
     expect(view.state.field(rewriteOverlayField)?.phase).toBe('prompting');
     view.dispatch({ changes: { from: 0, insert: 'X' } });
     expect(view.state.field(rewriteOverlayField)).toBeNull();
+    view.destroy();
+  });
+
+  it('reports a document change to the host, except the accept transaction itself', () => {
+    const { view, ref } = makeView();
+    view.dispatch({ changes: { from: 0, insert: 'X' } });
+    expect(ref.current.onDocChanged).toHaveBeenCalledTimes(1);
+
+    // Accept edits the document on purpose; the layer must not treat its own
+    // splice as the external change that invalidates the range.
+    view.dispatch({ changes: { from: 0, insert: 'Y' }, annotations: acceptTx.of(true) });
+    expect(ref.current.onDocChanged).toHaveBeenCalledTimes(1);
     view.destroy();
   });
 

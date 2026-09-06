@@ -3,7 +3,7 @@
 // the document except through the single Accept transaction.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
-import { setRewriteOverlay, type RewriteHost } from '../editor/rewriteExtension';
+import { acceptTx, setRewriteOverlay, type RewriteHost } from '../editor/rewriteExtension';
 import { useSelectionRewrite } from '../hooks/useSelectionRewrite';
 import { contextWindows, type TextRange } from '../lib/rewrite';
 import { RewritePrompt } from './RewritePrompt';
@@ -91,10 +91,18 @@ export function RewriteLayer({
 
   const accept = () => {
     if (phase !== 'reviewing' || error || !range) return;
+    // The overlay field already drops itself on any document change; the
+    // React state machine must not outlive it, or Accept would splice over
+    // whatever now occupies these offsets.
+    if (view.state.sliceDoc(range.from, range.to) !== original) {
+      discard();
+      return;
+    }
     view.dispatch({
       changes: { from: range.from, to: range.to, insert: replacement },
       selection: { anchor: range.from + replacement.length },
       effects: setRewriteOverlay.of(null),
+      annotations: acceptTx.of(true),
       userEvent: 'input.rewrite',
     });
     rewrite.cancel();
@@ -116,6 +124,13 @@ export function RewriteLayer({
         setSelection(r);
         // Clicking or typing elsewhere while the prompt is open dismisses it.
         if (latest.current.phase === 'prompting') latest.current.discard();
+      },
+      // Anything that edits the document — typing, undo, a finished generation —
+      // invalidates the range the overlay was drawn against, and the field has
+      // already dropped it. Accept's own transaction never reaches here.
+      onDocChanged: () => {
+        const { phase: current, discard: drop } = latest.current;
+        if (current === 'streaming' || current === 'reviewing') drop();
       },
       onRequestOpen: () => latest.current.open(),
       onEscape: () => {

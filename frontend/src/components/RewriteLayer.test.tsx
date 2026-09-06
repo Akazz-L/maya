@@ -136,6 +136,25 @@ describe('selection rewrite flow', () => {
     expect(screen.queryByRole('toolbar', { name: /review rewrite/i })).toBeNull();
   });
 
+  it('abandons a review when the document changes underneath it', async () => {
+    // The overlay field drops itself on any document change; if the React state
+    // machine outlived it, Accept would splice over whatever now sits at those
+    // offsets.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(sse([{ type: 'done', body: 'She froze.' }]));
+    renderChapter();
+
+    const input = await openPrompt();
+    await userEvent.type(input, 'tighten{Enter}');
+    await screen.findByRole('toolbar', { name: /review rewrite/i });
+
+    act(() => viewFor('Document body').dispatch({ changes: { from: 0, insert: 'X' } }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('toolbar', { name: /review rewrite/i })).toBeNull(),
+    );
+    expect(viewFor('Document body').state.doc.toString()).toBe(`X${BODY}`);
+  });
+
   it('shows an error with Retry, and Retry reopens the prompt with the instruction', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       sse([{ type: 'error', detail: 'model exploded' }]),

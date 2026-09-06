@@ -61,6 +61,7 @@ export function DocumentEditor({
   const [rewriteHost] = useState<{ current: RewriteHost }>(() => ({
     current: {
       onSelectionChange: () => {},
+      onDocChanged: () => {},
       onRequestOpen: () => false,
       onEscape: () => false,
     },
