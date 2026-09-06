@@ -3,12 +3,13 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agents.checker import checker_node
 from backend.agents.drafter import drafter_token_stream
 from backend.agents.planner import planner_node
+from backend.agents.rewriter import rewriter_token_stream
 from backend.context import build_previous_summaries
 from backend.db import get_db
 from backend.db_models import Document, Project
@@ -20,6 +21,13 @@ router = APIRouter(prefix="/projects/{project_id}/documents/{document_id}", tags
 
 class PlanBody(BaseModel):
     plan: dict
+
+
+class RewriteBody(BaseModel):
+    instruction: str = Field(min_length=1, max_length=2000)
+    selection: str = Field(min_length=1, max_length=20000)
+    before: str = Field(default="", max_length=4000)
+    after: str = Field(default="", max_length=4000)
 
 
 def _sse(data: dict) -> str:
@@ -140,6 +148,38 @@ async def revise_stream(
             document.summary_hash = None
             await db.commit()
             yield _sse({"type": "done", "body": document.body})
+        except Exception as e:
+            yield _sse({"type": "error", "detail": str(e)})
+
+    return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
+@router.post("/rewrite/stream")
+async def rewrite_stream(
+    document_id: uuid.UUID,
+    body: RewriteBody,
+    project: Project = Depends(require_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream a replacement for one selected span. Persists nothing: the
+    client splices the replacement in only when the writer accepts it, and
+    the normal autosave carries it to the server."""
+    document = await _require_chapter(db, project.id, document_id)
+    state = {
+        "story_bible": await get_bible_body(db, document.project_id),
+        "instruction": body.instruction,
+        "selection": body.selection,
+        "before": body.before,
+        "after": body.after,
+    }
+
+    async def gen():
+        buf = []
+        try:
+            async for text in rewriter_token_stream(state):
+                buf.append(text)
+                yield _sse({"type": "delta", "text": text})
+            yield _sse({"type": "done", "body": "".join(buf)})
         except Exception as e:
             yield _sse({"type": "error", "detail": str(e)})
 

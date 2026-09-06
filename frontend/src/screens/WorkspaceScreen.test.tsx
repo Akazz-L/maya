@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { WorkspaceScreen } from './WorkspaceScreen';
 import { AuthProvider } from '../auth/AuthContext';
 import { clearToken } from '../auth/token';
 import { EMPTY_PLAN } from '../api/types';
+import { selectRange } from '../test/editor';
 
 const DOCS = [
   { id: 'b', title: 'Story Bible', kind: 'bible', position: 0, updated_at: '2026-01-01' },
@@ -40,10 +42,22 @@ function json(data: unknown) {
   });
 }
 
+function sse(frames: object[]): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      for (const f of frames) c.enqueue(encoder.encode(`data: ${JSON.stringify(f)}\n\n`));
+      c.close();
+    },
+  });
+  return new Response(body, { status: 200 });
+}
+
 function mockApi() {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = String(input);
     if (url.endsWith('/documents')) return json(DOCS);
+    if (url.endsWith('/rewrite/stream')) return sse([{ type: 'done', body: 'The downpour.' }]);
     if (url.includes('/documents/c1')) return json(CHAPTER);
     if (url.includes('/documents/b')) return json(BIBLE);
     return json({ project_id: 'p1', name: 'Novel' });
@@ -82,7 +96,7 @@ describe('WorkspaceScreen', () => {
   it('opens the document named in the route', async () => {
     mockApi();
     renderAt('/p/p1/d/c1');
-    expect(await screen.findByDisplayValue('The rain.')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Document body')).toHaveTextContent('The rain.');
     expect(screen.getByDisplayValue('Mara waits.')).toBeInTheDocument();
   });
 
@@ -95,16 +109,44 @@ describe('WorkspaceScreen', () => {
   it('hides the generate toolbar on the bible', async () => {
     mockApi();
     renderAt('/p/p1/d/b');
-    expect(await screen.findByDisplayValue('## Characters')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Document body')).toHaveTextContent('## Characters');
     expect(screen.queryByRole('button', { name: /generate plan/i })).not.toBeInTheDocument();
   });
 
   it('keeps the plan panel closed until a plan exists', async () => {
     mockApi();
     renderAt('/p/p1/d/c1');
-    await screen.findByDisplayValue('The rain.');
+    expect(await screen.findByLabelText('Document body')).toHaveTextContent('The rain.');
     expect(screen.queryByRole('button', { name: /drop/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /show plan/i })).toBeDisabled();
+  });
+
+  it('folds a rewrite under review into the toolbar busy state', async () => {
+    // A generation started mid-review would overwrite the body the review bar
+    // is still drawn against, so the toolbar has to wait for the writer.
+    mockApi();
+    renderAt('/p/p1/d/c1');
+    await screen.findByLabelText('Document body');
+    // The editor hands its view up in an effect; the rewrite layer only exists
+    // — and only starts listening for selections — on the render after that.
+    await act(async () => {});
+
+    selectRange('Document body', 0, 9);
+    await userEvent.click(await screen.findByRole('button', { name: /rewrite/i }));
+    await userEvent.type(screen.getByLabelText('Rewrite instruction'), 'wetter{Enter}');
+    await screen.findByRole('toolbar', { name: /review rewrite/i });
+
+    expect(screen.getByRole('button', { name: /generate plan/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /generate draft/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^check$/i })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole('button', { name: /discard/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /generate plan/i })).toBeEnabled(),
+    );
+    expect(screen.getByRole('button', { name: /generate draft/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^check$/i })).toBeEnabled();
   });
 
   it('reopens a saved plan on load, so a reload does not strand it', async () => {

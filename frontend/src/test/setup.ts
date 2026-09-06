@@ -22,6 +22,15 @@ if (typeof globalThis.localStorage === 'undefined') {
   });
 }
 
+// jsdom has no layout engine, so Range is missing getClientRects. CodeMirror
+// calls it to map a document position to screen coordinates; an empty list is
+// the "no layout yet" answer it already understands (coordsAtPos returns null),
+// where a missing method is a TypeError.
+if (typeof Range !== 'undefined' && !Range.prototype.getClientRects) {
+  const empty = Object.assign([] as DOMRect[], { item: () => null }) as unknown as DOMRectList;
+  Range.prototype.getClientRects = () => empty;
+}
+
 afterEach(() => {
   cleanup();
   localStorage.clear();

@@ -25,7 +25,8 @@ graph TD
     WS2 --- WS
     WS --> SIDE["DocumentSidebar<br/>select · create · rename<br/>delete · drag to reorder"]
     WS --> TB["ChapterToolbar<br/>chapter documents only"]
-    WS --> ED["DocumentEditor<br/>title · brief · body"]
+    WS --> ED["DocumentEditor<br/>title · brief · ProseEditor"]
+    ED --> RL["RewriteLayer<br/>chapters only: pill · prompt · review bar"]
     WS --> PP["PlanPanel<br/>resizable, tabbed"]
     PP --> PF["PlanForm"]
     PP --> IL["IssuesList → IssueCard"]
@@ -39,6 +40,9 @@ graph TD
 `ChapterToolbar` and `PlanPanel` render only when the open document has `kind === 'chapter'`.
 Bible and note documents get the editor and nothing else — they have no plan, no issues, and no generation actions.
 
+The body is a CodeMirror 6 view (`ProseEditor`), not a textarea, so the chapter rewrite flow can draw over the real document.
+`editor/rewriteExtension.ts` holds the overlay as editor state and renders it as decorations; `RewriteLayer` drives it and only ever changes the document through the single Accept transaction, which is why an accepted rewrite autosaves and undoes like any other edit.
+
 ## Module layers
 
 ```mermaid
@@ -50,12 +54,13 @@ graph TD
     end
 
     subgraph components["components/ — presentational"]
-        CMP["DocumentSidebar · DocumentEditor<br/>ChapterToolbar · PlanPanel<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
+        CMP["DocumentSidebar · DocumentEditor · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChapterToolbar · PlanPanel<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
     end
 
     subgraph hooks["hooks/ — server state"]
         Q["queries.ts<br/>useDocuments · useDocument<br/>useCreateDocument · useDeleteDocument<br/>useReorderDocuments"]
         DS["useDraftStream.ts<br/>isStreaming · error · run()"]
+        SR["useSelectionRewrite.ts<br/>idle → prompting → streaming → reviewing"]
     end
 
     subgraph api["api/ — transport"]

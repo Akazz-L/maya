@@ -12,11 +12,11 @@ graph TB
     subgraph server["FastAPI process — backend/"]
         MAIN["main.py<br/>/auth/* · /projects · /health<br/>SPA catch-all"]
         DOCS["routes/documents.py<br/>/projects/{pid}/documents/*"]
-        GEN["routes/generate.py<br/>/plan · /check<br/>/draft/stream · /revise/stream"]
+        GEN["routes/generate.py<br/>/plan · /check<br/>/draft/stream · /revise/stream · /rewrite/stream"]
         DEPS["routes/deps.py + auth.py<br/>JWT bearer → require_project"]
         STORE["doc_storage.py<br/>document CRUD, ordering"]
         CTX["context.py<br/>prior-chapter summaries"]
-        AGENTS["agents/<br/>planner · drafter<br/>checker · summarizer"]
+        AGENTS["agents/<br/>planner · drafter · rewriter<br/>checker · summarizer"]
         DB["db.py<br/>async engine + session"]
     end
 

@@ -6,7 +6,7 @@ import { authHeaders, handleUnauthorized } from '../auth/token';
 
 export interface StreamCallbacks {
   onDelta: (text: string) => void;
-  /** The document's full new body, as persisted by the server. */
+  /** The completed text of the stream: the document's new body for draft/revise, the replacement span for rewrite. */
   onDone: (body: string) => void;
 }
 
@@ -28,12 +28,20 @@ export async function streamPost(
   url: string,
   body: unknown,
   { onDelta, onDone }: StreamCallbacks,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: body ? JSON.stringify(body) : null,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: body ? JSON.stringify(body) : null,
+      signal,
+    });
+  } catch (e) {
+    if (signal?.aborted) return; // the caller gave up; not an error
+    throw e;
+  }
   if (res.status === 401) {
     handleUnauthorized();
     throw new Error('Your session has expired. Please sign in again.');
@@ -50,20 +58,33 @@ export async function streamPost(
   const decoder = new TextDecoder();
   let buf = '';
 
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
+  try {
+    for (;;) {
+      if (signal?.aborted) {
+        await reader.cancel();
+        return;
+      }
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
 
-    let sep: number;
-    while ((sep = buf.indexOf('\n\n')) >= 0) {
-      const raw = buf.slice(0, sep).replace(/^data: /, '');
-      buf = buf.slice(sep + 2);
-      if (!raw) continue;
-      const evt = JSON.parse(raw) as Frame;
-      if (evt.type === 'delta') onDelta(evt.text);
-      else if (evt.type === 'done') onDone(evt.body);
-      else if (evt.type === 'error') throw new Error(evt.detail);
+      let sep: number;
+      while ((sep = buf.indexOf('\n\n')) >= 0) {
+        const raw = buf.slice(0, sep).replace(/^data: /, '');
+        buf = buf.slice(sep + 2);
+        if (!raw) continue;
+        const evt = JSON.parse(raw) as Frame;
+        if (evt.type === 'delta') onDelta(evt.text);
+        else if (evt.type === 'done') onDone(evt.body);
+        else if (evt.type === 'error') throw new Error(evt.detail);
+        if (signal?.aborted) {
+          await reader.cancel();
+          return;
+        }
+      }
     }
+  } catch (e) {
+    if (signal?.aborted) return;
+    throw e;
   }
 }

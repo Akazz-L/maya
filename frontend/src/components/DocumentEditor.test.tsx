@@ -3,6 +3,7 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DocumentEditor } from './DocumentEditor';
 import type { DocumentDetail } from '../api/types';
+import { typeAtEnd, viewFor } from '../test/editor';
 
 const DOC: DocumentDetail = {
   id: 'c1',
@@ -21,30 +22,28 @@ afterEach(() => vi.useRealTimers());
 
 describe('DocumentEditor', () => {
   it('renders the title, brief, and body', () => {
-    render(<DocumentEditor document={DOC} readOnly={false} onSave={vi.fn()} saveState="idle" />);
+    render(<DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={vi.fn()} saveState="idle" />);
     expect(screen.getByDisplayValue('Chapter 1')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Mara waits.')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('The rain.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Document body')).toHaveTextContent('The rain.');
   });
 
-  it('debounces the body save', async () => {
+  it('debounces the body save', () => {
     const onSave = vi.fn();
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<DocumentEditor document={DOC} readOnly={false} onSave={onSave} saveState="idle" />);
+    render(<DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={onSave} saveState="idle" />);
 
-    await user.type(screen.getByLabelText('Document body'), '!');
+    typeAtEnd('Document body', '!');
     onSave.mockClear();
 
     act(() => void vi.advanceTimersByTime(800));
     expect(onSave).toHaveBeenCalledWith({ body: 'The rain.!' });
   });
 
-  it('does not save before the debounce elapses', async () => {
+  it('does not save before the debounce elapses', () => {
     const onSave = vi.fn();
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<DocumentEditor document={DOC} readOnly={false} onSave={onSave} saveState="idle" />);
+    render(<DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={onSave} saveState="idle" />);
 
-    await user.type(screen.getByLabelText('Document body'), '!');
+    typeAtEnd('Document body', '!');
     act(() => void vi.advanceTimersByTime(400));
     expect(onSave).not.toHaveBeenCalled();
   });
@@ -53,6 +52,7 @@ describe('DocumentEditor', () => {
     render(
       <DocumentEditor
         document={{ ...DOC, kind: 'bible', brief: '' }}
+        projectId="p1"
         readOnly={false}
         onSave={vi.fn()}
         saveState="idle"
@@ -62,30 +62,31 @@ describe('DocumentEditor', () => {
   });
 
   it('disables the body while read-only', () => {
-    render(<DocumentEditor document={DOC} readOnly onSave={vi.fn()} saveState="idle" />);
-    expect(screen.getByLabelText('Document body')).toBeDisabled();
+    render(<DocumentEditor document={DOC} projectId="p1" readOnly onSave={vi.fn()} saveState="idle" />);
+    expect(screen.getByLabelText('Document body')).toHaveAttribute('contenteditable', 'false');
   });
 
   it('shows the streaming override instead of local state', () => {
     render(
       <DocumentEditor
         document={DOC}
+        projectId="p1"
         readOnly
         onSave={vi.fn()}
         saveState="idle"
         bodyOverride="The rain. Streaming…"
       />,
     );
-    expect(screen.getByDisplayValue('The rain. Streaming…')).toBeInTheDocument();
+    expect(viewFor('Document body').state.doc.toString()).toBe('The rain. Streaming…');
   });
 
   it('merges edits made inside one debounce window', async () => {
     const onSave = vi.fn();
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<DocumentEditor document={DOC} readOnly={false} onSave={onSave} saveState="idle" />);
+    render(<DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={onSave} saveState="idle" />);
 
     await user.type(screen.getByLabelText('Document title'), '!');
-    await user.type(screen.getByLabelText('Document body'), '?');
+    typeAtEnd('Document body', '?');
     onSave.mockClear();
 
     act(() => void vi.advanceTimersByTime(800));
@@ -93,14 +94,13 @@ describe('DocumentEditor', () => {
     expect(onSave).toHaveBeenCalledWith({ title: 'Chapter 1!', body: 'The rain.?' });
   });
 
-  it('flushes a pending edit on unmount instead of losing it', async () => {
+  it('flushes a pending edit on unmount instead of losing it', () => {
     const onSave = vi.fn();
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const { unmount } = render(
-      <DocumentEditor document={DOC} readOnly={false} onSave={onSave} saveState="idle" />,
+      <DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={onSave} saveState="idle" />,
     );
 
-    await user.type(screen.getByLabelText('Document body'), '!');
+    typeAtEnd('Document body', '!');
     onSave.mockClear();
 
     unmount(); // e.g. the user switched documents mid-debounce
@@ -108,7 +108,19 @@ describe('DocumentEditor', () => {
   });
 
   it('reports the save state', () => {
-    render(<DocumentEditor document={DOC} readOnly={false} onSave={vi.fn()} saveState="saving" />);
+    render(<DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={vi.fn()} saveState="saving" />);
     expect(screen.getByText(/saving/i)).toBeInTheDocument();
+  });
+
+  it('does not autosave the streaming override', () => {
+    const onSave = vi.fn();
+    const { rerender } = render(
+      <DocumentEditor document={DOC} projectId="p1" readOnly onSave={onSave} saveState="idle" bodyOverride="The rain. S" />,
+    );
+    rerender(
+      <DocumentEditor document={DOC} projectId="p1" readOnly onSave={onSave} saveState="idle" bodyOverride="The rain. St" />,
+    );
+    act(() => void vi.advanceTimersByTime(800));
+    expect(onSave).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 // Thin, typed wrappers around the backend REST routes. Every data route is
-// scoped to a project and requires auth; the streaming routes (draft/revise)
+// scoped to a project and requires auth; the streaming routes (draft/revise/rewrite)
 // live in stream.ts and are driven by useDraftStream.
 
 import { request } from './client';
@@ -97,3 +97,5 @@ export const draftStreamUrl = (projectId: string, documentId: string) =>
   `/projects/${projectId}/documents/${documentId}/draft/stream`;
 export const reviseStreamUrl = (projectId: string, documentId: string) =>
   `/projects/${projectId}/documents/${documentId}/revise/stream`;
+export const rewriteStreamUrl = (projectId: string, documentId: string) =>
+  `/projects/${projectId}/documents/${documentId}/rewrite/stream`;
