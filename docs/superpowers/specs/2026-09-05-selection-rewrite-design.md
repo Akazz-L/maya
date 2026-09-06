@@ -206,3 +206,22 @@ Both cards use the same visual language: white surface, a soft shadow, a hairlin
 - Edit: `backend/routes/generate.py`, `tests/test_generate_api.py`
 - New: `frontend/src/components/ProseEditor.tsx`, `RewritePrompt.tsx`, `RewriteReviewBar.tsx`, `frontend/src/editor/rewriteExtension.ts`, `frontend/src/hooks/useSelectionRewrite.ts`, `frontend/src/lib/rewrite.ts`, and their tests
 - Edit: `frontend/src/components/DocumentEditor.tsx`, `frontend/src/screens/WorkspaceScreen.tsx`, `frontend/src/api/endpoints.ts`, `frontend/src/api/stream.ts`, `frontend/package.json`
+
+## Amendments
+
+### 2026-09-06 — Truncated replies
+
+The `selection` limit of 20 000 characters can exceed what a 4096-token reply can hold.
+Rather than lowering the limit, the rewriter inspects the final message's `stop_reason`.
+When it is `max_tokens`, the agent raises `RewriteTruncatedError` and the endpoint emits an `error` frame asking the writer to select a shorter passage.
+The document is never modified, and the review bar shows the message with Retry and Discard.
+
+### 2026-09-06 — Context echo guard
+
+A live rewrite continued into the after-context, so accepting it duplicated prose.
+The system prompt now states that the reply must begin where the passage begins and end where it ends.
+The client additionally strips a leading echo of the before-context or a trailing echo of the after-context of at least 24 characters, keeping the reply non-empty, before the edge whitespace is matched.
+
+### 2026-09-06 — Document changes during review
+
+Accept re-validates that the range still holds the original selection, and the layer abandons a streaming or reviewing rewrite when any document change other than Accept itself reaches the editor.
