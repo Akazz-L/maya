@@ -84,8 +84,9 @@ async def generate_plan(
 ):
     document = await _require_chapter(db, project.id, document_id)
     meter = Meter(db, user, user.model_key)
-    state = await _base_state(db, document, user.model_key, meter)
-    result = await planner_node(state, user.model_key)
+    async with meter.flushed_on_error():
+        state = await _base_state(db, document, user.model_key, meter)
+        result = await planner_node(state, user.model_key)
     meter.add("plan", result["usage"])
     document.plan = result["scene_plan"]
     await meter.flush()
@@ -101,9 +102,10 @@ async def generate_check(
 ):
     document = await _require_chapter(db, project.id, document_id)
     meter = Meter(db, user, user.model_key)
-    state = await _base_state(db, document, user.model_key, meter)
-    state["draft"] = document.body
-    result = await checker_node(state, user.model_key)
+    async with meter.flushed_on_error():
+        state = await _base_state(db, document, user.model_key, meter)
+        state["draft"] = document.body
+        result = await checker_node(state, user.model_key)
     meter.add("check", result["usage"])
     document.issues = result["continuity_issues"]
     await meter.flush()
@@ -124,7 +126,8 @@ async def generate_draft_stream(
     await db.commit()
 
     meter = Meter(db, user, user.model_key)
-    state = await _base_state(db, document, user.model_key, meter)
+    async with meter.flushed_on_error():
+        state = await _base_state(db, document, user.model_key, meter)
     state["scene_plan"] = body.plan
     existing = document.body
 
@@ -148,6 +151,9 @@ async def generate_draft_stream(
                 }
             )
         except Exception as e:
+            # The summaries refreshed before the stream, and whatever the call
+            # billed before failing, are written before the error goes out.
+            await meter.flush()
             yield _sse({"type": "error", "detail": str(e)})
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
@@ -162,7 +168,8 @@ async def revise_stream(
 ):
     document = await _require_chapter(db, project.id, document_id)
     meter = Meter(db, user, user.model_key)
-    state = await _base_state(db, document, user.model_key, meter)
+    async with meter.flushed_on_error():
+        state = await _base_state(db, document, user.model_key, meter)
     # Both set => _build_messages takes its revision branch.
     state["draft"] = document.body
     state["continuity_issues"] = document.issues or []
@@ -187,6 +194,8 @@ async def revise_stream(
                 }
             )
         except Exception as e:
+            # As in /draft/stream: billed usage is written before the error.
+            await meter.flush()
             yield _sse({"type": "error", "detail": str(e)})
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)

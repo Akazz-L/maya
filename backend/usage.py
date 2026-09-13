@@ -6,6 +6,8 @@ writer a reset date to read.
 """
 
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -108,11 +110,28 @@ class Meter:
     def __init__(self, db: AsyncSession, user: User, model_key: str):
         self._db = db
         self._user = user
+        # Read once: a failed commit rolls the session back and expires `user`,
+        # and reloading an expired attribute is not possible under AsyncSession.
+        self._user_id = user.id
         self._model_key = model_key
         self._events: list[tuple[str, Usage]] = []
 
     def add(self, operation: str, usage: Usage) -> None:
         self._events.append((operation, usage))
+
+    @asynccontextmanager
+    async def flushed_on_error(self) -> AsyncIterator[None]:
+        """Write what was collected if the block raises, then let it raise.
+
+        For the stretch of a request before its own result exists: a summary
+        refreshed there was billed whether or not the generation after it
+        succeeds.
+        """
+        try:
+            yield
+        except Exception:
+            await self.flush()
+            raise
 
     async def flush(self) -> None:
         """Write the collected usage and commit.
@@ -120,11 +139,15 @@ class Meter:
         Always commits, even with nothing collected, so a caller can use this
         in place of the `db.commit()` that persists its own changes rather than
         having to remember both.
+
+        The collected usage is kept until the commit succeeds. A failed commit
+        rolls the session back, so a later flush writes the same rows again
+        rather than finding them gone: every one of them was a billed call.
         """
         for operation, usage in self._events:
             self._db.add(
                 UsageEvent(
-                    user_id=self._user.id,
+                    user_id=self._user_id,
                     model_key=self._model_key,
                     operation=operation,
                     input_tokens=usage.input_tokens,
@@ -134,8 +157,12 @@ class Meter:
                     cost_micro_usd=int(cost_usd(self._model_key, usage) * _MICRO),
                 )
             )
+        try:
+            await self._db.commit()
+        except BaseException:
+            await self._db.rollback()
+            raise
         self._events.clear()
-        await self._db.commit()
 
     async def snapshot(self) -> UsageSnapshot:
         return await snapshot(self._db, self._user)
@@ -148,7 +175,11 @@ async def require_ai_budget(
     """Refuse to start any generation once the month's budget is spent.
 
     Pre-flight only: a call already under way always runs to completion, so a
-    writer can overshoot by at most one call and never loses a draft mid-stream.
+    writer never loses a draft mid-stream. The check reads the ledger without
+    reserving anything, and a call's cost lands only when it finishes, so every
+    request that starts under the cap is allowed through. The overshoot is
+    therefore bounded by the requests a writer has in flight at once (one call
+    each, plus the summaries it refreshes), not by a single call.
     Because this runs before the StreamingResponse is constructed, a blocked
     stream fails as a plain 402 body rather than an error frame inside an
     otherwise-successful SSE response.

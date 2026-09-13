@@ -26,6 +26,9 @@ async def build_previous_summaries(
     Reuses a document's cached summary while its body is unchanged; summarizes
     the stale ones concurrently and writes the new summaries back. Each fresh
     summary costs an API call, so every one is reported through `on_usage`.
+
+    If some summaries fail, the ones that came back are still stored and
+    reported, since they were billed, before the first failure is raised.
     """
     result = await db.execute(
         select(Document)
@@ -43,11 +46,20 @@ async def build_previous_summaries(
     if stale:
         # Only the API calls run concurrently. AsyncSession is not
         # concurrency-safe, so every DB write happens after the gather returns.
-        results = await asyncio.gather(*(summarize_node(d.body, model_key) for d in stale))
-        for document, (summary, usage) in zip(stale, results):
+        results = await asyncio.gather(
+            *(summarize_node(d.body, model_key) for d in stale), return_exceptions=True
+        )
+        failure: BaseException | None = None
+        for document, result in zip(stale, results):
+            if isinstance(result, BaseException):
+                failure = failure or result
+                continue
+            summary, usage = result
             document.summary = summary
             document.summary_hash = body_hash(document.body)
             on_usage(usage)
         await db.commit()
+        if failure is not None:
+            raise failure
 
     return [d.summary for d in documents]

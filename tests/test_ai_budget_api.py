@@ -159,10 +159,10 @@ async def test_a_completed_draft_stream_reports_usage_in_its_done_frame(
     assert done["usage"]["percent"] == 20.0
 
 
-@pytest.mark.asyncio
-async def test_summarizer_calls_are_metered_too(chapter, sample_scene_plan, db, user):
-    """They fire implicitly before a generation; unmetered they would be spend
-    the writer never sees."""
+@pytest_asyncio.fixture
+async def chapter_after_a_written_one(chapter):
+    """A chapter whose predecessor has a body but no summary yet, so any
+    generation on it first refreshes that summary: a billed call."""
     client, project_id, doc_id = chapter
     earlier = (
         await client.post(f"/projects/{project_id}/documents", json={"title": "Chapter 0"})
@@ -175,12 +175,28 @@ async def test_summarizer_calls_are_metered_too(chapter, sample_scene_plan, db, 
         f"/projects/{project_id}/documents/order",
         json={"document_ids": [bible, earlier, doc_id]},
     )
+    return client, project_id, doc_id
+
+
+def _billed_summary():
+    return patch(
+        "backend.context.summarize_node",
+        new=AsyncMock(return_value=("Elena departed.", Usage(input_tokens=1_000_000))),
+    )
+
+
+async def _operations(db) -> list[str]:
+    return sorted(e.operation for e in (await db.execute(select(UsageEvent))).scalars().all())
+
+
+@pytest.mark.asyncio
+async def test_summarizer_calls_are_metered_too(chapter_after_a_written_one, sample_scene_plan, db):
+    """They fire implicitly before a generation; unmetered they would be spend
+    the writer never sees."""
+    client, project_id, doc_id = chapter_after_a_written_one
 
     with (
-        patch(
-            "backend.context.summarize_node",
-            new=AsyncMock(return_value=("Elena departed.", Usage(input_tokens=1_000_000))),
-        ),
+        _billed_summary(),
         patch(
             "backend.routes.generate.planner_node",
             new=AsyncMock(return_value={"scene_plan": sample_scene_plan, "usage": Usage()}),
@@ -188,10 +204,49 @@ async def test_summarizer_calls_are_metered_too(chapter, sample_scene_plan, db, 
     ):
         await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
 
-    operations = sorted(
-        e.operation for e in (await db.execute(select(UsageEvent))).scalars().all()
-    )
-    assert operations == ["plan", "summarize"]
+    assert await _operations(db) == ["plan", "summarize"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path,agent", [("plan", "planner_node"), ("check", "checker_node")])
+async def test_summaries_stay_metered_when_the_generation_after_them_fails(
+    chapter_after_a_written_one, db, path, agent
+):
+    client, project_id, doc_id = chapter_after_a_written_one
+
+    with (
+        _billed_summary(),
+        patch(
+            f"backend.routes.generate.{agent}",
+            new=AsyncMock(side_effect=RuntimeError("model exploded")),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="model exploded"):
+            await client.post(f"/projects/{project_id}/documents/{doc_id}/{path}")
+
+    assert await _operations(db) == ["summarize"]
+
+
+async def _exploding_stream(state, model_key, on_usage):
+    raise RuntimeError("model exploded")
+    yield  # pragma: no cover — makes this an async generator
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path,body", [("draft/stream", {"plan": {}}), ("revise/stream", None)])
+async def test_summaries_stay_metered_when_the_stream_after_them_fails(
+    chapter_after_a_written_one, db, path, body
+):
+    client, project_id, doc_id = chapter_after_a_written_one
+
+    with (
+        _billed_summary(),
+        patch("backend.routes.generate.drafter_token_stream", new=_exploding_stream),
+    ):
+        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/{path}", json=body)
+
+    assert "model exploded" in next(f for f in _parse_sse(resp.text) if f["type"] == "error")["detail"]
+    assert await _operations(db) == ["summarize"]
 
 
 # ---------------------------------------------------------------------------

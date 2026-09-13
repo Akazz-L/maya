@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import event
 
 from backend.db_models import UsageEvent, User
 from backend.llm import Usage
@@ -186,3 +187,33 @@ async def test_meter_does_not_double_write_on_a_second_flush(db, user):
     await meter.flush()
     await meter.flush()
     assert await spent_micro_usd(db, user.id) == 1 * DOLLAR
+
+
+@pytest.mark.asyncio
+async def test_a_failed_commit_keeps_the_usage_for_the_next_flush(db, user):
+    """Every collected event was a billed call. A commit that fails must leave
+    them in place for a retry, and written once, not lost or doubled."""
+    user_id = user.id  # the failed commit's rollback expires `user`
+    meter = Meter(db, user, "haiku")
+    meter.add("plan", Usage(input_tokens=1_000_000))
+
+    # Fail at the database rather than mocking commit(), so the session ends up
+    # where a real failure leaves it: pending rows discarded, rollback required.
+    failures = iter([RuntimeError("db down")])
+
+    def fail_first_insert(conn, cursor, statement, parameters, context, executemany):
+        if statement.startswith("INSERT INTO usage_events"):
+            error = next(failures, None)
+            if error is not None:
+                raise error
+
+    engine = db.bind.sync_engine
+    event.listen(engine, "before_cursor_execute", fail_first_insert)
+    try:
+        with pytest.raises(RuntimeError, match="db down"):
+            await meter.flush()
+        await meter.flush()
+    finally:
+        event.remove(engine, "before_cursor_execute", fail_first_insert)
+
+    assert await spent_micro_usd(db, user_id) == 1 * DOLLAR

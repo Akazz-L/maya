@@ -142,8 +142,9 @@ The meter sums the current calendar month in UTC.
 
 Enforcement is pre-flight: a generation is refused with a `402` once the month's
 spend reaches the budget, but a call already running always finishes.
-A writer can therefore overshoot by at most one call, and never loses a draft
-mid-stream.
+A writer therefore never loses a draft mid-stream.
+The check reserves nothing, and a call's cost is recorded only when it finishes, so every request that starts under the cap goes through.
+Overshoot is bounded by how many requests a writer has in flight at once, not by a single call.
 
 To raise one writer's cap without moving everyone's:
 

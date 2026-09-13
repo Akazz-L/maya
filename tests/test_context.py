@@ -122,3 +122,29 @@ async def test_reports_usage_for_every_fresh_summary(db, project):
     with patch("backend.context.summarize_node", new=AsyncMock(side_effect=lambda t, m: (t, _usage()))):
         await build_previous_summaries(db, project.id, 3, MODEL_KEY, seen.append)
     assert len(seen) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_failed_summary_keeps_and_reports_the_ones_that_came_back(db, project):
+    """Each summary that came back was a billed call. A sibling failing must
+    not throw away its result or its cost."""
+    from backend.context import build_previous_summaries
+
+    first = await _chapter(db, project.id, 1, "First.")
+    await _chapter(db, project.id, 2, "Second.")
+
+    async def flaky(text, model_key):
+        if text == "Second.":
+            raise RuntimeError("overloaded")
+        return f"sum:{text}", _usage()
+
+    seen = []
+    with patch("backend.context.summarize_node", new=flaky):
+        with pytest.raises(RuntimeError, match="overloaded"):
+            await build_previous_summaries(db, project.id, 3, MODEL_KEY, seen.append)
+    assert len(seen) == 1
+
+    # Discard anything uncommitted, so what is read back is what was stored.
+    await db.rollback()
+    await db.refresh(first)
+    assert first.summary == "sum:First."
