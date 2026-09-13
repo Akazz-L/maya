@@ -83,8 +83,9 @@ A proposal is stored as:
 **Pure helpers**, unit-tested:
 
 - `apply_edits(body, edits) -> str` — every `find` must be non-empty, occur exactly once in the original body, and not overlap another edit; all edits apply against original positions.
-  Violations raise `EditError` listing each failing edit.
-- `proposed_body(body, tool_name, tool_input) -> str` — replace returns the text, append joins with a blank line (no leading blank line on an empty body), edit applies the edits.
+  Violations raise `ProposalError` listing each failing edit.
+- `build_proposal(body, tool_name, tool_input) -> dict` — the proposal's fields plus `proposed_body`: replace takes the text, append joins with a blank line (no leading blank line on an empty body), edit applies the edits.
+  A malformed write or empty edit list also raises `ProposalError`.
 - `render_history(messages) -> list[dict]` — earlier turns as plain-text API messages.
 - `build_turn(state) -> (system, messages)`.
 
@@ -108,7 +109,7 @@ That keeps each request independent of which model produced earlier turns (the w
 Usage is reported through `on_usage` after every API call.
 A reply cut off at `max_tokens` raises `ChatTruncatedError`.
 An `edit_draft` that fails `apply_edits` gets one in-turn correction: the reply is appended with its full content and a `tool_result` marked `is_error` explaining the failure, and the model tries again.
-A second failure raises `EditError`.
+A second failure raises `ProposalError`.
 A reply with neither text nor a proposal raises.
 
 ### Routes — `backend/routes/chat.py`
@@ -178,7 +179,7 @@ The editor is read-only while a chat reply streams and while a proposal is under
 
 ### Backend
 
-- `tests/test_chat_agent.py`: `apply_edits` (unique, missing, ambiguous, overlapping, empty find), `proposed_body`, `render_history` (descriptions, outcome notes, cap starting on a user message), prompt contents, and the event stream against a fake SDK stream (text, progress, proposal, edit retry, second failure, truncation, usage per call).
+- `tests/test_chat_agent.py`: `apply_edits` (unique, missing, ambiguous, overlapping, empty find), `build_proposal`, `render_history` (descriptions, outcome notes, cap starting on a user message), prompt contents, and the event stream against a fake SDK stream (text, progress, proposal, edit retry, second failure, truncation, usage per call).
 - `tests/test_chat_api.py`: persistence, frames, 409 while pending, outcomes, `proposed_body` dropped on resolve, clear, note → 400, error persists nothing but usage, `chat` usage recorded, deletion removes messages.
 - `tests/test_generate_api.py`, `tests/test_drafter.py`: draft-route and from-scratch tests removed; revision tests kept.
 
@@ -188,3 +189,17 @@ The editor is read-only while a chat reply streams and while a proposal is under
 - `components/ChatPane.test.tsx`, `components/ProposalLayer.test.tsx`.
 - `components/ChapterToolbar.test.tsx`, `components/PlanPanel.test.tsx` updated.
 - `screens/WorkspaceScreen.test.tsx`: send → stream → review → accept autosaves and records the outcome; stale proposal; Generate Draft from the plan sends a chat message; the debounce-window flush regression.
+
+## Amendments
+
+### 2026-09-13 — Truncated revisions
+
+Moving the revision prompt out of `drafter.py` surfaced a data-loss bug on the unchanged revise path.
+`/revise/stream` asked for at most 4,096 output tokens, never checked `stop_reason`, and replaced the whole body with whatever came back, so a revision of a long chapter silently dropped its ending.
+The prompt now lives in `agents/reviser.py`, which asks for up to 16,000 tokens and raises `RevisionTruncatedError` on a `max_tokens` stop; the route turns that into an `error` frame and leaves the body untouched.
+The route also refuses with 400 when the chapter has no body or no issues, instead of falling through to the removed from-scratch prompt.
+
+### 2026-09-13 — Word diff ceiling
+
+A replace proposal for a long chapter can differ from the old text almost everywhere, and an unbounded word diff over it can stall the page.
+`wordDiff` caps the edit distance it explores and, past the cap, shows the old passage as removed and the new one as added.

@@ -3,95 +3,71 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChapterToolbar } from './ChapterToolbar';
 
+function props(overrides: Partial<React.ComponentProps<typeof ChapterToolbar>> = {}) {
+  return {
+    busy: false,
+    aiBlocked: false,
+    onGeneratePlan: vi.fn(),
+    onCheck: vi.fn(),
+    hasPanelContent: false,
+    panelOpen: false,
+    onTogglePanel: vi.fn(),
+    chatOpen: false,
+    onToggleChat: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe('ChapterToolbar', () => {
   it('fires each action', async () => {
-    const props = {
-      busy: false,
-      aiBlocked: false,
-      onGeneratePlan: vi.fn(),
-      onGenerateDraft: vi.fn(),
-      onCheck: vi.fn(),
-      hasPanelContent: false,
-      panelOpen: false,
-      onTogglePanel: vi.fn(),
-    };
-    render(<ChapterToolbar {...props} />);
+    const p = props();
+    render(<ChapterToolbar {...p} />);
 
     await userEvent.click(screen.getByRole('button', { name: /generate plan/i }));
-    await userEvent.click(screen.getByRole('button', { name: /generate draft/i }));
     await userEvent.click(screen.getByRole('button', { name: /^check$/i }));
 
-    expect(props.onGeneratePlan).toHaveBeenCalled();
-    expect(props.onGenerateDraft).toHaveBeenCalled();
-    expect(props.onCheck).toHaveBeenCalled();
+    expect(p.onGeneratePlan).toHaveBeenCalled();
+    expect(p.onCheck).toHaveBeenCalled();
   });
 
-  it('disables everything while busy', () => {
-    render(
-      <ChapterToolbar
-        busy
-        aiBlocked={false}
-        onGeneratePlan={vi.fn()}
-        onGenerateDraft={vi.fn()}
-        onCheck={vi.fn()}
-        hasPanelContent={false}
-        panelOpen={false}
-        onTogglePanel={vi.fn()}
-      />,
-    );
-    screen.getAllByRole('button').forEach((b) => expect(b).toBeDisabled());
+  it('no longer drafts behind a hidden plan: drafting lives in the chat', () => {
+    render(<ChapterToolbar {...props()} />);
+    expect(screen.queryByRole('button', { name: /generate draft/i })).not.toBeInTheDocument();
   });
 
-  it('disables the model actions but not the panel toggle when AI is blocked', () => {
-    render(
-      <ChapterToolbar
-        busy={false}
-        aiBlocked
-        onGeneratePlan={vi.fn()}
-        onGenerateDraft={vi.fn()}
-        onCheck={vi.fn()}
-        hasPanelContent
-        panelOpen={false}
-        onTogglePanel={vi.fn()}
-      />,
-    );
+  it('disables the model actions while busy, but never the chat toggle', () => {
+    render(<ChapterToolbar {...props({ busy: true })} />);
     expect(screen.getByRole('button', { name: /generate plan/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /generate draft/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^check$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^chat$/i })).toBeEnabled();
+  });
+
+  it('disables the model actions but not the toggles when AI is blocked', () => {
+    render(<ChapterToolbar {...props({ aiBlocked: true, hasPanelContent: true })} />);
+    expect(screen.getByRole('button', { name: /generate plan/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /^check$/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /show plan/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^chat$/i })).toBeEnabled();
   });
 
   it('disables the panel toggle when there is nothing to show', () => {
-    render(
-      <ChapterToolbar
-        busy={false}
-        aiBlocked={false}
-        onGeneratePlan={vi.fn()}
-        onGenerateDraft={vi.fn()}
-        onCheck={vi.fn()}
-        hasPanelContent={false}
-        panelOpen={false}
-        onTogglePanel={vi.fn()}
-      />,
-    );
+    render(<ChapterToolbar {...props()} />);
     expect(screen.getByRole('button', { name: /show plan/i })).toBeDisabled();
   });
 
   it('toggles a saved plan back into view', async () => {
-    const onTogglePanel = vi.fn();
-    render(
-      <ChapterToolbar
-        busy={false}
-        aiBlocked={false}
-        onGeneratePlan={vi.fn()}
-        onGenerateDraft={vi.fn()}
-        onCheck={vi.fn()}
-        hasPanelContent
-        panelOpen={false}
-        onTogglePanel={onTogglePanel}
-      />,
-    );
+    const p = props({ hasPanelContent: true });
+    render(<ChapterToolbar {...p} />);
     await userEvent.click(screen.getByRole('button', { name: /show plan/i }));
-    expect(onTogglePanel).toHaveBeenCalled();
+    expect(p.onTogglePanel).toHaveBeenCalled();
+  });
+
+  it('toggles the chat and shows whether it is open', async () => {
+    const p = props({ chatOpen: true });
+    render(<ChapterToolbar {...p} />);
+    const toggle = screen.getByRole('button', { name: /^chat$/i });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(toggle);
+    expect(p.onToggleChat).toHaveBeenCalled();
   });
 });

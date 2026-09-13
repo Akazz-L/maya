@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
-import type { DocumentDetail, UsageSnapshot } from '../api/types';
+import type { DocumentDetail, ProposalOutcome, UsageSnapshot } from '../api/types';
+import { proposalExtension } from '../editor/proposalExtension';
 import { rewriteExtension, type RewriteHost } from '../editor/rewriteExtension';
+import { ProposalLayer, type ProposalView } from './ProposalLayer';
 import { ProseEditor } from './ProseEditor';
 import { RewriteLayer } from './RewriteLayer';
 
@@ -29,6 +31,14 @@ interface DocumentEditorProps {
   aiBlocked?: boolean;
   /** The writer's spend including a finished rewrite. */
   onUsage?: (usage: UsageSnapshot | undefined) => void;
+  /** A chat proposal streaming in or awaiting review; the body is read-only meanwhile. */
+  proposal?: ProposalView | null;
+  onProposalResolve?: (outcome: ProposalOutcome) => void;
+  /**
+   * Filled with a function that saves any edit still waiting out the autosave
+   * debounce, for callers about to ask the server to read the document.
+   */
+  flushRef?: { current: (() => void) | null };
 }
 
 function SaveIndicator({ state }: { state: SaveState }) {
@@ -54,6 +64,9 @@ export function DocumentEditor({
   onBusyChange,
   aiBlocked = false,
   onUsage,
+  proposal = null,
+  onProposalResolve,
+  flushRef,
 }: DocumentEditorProps) {
   const [title, setTitle] = useState(document.title);
   const [brief, setBrief] = useState(document.brief);
@@ -73,7 +86,7 @@ export function DocumentEditor({
     },
   }));
   const extensions = useMemo(
-    () => (isChapter ? [rewriteExtension(rewriteHost)] : []),
+    () => (isChapter ? [rewriteExtension(rewriteHost), proposalExtension()] : []),
     [isChapter, rewriteHost],
   );
   const onBusyChangeRef = useRef(onBusyChange);
@@ -108,6 +121,17 @@ export function DocumentEditor({
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(flush, AUTOSAVE_MS);
   };
+
+  useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = () => {
+      if (timer.current) clearTimeout(timer.current);
+      flush();
+    };
+    return () => {
+      flushRef.current = null;
+    };
+  });
 
   // Switching documents unmounts this component; flush rather than cancel, or
   // the last edits before the switch are silently lost. The closure still holds
@@ -149,9 +173,9 @@ export function DocumentEditor({
 
       <ProseEditor
         value={bodyOverride ?? body}
-        readOnly={readOnly || rewriteBusy}
+        readOnly={readOnly || rewriteBusy || proposal !== null}
         ariaLabel="Document body"
-        placeholder={isChapter ? 'Write, or generate a draft…' : undefined}
+        placeholder={isChapter ? 'Write, or ask the chat for a draft…' : undefined}
         extensions={extensions}
         onViewReady={setView}
         onChange={(text) => {
@@ -165,10 +189,17 @@ export function DocumentEditor({
             hostRef={rewriteHost}
             projectId={projectId}
             documentId={document.id}
-            enabled={!readOnly}
+            enabled={!readOnly && proposal === null}
             aiBlocked={aiBlocked}
             onBusyChange={handleBusy}
             onUsage={onUsage}
+          />
+        )}
+        {isChapter && view && (
+          <ProposalLayer
+            view={view}
+            proposal={proposal}
+            onResolve={(outcome) => onProposalResolve?.(outcome)}
           />
         )}
       </ProseEditor>

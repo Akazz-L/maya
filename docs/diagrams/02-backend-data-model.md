@@ -8,6 +8,7 @@ Defined in `backend/db_models.py`; the schema itself is owned by Alembic (`alemb
 erDiagram
     USERS ||--o{ PROJECTS : owns
     PROJECTS ||--o{ DOCUMENTS : contains
+    DOCUMENTS ||--o{ CHAT_MESSAGES : "chat"
 
     USERS {
         uuid id PK
@@ -41,6 +42,16 @@ erDiagram
         datetime created_at
         datetime updated_at
     }
+
+    CHAT_MESSAGES {
+        uuid id PK
+        uuid document_id FK "→ documents.id, ON DELETE CASCADE"
+        int position "0-based, unique per document"
+        string role "user | assistant"
+        text content
+        json proposal "assistant only, or null"
+        datetime created_at
+    }
 ```
 
 Three rules live in this table rather than in application code, and they are the ones worth knowing:
@@ -58,6 +69,12 @@ It is the sidebar order and the chapter order at once — `build_previous_summar
 It records the `sha256` of the body *at the time the summary was written*.
 Any write to `body` sets it to `NULL`, invalidating the cached summary.
 See [03](03-backend-workflows.md#summary-caching).
+
+One more rule belongs to `chat_messages`: **the server never applies a proposal.**
+`proposal` records what the assistant proposed (`kind`, then `mode` and `text` or `edits`), the `sha256` of the body it was computed against (`base_hash`), the whole body it would produce (`proposed_body`, cleared once resolved), and what the writer did with it (`outcome`: `accepted`, `discarded`, `stale`, or null while under review).
+The editor applies it only while its own text still hashes to `base_hash`.
+`delete_document` removes a chapter's messages explicitly, because SQLite enforces the foreign key's cascade only under a pragma the app does not set.
+See [03](03-backend-workflows.md#chapter-chat).
 
 ## The legacy tables
 
@@ -100,7 +117,7 @@ Everything a chapter used to hold now lives on a single `documents` row: `draft`
 
 ## The agent state contract
 
-The four agent functions in `backend/agents/` share one plain-dict shape, assembled by `_base_state` in `routes/generate.py`.
+The agent functions in `backend/agents/` share one plain-dict shape, assembled by `build_chapter_state` in `backend/context.py`.
 It is not a class — this diagram describes the keys, not a type that exists in the code.
 
 | Key | Where it comes from |
@@ -109,8 +126,10 @@ It is not a class — this diagram describes the keys, not a type that exists in
 | `story_bible` | the body of the project's one `bible` document |
 | `previous_summaries` | earlier chapters, oldest first (see [03](03-backend-workflows.md#summary-caching)) |
 | `scene_plan` | `document.plan`, or `{}` when there is none |
-| `draft` | the prose being checked or revised; empty when drafting from scratch |
+| `draft` | the chapter body: what Check reads, Revise fixes, and the chat proposes changes to |
 | `continuity_issues` | `document.issues`; `severity` is one of `critical`, `minor`, `style` |
+| `history` | chat only: the chapter's earlier messages, from `chat_storage.history` |
+| `message` | chat only: the writer's new message |
 
 ```mermaid
 classDiagram
@@ -149,12 +168,17 @@ classDiagram
         reads outline_beat, story_bible, previous_summaries
         returns scene_plan
     }
-    class drafter_token_stream {
+    class chat_event_stream {
         <<async generator>>
-        +drafter_token_stream(state) AsyncIterator~str~
-        reads story_bible, scene_plan, previous_summaries
-        also reads draft and continuity_issues when revising
-        yields prose deltas
+        +chat_event_stream(state) AsyncIterator~ChatEvent~
+        reads every key, plus history and message
+        yields text deltas, proposal progress, one proposal
+    }
+    class reviser_token_stream {
+        <<async generator>>
+        +reviser_token_stream(state) AsyncIterator~str~
+        reads story_bible, scene_plan, draft, continuity_issues
+        yields the revised chapter
     }
     class checker_node {
         <<async>>
@@ -171,7 +195,8 @@ classDiagram
     AgentState ..> ScenePlan : scene_plan holds
     AgentState ..> Issue : continuity_issues holds
     planner_node ..> AgentState
-    drafter_token_stream ..> AgentState
+    chat_event_stream ..> AgentState
+    reviser_token_stream ..> AgentState
     checker_node ..> AgentState
 ```
 
@@ -179,4 +204,5 @@ classDiagram
 Both raise `RuntimeError` if the response carries no `tool_use` block.
 The frontend mirrors both shapes as TypeScript interfaces in `frontend/src/api/types.ts`; those two files must be changed together.
 
-`drafter_token_stream` is the only agent with two behaviors: `_build_messages` takes its revision branch when `draft` **and** `continuity_issues` are both non-empty, and its from-scratch branch otherwise.
+`chat_event_stream` is the only agent whose model chooses between tools: `write_draft` (replace or append) and `edit_draft` (exact find/replace).
+`build_proposal` turns the call into a proposal and computes the body it would produce; a call that cannot become one gets a single correction inside the turn.

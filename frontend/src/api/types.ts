@@ -96,3 +96,35 @@ export interface Me {
   models: ModelOption[];
   usage: UsageSnapshot;
 }
+
+// ── chapter chat ─────────────────────────────────────────────────────────────
+
+/** What the writer did with a proposal. `stale`: the chapter no longer matched it. */
+export type ProposalOutcome = 'accepted' | 'discarded' | 'stale';
+
+export interface ChatEdit {
+  find: string;
+  replace: string;
+}
+
+interface ProposalBase {
+  /** sha256 of the chapter body the proposal was computed against. */
+  base_hash: string;
+  /** The whole body after applying it; null once resolved. */
+  proposed_body: string | null;
+  outcome: ProposalOutcome | null;
+}
+
+export type ChatProposal =
+  | (ProposalBase & { kind: 'write'; mode: 'replace' | 'append'; text: string })
+  | (ProposalBase & { kind: 'edit'; edits: ChatEdit[] });
+
+/** One message in a chapter's chat, from GET …/chat. */
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  /** Assistant only: a change to the chapter, reviewed in the editor. */
+  proposal: ChatProposal | null;
+  created_at: string | null;
+}

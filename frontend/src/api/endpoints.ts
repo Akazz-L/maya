@@ -1,9 +1,10 @@
 // Thin, typed wrappers around the backend REST routes. Every data route is
-// scoped to a project and requires auth; the streaming routes (draft/revise/rewrite)
-// live in stream.ts and are driven by useDraftStream.
+// scoped to a project and requires auth; the streaming routes (revise, rewrite,
+// chat) are read by stream.ts.
 
 import { request } from './client';
 import type {
+  ChatMessage,
   DocumentDetail,
   DocumentKind,
   DocumentSummary,
@@ -12,6 +13,7 @@ import type {
   ModelKey,
   ProjectDetail,
   ProjectSummary,
+  ProposalOutcome,
   ScenePlan,
   UsageSnapshot,
 } from './types';
@@ -107,10 +109,30 @@ export const checkDocument = (projectId: string, documentId: string) =>
     { method: 'POST' },
   );
 
-/** SSE stream URLs (driven by useDraftStream / stream.ts). */
-export const draftStreamUrl = (projectId: string, documentId: string) =>
-  `/projects/${projectId}/documents/${documentId}/draft/stream`;
+/** SSE stream URLs, read by stream.ts. */
 export const reviseStreamUrl = (projectId: string, documentId: string) =>
   `/projects/${projectId}/documents/${documentId}/revise/stream`;
 export const rewriteStreamUrl = (projectId: string, documentId: string) =>
   `/projects/${projectId}/documents/${documentId}/rewrite/stream`;
+
+// ── chapter chat ─────────────────────────────────────────────────────────────
+export const getChat = (projectId: string, documentId: string) =>
+  request<{ messages: ChatMessage[] }>(`/projects/${projectId}/documents/${documentId}/chat`);
+
+export const clearChat = (projectId: string, documentId: string) =>
+  request<null>(`/projects/${projectId}/documents/${documentId}/chat`, { method: 'DELETE' });
+
+/** Record what the writer did with a proposal; the next message tells the model. */
+export const resolveProposal = (
+  projectId: string,
+  documentId: string,
+  messageId: string,
+  outcome: ProposalOutcome,
+) =>
+  request<ChatMessage>(
+    `/projects/${projectId}/documents/${documentId}/chat/messages/${messageId}/outcome`,
+    { method: 'POST', body: { outcome } },
+  );
+
+export const chatStreamUrl = (projectId: string, documentId: string) =>
+  `/projects/${projectId}/documents/${documentId}/chat/stream`;

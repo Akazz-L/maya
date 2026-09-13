@@ -3,38 +3,55 @@
 // Ported from the old index.html `streamPost()`.
 
 import { authHeaders, handleUnauthorized } from '../auth/token';
-import type { UsageSnapshot } from './types';
+import type { ChatMessage, UsageSnapshot } from './types';
+
+/** The prose of a chat proposal as the model writes it. */
+export interface ProposalProgress {
+  /** Null until the model has written the mode. */
+  mode: 'replace' | 'append' | null;
+  text: string;
+}
+
+export interface DoneFrame {
+  type: 'done';
+  /** The document's new body for revise, the replacement span for rewrite. */
+  body?: string;
+  /** The writer's spend including this call. */
+  usage?: UsageSnapshot;
+  /** Chat only: the writer's message and the reply, as stored. */
+  messages?: ChatMessage[];
+}
 
 export interface StreamCallbacks {
   onDelta: (text: string) => void;
   /**
-   * The completed text of the stream: the document's new body for draft/revise,
-   * the replacement span for rewrite. `usage` is the writer's spend including
-   * this call — token counts are only known once the stream ends, so this is
-   * the first moment the meter can move.
+   * The stream finished. `body` is the completed text of the stream (empty for
+   * chat); `usage` is the writer's spend including this call — token counts are
+   * only known once the stream ends, so this is the first moment the meter can
+   * move. `frame` is the whole frame, for routes that send more.
    */
-  onDone: (body: string, usage?: UsageSnapshot) => void;
+  onDone: (body: string, usage?: UsageSnapshot, frame?: DoneFrame) => void;
+  /** Chat only. */
+  onProposalProgress?: (progress: ProposalProgress) => void;
 }
 
 interface DeltaFrame {
   type: 'delta';
   text: string;
 }
-interface DoneFrame {
-  type: 'done';
-  body: string;
-  usage?: UsageSnapshot;
+interface ProposalProgressFrame extends ProposalProgress {
+  type: 'proposal_progress';
 }
 interface ErrorFrame {
   type: 'error';
   detail: string;
 }
-type Frame = DeltaFrame | DoneFrame | ErrorFrame;
+type Frame = DeltaFrame | ProposalProgressFrame | DoneFrame | ErrorFrame;
 
 export async function streamPost(
   url: string,
   body: unknown,
-  { onDelta, onDone }: StreamCallbacks,
+  { onDelta, onDone, onProposalProgress }: StreamCallbacks,
   signal?: AbortSignal,
 ): Promise<void> {
   let res: Response;
@@ -82,7 +99,9 @@ export async function streamPost(
         if (!raw) continue;
         const evt = JSON.parse(raw) as Frame;
         if (evt.type === 'delta') onDelta(evt.text);
-        else if (evt.type === 'done') onDone(evt.body, evt.usage);
+        else if (evt.type === 'proposal_progress')
+          onProposalProgress?.({ mode: evt.mode, text: evt.text });
+        else if (evt.type === 'done') onDone(evt.body ?? '', evt.usage, evt);
         else if (evt.type === 'error') throw new Error(evt.detail);
         if (signal?.aborted) {
           await reader.cancel();

@@ -3,22 +3,24 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
   checkDocument,
-  draftStreamUrl,
   generatePlan,
   getProject,
   reviseStreamUrl,
   updateDocument,
   type DocumentPatch,
 } from '../api/endpoints';
-import type { DocumentDetail, Issue, ScenePlan } from '../api/types';
+import type { DocumentDetail, Issue, ProposalOutcome, ScenePlan } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { ChapterToolbar } from '../components/ChapterToolbar';
+import { ChatPane } from '../components/ChatPane';
 import { ModelPicker } from '../components/ModelPicker';
 import { UsageMeter } from '../components/UsageMeter';
 import { DocumentEditor, type SaveState } from '../components/DocumentEditor';
 import { DocumentSidebar } from '../components/DocumentSidebar';
 import { PlanPanel } from '../components/PlanPanel';
+import type { ProposalView } from '../components/ProposalLayer';
 import { Button } from '../components/ui/button';
+import { useChat } from '../hooks/useChat';
 import { useDraftStream } from '../hooks/useDraftStream';
 import {
   documentKey,
@@ -35,6 +37,10 @@ import {
 
 const COLLAPSE_KEY = 'maya.sidebar.collapsed';
 const HEIGHT_KEY = 'maya.panel.height';
+const CHAT_KEY = 'maya.chat.open';
+
+/** What the plan panel's Generate Draft asks the chat; the agent reads the saved plan. */
+const DRAFT_FROM_PLAN = 'Draft this chapter from the scene plan.';
 
 export function WorkspaceScreen() {
   const { projectId, documentId } = useParams<{ projectId: string; documentId?: string }>();
@@ -46,6 +52,7 @@ export function WorkspaceScreen() {
   const [panelHeight, setPanelHeight] = useState(
     () => Number(localStorage.getItem(HEIGHT_KEY)) || 240,
   );
+  const [chatOpen, setChatOpen] = useState(() => localStorage.getItem(CHAT_KEY) !== '0');
   // The panel is open by default whenever the document has a plan or issues, so a
   // saved plan survives a reload. This override records a deliberate show/hide,
   // scoped to one document so switching documents falls back to the default.
@@ -57,10 +64,12 @@ export function WorkspaceScreen() {
   const [rewriteBusy, setRewriteBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Holds the in-flight autosave so a stream can wait for it to land before the
-  // server appends to `body`. Without this the server appends to a stale body
+  // Holds the in-flight autosave so a request that reads the document server-side
+  // can wait for it to land. Without this the server works from a stale body
   // and the writer's last keystrokes vanish.
   const pendingSave = useRef<Promise<unknown>>(Promise.resolve());
+  // Filled by the editor: saves an edit still waiting out the autosave debounce.
+  const editorFlush = useRef<(() => void) | null>(null);
 
   const project = useQuery({
     queryKey: ['project', projectId],
@@ -113,8 +122,19 @@ export function WorkspaceScreen() {
     [documentId, projectId, qc],
   );
 
+  /**
+   * Put everything the writer has typed on the server before a request reads it
+   * there. Awaiting only the in-flight save is not enough: an edit still inside
+   * the autosave debounce has not been sent at all.
+   */
+  const settle = useCallback(async () => {
+    editorFlush.current?.();
+    await pendingSave.current;
+  }, []);
+
   const planMut = useMutation({
-    mutationFn: () => generatePlan(projectId!, documentId!),
+    // The planner reads the saved brief.
+    mutationFn: () => settle().then(() => generatePlan(projectId!, documentId!)),
     onSuccess: (res) => {
       patchCache({ plan: res.plan });
       applyUsage(res.usage);
@@ -127,8 +147,8 @@ export function WorkspaceScreen() {
   });
 
   const checkMut = useMutation({
-    // Check reads Document.body server-side, so the pending autosave must land first.
-    mutationFn: () => pendingSave.current.then(() => checkDocument(projectId!, documentId!)),
+    // Check reads Document.body server-side.
+    mutationFn: () => settle().then(() => checkDocument(projectId!, documentId!)),
     onSuccess: (res) => {
       patchCache({ issues: res.issues });
       applyUsage(res.usage);
@@ -140,10 +160,19 @@ export function WorkspaceScreen() {
     },
   });
 
-  /** Flush pending autosave, then stream; the server owns `body` for the duration. */
+  const chat = useChat({
+    projectId: projectId!,
+    documentId,
+    enabled: document.data?.kind === 'chapter',
+    beforeSend: settle,
+    onUsage: applyUsage,
+    onFailure: () => void me.refetch(),
+  });
+
+  /** Save pending edits, then stream; the server owns `body` for the duration. */
   const runStream = async (url: string, body: unknown) => {
     setError(null);
-    await pendingSave.current;
+    await settle();
     setStreamBody(document.data?.body ?? '');
     try {
       await stream.run(url, body, {
@@ -162,21 +191,19 @@ export function WorkspaceScreen() {
     }
   };
 
-  const generateDraft = async () => {
-    let plan: ScenePlan | null = document.data?.plan ?? null;
-    if (!plan) {
-      // No plan yet: plan first, then draft straight through.
-      try {
-        plan = (await planMut.mutateAsync()).plan;
-      } catch {
-        return; // planMut.onError already surfaced it
-      }
-    }
-    setPanelOverride({ id: documentId!, open: true });
-    await runStream(draftStreamUrl(projectId!, documentId!), { plan });
-  };
-
   const revise = () => runStream(reviseStreamUrl(projectId!, documentId!), null);
+
+  const toggleChat = () =>
+    setChatOpen((open) => {
+      localStorage.setItem(CHAT_KEY, open ? '0' : '1');
+      return !open;
+    });
+
+  const draftFromPlan = () => {
+    localStorage.setItem(CHAT_KEY, '1');
+    setChatOpen(true);
+    void chat.send(DRAFT_FROM_PLAN);
+  };
 
   if (!projectId) return <Navigate to="/" replace />;
   if (project.isError) return <Navigate to="/" replace />;
@@ -191,12 +218,41 @@ export function WorkspaceScreen() {
   // from `busy`, which is transient in-flight state: being out of budget
   // disables only the affordances that would call the model.
   const aiBlocked = me.data?.usage.blocked ?? false;
+
+  const pending = chat.pendingProposal;
+  // While a proposal streams or waits for review, the editor is read-only and
+  // every other generation waits: each would change the text it is drawn against.
+  const proposal: ProposalView | null = chat.streaming?.progress
+    ? { phase: 'streaming', mode: chat.streaming.progress.mode, text: chat.streaming.progress.text }
+    : pending && pending.proposal.proposed_body !== null
+      ? {
+          phase: 'reviewing',
+          proposed: pending.proposal.proposed_body,
+          baseHash: pending.proposal.base_hash,
+          // Edits read best as a diff; a new draft against the old one is noise.
+          showDiff: pending.proposal.kind === 'edit',
+        }
+      : null;
+  const chatBusy = chat.streaming !== null || pending !== null;
   const busy =
     planMut.isPending ||
     checkMut.isPending ||
     stream.isStreaming ||
     deleteDoc.isPending ||
-    rewriteBusy;
+    rewriteBusy ||
+    chatBusy;
+
+  const chatDisabledReason = aiBlocked
+    ? 'AI budget used — chat is paused.'
+    : pending
+      ? 'Accept or discard the proposal in the editor first.'
+      : busy && chat.streaming === null
+        ? 'Wait for the current AI action to finish.'
+        : null;
+
+  const resolveProposal = (outcome: ProposalOutcome) => {
+    if (pending) void chat.resolve(pending.messageId, outcome);
+  };
 
   return (
     <div className="flex h-screen flex-col bg-[#f5f5f0]">
@@ -265,13 +321,12 @@ export function WorkspaceScreen() {
               busy={busy}
               aiBlocked={aiBlocked}
               onGeneratePlan={() => planMut.mutate()}
-              onGenerateDraft={generateDraft}
               onCheck={() => checkMut.mutate()}
               hasPanelContent={hasPanelContent}
               panelOpen={panelOpen}
-              onTogglePanel={() =>
-                setPanelOverride({ id: documentId!, open: !panelOpen })
-              }
+              onTogglePanel={() => setPanelOverride({ id: documentId!, open: !panelOpen })}
+              chatOpen={chatOpen}
+              onToggleChat={toggleChat}
             />
           )}
 
@@ -287,6 +342,9 @@ export function WorkspaceScreen() {
               onBusyChange={setRewriteBusy}
               aiBlocked={aiBlocked}
               onUsage={applyUsage}
+              proposal={isChapter ? proposal : null}
+              onProposalResolve={resolveProposal}
+              flushRef={editorFlush}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
@@ -322,13 +380,26 @@ export function WorkspaceScreen() {
                 save({ plan: null });
                 setPanelOverride({ id: documentId!, open: false });
               }}
-              onGenerateDraft={generateDraft}
+              onGenerateDraft={draftFromPlan}
               onRevise={revise}
               busy={busy}
               aiBlocked={aiBlocked}
             />
           )}
         </div>
+
+        {isChapter && chatOpen && (
+          <ChatPane
+            messages={chat.messages}
+            loading={chat.loading}
+            streaming={chat.streaming}
+            error={chat.error}
+            disabledReason={chatDisabledReason}
+            onSend={chat.send}
+            onClear={() => void chat.clear()}
+            onClose={toggleChat}
+          />
+        )}
       </div>
     </div>
   );

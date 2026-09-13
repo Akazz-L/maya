@@ -90,4 +90,34 @@ describe('streamPost', () => {
     await expect(run).resolves.toBeUndefined();
     expect(deltas).toEqual(['one']);
   });
+
+  it('routes proposal progress and hands the whole done frame over', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      streamingResponse([
+        'data: {"type":"delta","text":"Here."}\n\n',
+        'data: {"type":"proposal_progress","mode":"append","text":"More"}\n\n',
+        'data: {"type":"done","messages":[{"id":"m1"}]}\n\n',
+      ]),
+    );
+
+    const progress: unknown[] = [];
+    let frame: unknown;
+    let body: string | undefined;
+    await streamPost(
+      '/x',
+      {},
+      {
+        onDelta: () => {},
+        onProposalProgress: (p) => progress.push(p),
+        onDone: (b, _usage, f) => {
+          body = b;
+          frame = f;
+        },
+      },
+    );
+
+    expect(progress).toEqual([{ mode: 'append', text: 'More' }]);
+    expect(frame).toEqual({ type: 'done', messages: [{ id: 'm1' }] });
+    expect(body).toBe('');
+  });
 });
