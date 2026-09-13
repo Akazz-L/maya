@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, Uuid, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from backend.llm import DEFAULT_MODEL_KEY
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -21,7 +23,9 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
     # Which of backend.llm.MODELS this writer generates with. A key, not a model
     # ID, so retargeting "opus" at a newer model never touches user rows.
-    model_key: Mapped[str] = mapped_column(String(16), nullable=False, default="haiku", server_default="haiku")
+    model_key: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=DEFAULT_MODEL_KEY, server_default=DEFAULT_MODEL_KEY
+    )
     # Per-user override of MONTHLY_BUDGET_USD; NULL means "use the global default".
     # Micro-dollars, the same unit UsageEvent.cost_micro_usd counts in, so a cap
     # and a running total are compared without any float in the path. $5 is
