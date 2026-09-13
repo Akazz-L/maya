@@ -40,7 +40,7 @@ async def planner_node(state: dict, model_key: str) -> dict:
     )
 
     response = await client.messages.create(
-        **request_params(model_key, structured=True, max_tokens=1024),
+        **request_params(model_key, max_tokens=1024),
         system=(
             "You are a narrative architect. Create precise, concrete scene plans "
             "that give a prose writer everything they need without constraining their language."

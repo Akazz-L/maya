@@ -63,32 +63,31 @@ def test_a_typical_call_rounds_to_the_microdollar():
 
 def test_haiku_sends_nothing_beyond_the_model_and_ceiling():
     """No thinking and no effort control, so the defaults are the whole request."""
-    for structured in (True, False):
-        params = request_params("haiku", structured=structured, max_tokens=4096)
-        assert params == {"model": "claude-haiku-4-5", "max_tokens": 4096}
+    params = request_params("haiku", max_tokens=4096)
+    assert params == {"model": "claude-haiku-4-5", "max_tokens": 4096}
 
 
 @pytest.mark.parametrize("model_key", ["haiku", "sonnet", "opus"])
 def test_no_model_is_sent_a_sampling_parameter(model_key):
     """Sonnet 5 and Opus 5 removed sampling parameters — sending one is a 400 —
     and Haiku is left on the defaults rather than diverging from them."""
-    for structured in (True, False):
-        params = request_params(model_key, structured=structured, max_tokens=4096)
-        assert not {"temperature", "top_p", "top_k"} & params.keys()
+    params = request_params(model_key, max_tokens=4096)
+    assert not {"temperature", "top_p", "top_k"} & params.keys()
 
 
 @pytest.mark.parametrize("model_key", ["sonnet", "opus"])
-def test_thinking_models_get_headroom_for_prose(model_key):
-    """Thinking tokens come out of max_tokens, so a chapter drafted at the bare
-    4096 ceiling could be cut off before the prose starts."""
-    params = request_params(model_key, structured=False, max_tokens=4096)
-    assert params["max_tokens"] > 4096
+@pytest.mark.parametrize("ceiling", [512, 1024, 4096])
+def test_thinking_models_get_headroom_on_every_call(model_key, ceiling):
+    """Thinking tokens come out of max_tokens, so a call held to its bare
+    ceiling could be cut off before the answer, whether that is prose or a
+    forced tool call."""
+    params = request_params(model_key, max_tokens=ceiling)
+    assert params["max_tokens"] > ceiling
     assert params["output_config"] == {"effort": "low"}
-    assert "thinking" not in params
 
 
 @pytest.mark.parametrize("model_key", ["sonnet", "opus"])
-def test_thinking_is_off_for_forced_tool_calls(model_key):
-    params = request_params(model_key, structured=True, max_tokens=1024)
-    assert params["thinking"] == {"type": "disabled"}
-    assert params["max_tokens"] == 1024
+def test_thinking_is_never_disabled(model_key):
+    """With thinking disabled these models occasionally write a tool call as
+    text instead of a tool_use block. Effort, not disabling, controls cost."""
+    assert "thinking" not in request_params(model_key, max_tokens=1024)

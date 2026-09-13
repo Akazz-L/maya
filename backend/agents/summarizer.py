@@ -12,7 +12,7 @@ async def summarize_node(text: str, model_key: str) -> tuple[str, Usage]:
     Returns the summary and what it cost. These calls run implicitly, before
     every generation, so they are real spend and are metered like any other."""
     response = await client.messages.create(
-        **request_params(model_key, structured=True, max_tokens=512),
+        **request_params(model_key, max_tokens=512),
         system=(
             "You summarize chapters of a novel for a continuity system. Record plot "
             "events, what each character now knows, and any physical, spatial, or "
@@ -21,8 +21,10 @@ async def summarize_node(text: str, model_key: str) -> tuple[str, Usage]:
         ),
         messages=[{"role": "user", "content": f"Summarize this chapter:\n\n{text}"}],
     )
-    if not response.content:
+    # Sonnet 5 and Opus 5 think adaptively, so a thinking block can come first.
+    text = "".join(b.text for b in response.content if b.type == "text")
+    if not text:
         raise ValueError(
-            f"Summarizer received empty content from API (stop_reason={response.stop_reason!r})"
+            f"Summarizer received no text from API (stop_reason={response.stop_reason!r})"
         )
-    return response.content[0].text, usage_from(response)
+    return text, usage_from(response)

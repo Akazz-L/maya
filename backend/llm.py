@@ -16,8 +16,9 @@ _CACHE_READ_RATE = Decimal("0.1")
 _CACHE_WRITE_RATE = Decimal("1.25")
 
 # Adaptive thinking spends tokens out of max_tokens before the first word of
-# prose. Left at the drafter's 4096 ceiling, a chapter could be cut off mid
-# sentence, so thinking models get this much headroom on prose calls.
+# output. Left at a call's own ceiling (4096 for a chapter, 1024 for a scene
+# plan), the answer could be cut off mid-sentence or mid-tool-call, so thinking
+# models get this much headroom on every call.
 _THINKING_HEADROOM = 8000
 
 
@@ -111,12 +112,11 @@ def cost_usd(model_key: str, usage: Usage) -> Decimal:
     return (tokens / Decimal(1_000_000)).quantize(Decimal("0.000001"))
 
 
-def request_params(model_key: str, *, structured: bool, max_tokens: int) -> dict:
+def request_params(model_key: str, *, max_tokens: int) -> dict:
     """The per-model half of a messages.create/stream call.
 
-    `structured` marks the calls that force a tool call and want no
-    deliberation — the planner, checker, and summarizer — as opposed to the
-    prose calls, where a little thinking is worth paying for.
+    `max_tokens` is what the call's own output needs; a thinking model is given
+    headroom on top of it.
     """
     spec = spec_for(model_key)
     params: dict = {"model": spec.id, "max_tokens": max_tokens}
@@ -126,14 +126,12 @@ def request_params(model_key: str, *, structured: bool, max_tokens: int) -> dict
         # are the whole request.
         return params
 
-    # Sonnet 5 and Opus 5 think adaptively by default. Effort keeps that
-    # thinking shallow: neither a scene plan nor a paragraph of fiction is a
-    # reasoning problem, and effort is what we pay for.
+    # Sonnet 5 and Opus 5 think adaptively by default, and that stays on for
+    # every call, the forced tool calls included: with thinking disabled these
+    # models occasionally write a tool call as plain text instead of a tool_use
+    # block, which the planner and checker then reject. Low effort keeps the
+    # thinking shallow instead; neither a scene plan nor a paragraph of fiction
+    # is a reasoning problem, and effort is what we pay for.
     params["output_config"] = {"effort": "low"}
-    if structured:
-        # A forced tool call needs no deliberation, and thinking tokens would eat
-        # the tight ceiling these calls run on.
-        params["thinking"] = {"type": "disabled"}
-    else:
-        params["max_tokens"] = max_tokens + _THINKING_HEADROOM
+    params["max_tokens"] = max_tokens + _THINKING_HEADROOM
     return params

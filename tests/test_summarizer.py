@@ -32,6 +32,23 @@ async def test_summarize_returns_text():
     assert usage.output_tokens == 340
 
 
+class _ThinkingBlock:
+    type = "thinking"
+    thinking = ""
+
+
+@pytest.mark.asyncio
+async def test_summarize_reads_past_a_leading_thinking_block():
+    """Sonnet 5 and Opus 5 think adaptively, so the first block is not always text."""
+    from backend.agents import summarizer
+
+    response = _Response("Elena arrives.")
+    response.content.insert(0, _ThinkingBlock())
+    with patch.object(summarizer.client.messages, "create", new=AsyncMock(return_value=response)):
+        summary, _ = await summarizer.summarize_node("Long chapter prose.", MODEL_KEY)
+    assert summary == "Elena arrives."
+
+
 @pytest.mark.asyncio
 async def test_summarize_sends_the_body():
     from backend.agents import summarizer

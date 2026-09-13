@@ -42,7 +42,7 @@ async def checker_node(state: dict, model_key: str) -> dict:
     )
 
     response = await client.messages.create(
-        **request_params(model_key, structured=True, max_tokens=2048),
+        **request_params(model_key, max_tokens=2048),
         system=(
             "You are a continuity editor. Check for contradictions between the draft "
             "and all established story facts. Be thorough and precise. "

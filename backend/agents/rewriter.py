@@ -52,7 +52,7 @@ async def rewriter_token_stream(
     system_prompt, user_content = _build_rewrite_messages(state)
 
     async with client.messages.stream(
-        **request_params(model_key, structured=False, max_tokens=4096),
+        **request_params(model_key, max_tokens=4096),
         system=system_prompt,
         messages=[{"role": "user", "content": user_content}],
     ) as stream:

@@ -71,14 +71,16 @@ async def drafter_node(state: dict, model_key: str) -> dict:
     system_prompt, user_content = _build_messages(state)
 
     response = await client.messages.create(
-        **request_params(model_key, structured=False, max_tokens=4096),
+        **request_params(model_key, max_tokens=4096),
         system=system_prompt,
         messages=[{"role": "user", "content": user_content}],
     )
 
-    if not response.content:
-        raise ValueError(f"Drafter received empty content from API (stop_reason={response.stop_reason!r})")
-    return {"draft": response.content[0].text, "usage": usage_from(response)}
+    # Sonnet 5 and Opus 5 think adaptively, so a thinking block can come first.
+    text = "".join(b.text for b in response.content if b.type == "text")
+    if not text:
+        raise ValueError(f"Drafter received no text from API (stop_reason={response.stop_reason!r})")
+    return {"draft": text, "usage": usage_from(response)}
 
 
 async def drafter_token_stream(
@@ -93,7 +95,7 @@ async def drafter_token_stream(
     system_prompt, user_content = _build_messages(state)
 
     async with client.messages.stream(
-        **request_params(model_key, structured=False, max_tokens=4096),
+        **request_params(model_key, max_tokens=4096),
         system=system_prompt,
         messages=[{"role": "user", "content": user_content}],
     ) as stream:

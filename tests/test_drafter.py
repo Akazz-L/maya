@@ -8,6 +8,7 @@ from tests.conftest import MODEL_KEY, stub_usage
 
 def _mock_text_response(text: str) -> MagicMock:
     content_block = MagicMock()
+    content_block.type = "text"
     content_block.text = text
     response = MagicMock()
     response.content = [content_block]
@@ -24,6 +25,19 @@ async def test_drafter_returns_draft(base_state, sample_scene_plan):
     with patch("backend.agents.drafter.client.messages.create", new_callable=AsyncMock, return_value=mock_response):
         result = await drafter_node(base_state, MODEL_KEY)
     assert "draft" in result
+    assert result["draft"] == DRAFT_TEXT
+
+
+@pytest.mark.asyncio
+async def test_drafter_reads_past_a_leading_thinking_block(base_state, sample_scene_plan):
+    """Sonnet 5 and Opus 5 think adaptively, so the first block is not always text."""
+    base_state["scene_plan"] = sample_scene_plan
+    mock_response = _mock_text_response(DRAFT_TEXT)
+    thinking = MagicMock()
+    thinking.type = "thinking"
+    mock_response.content.insert(0, thinking)
+    with patch("backend.agents.drafter.client.messages.create", new_callable=AsyncMock, return_value=mock_response):
+        result = await drafter_node(base_state, MODEL_KEY)
     assert result["draft"] == DRAFT_TEXT
 
 
