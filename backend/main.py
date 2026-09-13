@@ -17,6 +17,7 @@ from backend.auth import create_access_token, get_current_user, hash_password, v
 from backend.bible_markdown import BIBLE_TEMPLATE
 from backend.db import get_db, init_db
 from backend.db_models import Document, Project, User
+from backend.routes import chat as chat_routes
 from backend.routes import documents as documents_routes
 from backend.llm import MODELS
 from backend.routes import generate as generate_routes
@@ -209,6 +210,7 @@ async def get_project(
 
 app.include_router(documents_routes.router)
 app.include_router(generate_routes.router)
+app.include_router(chat_routes.router)
 
 
 # ---------------------------------------------------------------------------

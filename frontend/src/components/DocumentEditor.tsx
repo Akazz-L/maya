@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
-import type { DocumentDetail, DocumentKind, UsageSnapshot } from '../api/types';
+import type { DocumentDetail, DocumentKind, ProposalOutcome, UsageSnapshot } from '../api/types';
+import { proposalExtension } from '../editor/proposalExtension';
 import { rewriteExtension, type RewriteHost } from '../editor/rewriteExtension';
+import { ProposalLayer, type ProposalView } from './ProposalLayer';
 import { ProseEditor } from './ProseEditor';
 import { RewriteLayer } from './RewriteLayer';
 
@@ -13,7 +15,7 @@ export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 // get out of the way. Each says what the AI does with that kind of document.
 const BODY_PLACEHOLDER: Record<DocumentKind, string> = {
   bible: 'Characters, world, voice, and timeline. The AI reads this before every draft and rewrite.',
-  chapter: 'Write the chapter, or generate a draft from the brief…',
+  chapter: 'Write the chapter, or ask the chat for a draft from the brief…',
   note: 'Research, ideas, reminders. Notes are not included in the AI context.',
 };
 
@@ -37,6 +39,14 @@ interface DocumentEditorProps {
   aiBlocked?: boolean;
   /** The writer's spend including a finished rewrite. */
   onUsage?: (usage: UsageSnapshot | undefined) => void;
+  /** A chat proposal streaming in or awaiting review; the body is read-only meanwhile. */
+  proposal?: ProposalView | null;
+  onProposalResolve?: (outcome: ProposalOutcome) => void;
+  /**
+   * Filled with a function that saves any edit still waiting out the autosave
+   * debounce, for callers about to ask the server to read the document.
+   */
+  flushRef?: { current: (() => void) | null };
 }
 
 function SaveIndicator({ state }: { state: SaveState }) {
@@ -62,6 +72,9 @@ export function DocumentEditor({
   onBusyChange,
   aiBlocked = false,
   onUsage,
+  proposal = null,
+  onProposalResolve,
+  flushRef,
 }: DocumentEditorProps) {
   const [title, setTitle] = useState(document.title);
   const [brief, setBrief] = useState(document.brief);
@@ -81,7 +94,7 @@ export function DocumentEditor({
     },
   }));
   const extensions = useMemo(
-    () => (isChapter ? [rewriteExtension(rewriteHost)] : []),
+    () => (isChapter ? [rewriteExtension(rewriteHost), proposalExtension()] : []),
     [isChapter, rewriteHost],
   );
   const onBusyChangeRef = useRef(onBusyChange);
@@ -117,6 +130,17 @@ export function DocumentEditor({
     timer.current = setTimeout(flush, AUTOSAVE_MS);
   };
 
+  useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = () => {
+      if (timer.current) clearTimeout(timer.current);
+      flush();
+    };
+    return () => {
+      flushRef.current = null;
+    };
+  });
+
   // Switching documents unmounts this component; flush rather than cancel, or
   // the last edits before the switch are silently lost. The closure still holds
   // the outgoing document's save function, so it saves to the right place.
@@ -145,7 +169,7 @@ export function DocumentEditor({
       {isChapter && (
         <input
           value={brief}
-          placeholder="What happens in this chapter? The AI plans the draft from this…"
+          placeholder="What happens in this chapter? The AI plans and drafts from this…"
           aria-label="Chapter brief"
           onChange={(e) => {
             setBrief(e.target.value);
@@ -157,7 +181,7 @@ export function DocumentEditor({
 
       <ProseEditor
         value={bodyOverride ?? body}
-        readOnly={readOnly || rewriteBusy}
+        readOnly={readOnly || rewriteBusy || proposal !== null}
         ariaLabel="Document body"
         placeholder={BODY_PLACEHOLDER[document.kind]}
         extensions={extensions}
@@ -173,10 +197,17 @@ export function DocumentEditor({
             hostRef={rewriteHost}
             projectId={projectId}
             documentId={document.id}
-            enabled={!readOnly}
+            enabled={!readOnly && proposal === null}
             aiBlocked={aiBlocked}
             onBusyChange={handleBusy}
             onUsage={onUsage}
+          />
+        )}
+        {isChapter && view && (
+          <ProposalLayer
+            view={view}
+            proposal={proposal}
+            onResolve={(outcome) => onProposalResolve?.(outcome)}
           />
         )}
       </ProseEditor>

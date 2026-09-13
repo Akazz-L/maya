@@ -1,6 +1,6 @@
 # Frontend flows
 
-Three paths through the app, from the user's first click to the database.
+The main paths through the app, from the user's first click to the database.
 
 ## Auth and session expiry
 
@@ -106,9 +106,10 @@ Two details in `DocumentEditor` exist to prevent lost edits:
 Switching documents unmounts the editor mid-debounce; without the flush, the last edits before the switch vanish.
 `onSaveRef` is updated in an effect rather than during render precisely so that on unmount it still holds the *outgoing* document's save function — the patch lands on the right document.
 
-## Generating a draft
+## Saving before the server reads
 
-The most intricate flow in the app, because the client and the server both want to write `body`.
+Plan, Check, Revise, and the chat all read the chapter from the database, not from the request.
+Whatever the writer has typed must be there first, and typed text can be in one of two places: still waiting out the editor's 800 ms debounce, or in a save already on the wire.
 
 ```mermaid
 sequenceDiagram
@@ -116,58 +117,90 @@ sequenceDiagram
     participant U as User
     participant WS as WorkspaceScreen
     participant ED as DocumentEditor
-    participant DS as useDraftStream
-    participant ST as api/stream.ts
     participant BE as Backend
 
-    U->>WS: click Generate Draft
-    alt the document has no plan yet
-        WS->>BE: POST …/plan
-        BE-->>WS: {plan}
-        WS->>WS: patchCache({plan}) and open the panel
-    end
-
+    U->>ED: types "!"
+    ED->>ED: queueSave() — the 800 ms timer starts
+    U->>WS: clicks Check (or Plan, Revise, Send)
     rect rgb(255, 244, 229)
-        Note over WS,BE: The ordering that matters
+        Note over WS,ED: settle()
+        WS->>ED: editorFlush.current() — cancel the timer, save now
+        ED->>WS: onSave(patch)
+        WS->>BE: PATCH …/documents/{did}
         WS->>WS: await pendingSave.current
-        Note right of WS: The server appends to the body it has.<br/>Without this wait it appends to a stale one<br/>and the writer's last keystrokes vanish.
     end
-
-    WS->>WS: streamBody = current body → editor goes read-only
-    WS->>DS: run(draftStreamUrl, {plan})
-    DS->>DS: isStreaming = true
-    DS->>ST: streamPost()
-    ST->>BE: POST …/draft/stream
-
-    loop each SSE frame
-        BE-->>ST: data: {"type":"delta","text":"…"}
-        ST->>WS: onDelta → streamBody += text
-        WS->>ED: bodyOverride — rendered without touching local state
-    end
-
-    alt success
-        BE-->>ST: data: {"type":"done","body":"<full body>"}
-        ST->>WS: onDone(full)
-        WS->>WS: patchCache({body: full})
-        WS->>WS: streamBody = undefined, docVersion++
-        Note over ED: the key change remounts the editor<br/>onto the server's authoritative body
-    else error frame or network failure
-        ST-->>DS: throw
-        DS->>WS: error message
-        WS->>WS: streamBody = undefined — the editor keeps its own text
-    end
-    DS->>DS: isStreaming = false
+    WS->>BE: POST …/check
 ```
 
-**`pendingSave` is the point of the whole diagram.**
-The server's draft route appends to `document.body` as it exists in the database.
-If a debounced autosave is still in flight when the stream opens, the append lands on the previous version and the writer's last sentence is gone.
-Holding the in-flight promise in a ref and awaiting it first is what makes that impossible — and it is why saving bypasses React Query's mutation machinery.
-`Check` awaits the same promise for the same reason: it reads `document.body` server-side.
+**`settle()` is the point of the diagram.**
+Awaiting only `pendingSave` covers a save already in flight, but not an edit still inside the debounce window, which has not been sent at all.
+The editor fills `editorFlush` with a function that cancels its timer and saves immediately; `settle()` calls it, then awaits the save.
+This is also why saving bypasses React Query's mutation machinery: the workspace has to hold the in-flight promise.
 
-**The editor is read-only for the duration** (`readOnly={stream.isStreaming}`), so there is no window in which the user and the server are both appending.
+**Revise streams into the editor.**
+It sets `streamBody`, which the editor renders through `bodyOverride` without touching its own state, and keeps the editor read-only (`readOnly={stream.isStreaming}`) so the writer and the server never write at once.
+On `done` it bumps `docVersion`, and the key change remounts the editor onto the server's body; an `error` frame leaves the editor's own text in place.
 
-**Revise takes the same path** with a `null` request body — the server already has the draft and the issues it needs — and its `done` frame replaces the body rather than extending it.
+## A chat turn
+
+Every AI change to a chapter's prose, apart from Revise and selection rewrite, arrives through the chat as a proposal.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant CP as ChatPane
+    participant CH as useChat
+    participant WS as WorkspaceScreen
+    participant PL as ProposalLayer
+    participant BE as Backend
+
+    U->>CP: types a message, Enter
+    CP->>CH: send(content)
+    CH->>WS: beforeSend → settle()
+    CH->>BE: POST …/chat/stream {content}
+    loop reply
+        BE-->>CH: delta → streaming.reply
+        CH-->>CP: the reply grows under the message
+    end
+    opt write_draft
+        BE-->>CH: proposal_progress {mode, text}
+        WS->>PL: proposal = {phase: streaming, mode, text}
+        PL->>PL: overlay the changed span with the streamed prose
+    end
+    BE-->>CH: done {messages, usage}
+    CH->>CH: append both messages to the chat cache
+    WS->>PL: proposal = {phase: reviewing, proposed, baseHash}
+    Note over WS: busy — the editor is read-only, and Plan, Check,<br/>Revise and the chat input wait for the writer
+
+    alt Accept (⌘↵)
+        PL->>PL: sha256(editor text) matches baseHash
+        PL->>PL: one transaction replacing only the changed span
+        Note right of PL: reaches onChange → autosave, and undo history
+        PL->>CH: resolve('accepted')
+    else the text no longer matches
+        PL->>CH: resolve('stale') — the text is left alone
+    else Discard (Esc)
+        PL->>CH: resolve('discarded')
+    end
+    CH->>BE: POST …/chat/messages/{id}/outcome
+    BE-->>CH: the message, its proposal resolved
+```
+
+**The proposal is drawn, not applied, until Accept.**
+`ProposalLayer` finds the smallest span that differs between the editor's text and the proposed chapter (`changedSpan`) and hides that span behind a widget: the streamed prose while it arrives, then a word diff for edits or the clean text for a new draft.
+
+**Accept checks the hash first.**
+The server stored the `sha256` of the body the proposal was computed against.
+If the editor's text hashes to anything else — the chapter was changed in another tab, say — the proposal is recorded as `stale` and nothing is applied.
+
+**A new message waits for the outcome.**
+While a proposal is unresolved the chat input is disabled with the reason shown, and the server would refuse the message with a 409 anyway.
+A failed message is removed from the pane and its text goes back into the input.
+
+**The plan panel's Generate Draft → is a chat message.**
+It opens the chat and sends "Draft this chapter from the scene plan."; the agent reads the saved plan along with the rest of the chapter's context.
+Nothing plans on its own: a chapter without a plan is drafted from its brief and the writer's message.
 
 ## Panel visibility
 

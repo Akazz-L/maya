@@ -7,11 +7,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agents.summarizer import summarize_node
 from backend.db_models import Document
-from backend.doc_storage import body_hash
+from backend.doc_storage import body_hash, get_bible_body
 from backend.llm import Usage
 
 # Without a cap, the first generation on chapter 30 fires 29 model calls.
 MAX_PRIOR_CHAPTERS = 10
+
+
+async def build_chapter_state(
+    db: AsyncSession,
+    document: Document,
+    model_key: str,
+    on_usage: Callable[[Usage], None],
+) -> dict:
+    """Assemble agent state for a chapter from the project's documents. The beat
+    comes from the document's own brief, so a chapter can sit anywhere.
+
+    Building this can itself call the model — any prior chapter whose summary
+    has gone stale is re-summarized here — so it reports through `on_usage`.
+    """
+    return {
+        "outline_beat": document.brief,
+        "story_bible": await get_bible_body(db, document.project_id),
+        "previous_summaries": await build_previous_summaries(
+            db, document.project_id, document.position, model_key, on_usage
+        ),
+        "scene_plan": document.plan or {},
+        "draft": "",
+        "continuity_issues": [],
+    }
 
 
 async def build_previous_summaries(

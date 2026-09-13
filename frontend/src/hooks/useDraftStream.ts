@@ -1,4 +1,4 @@
-// Drives the SSE draft/revise endpoints, exposing streaming/error state to the
+// Drives the SSE revise endpoint, exposing streaming/error state to the
 // UI. The caller supplies onDelta/onDone to route tokens into the editor.
 
 import { useCallback, useState } from 'react';

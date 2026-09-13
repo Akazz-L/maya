@@ -74,9 +74,25 @@ export interface DiffPart {
   removed: boolean;
 }
 
-/** Word-level diff of old → new, for inline review rendering. */
+/**
+ * Past this many token edits a word diff stops being readable, and its cost
+ * grows quadratically: a rewritten 5,000-word chapter takes about a second.
+ */
+const MAX_EDIT_LENGTH = 2000;
+
+/**
+ * Word-level diff of old → new, for inline review rendering. Texts too
+ * different to diff cheaply are shown as the old passage replaced by the new.
+ */
 export function wordDiff(oldText: string, newText: string): DiffPart[] {
-  return diffWords(oldText, newText).map((p) => ({
+  const parts = diffWords(oldText, newText, { maxEditLength: MAX_EDIT_LENGTH });
+  if (!parts) {
+    return [
+      { value: oldText, added: false, removed: true },
+      { value: newText, added: true, removed: false },
+    ].filter((p) => p.value);
+  }
+  return parts.map((p) => ({
     value: p.value,
     added: Boolean(p.added),
     removed: Boolean(p.removed),

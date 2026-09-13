@@ -2,26 +2,28 @@ import { Button } from './ui/button';
 
 interface ChapterToolbarProps {
   busy: boolean;
-  /** Out of AI budget: the model actions are disabled, the panel toggle is not. */
+  /** Out of AI budget: the model actions are disabled, the toggles are not. */
   aiBlocked: boolean;
   onGeneratePlan: () => void;
-  onGenerateDraft: () => void;
   onCheck: () => void;
   /** Whether the panel has anything to show — a saved plan or issues. */
   hasPanelContent: boolean;
   panelOpen: boolean;
   onTogglePanel: () => void;
+  chatOpen: boolean;
+  onToggleChat: () => void;
 }
 
 export function ChapterToolbar({
   busy,
   aiBlocked,
   onGeneratePlan,
-  onGenerateDraft,
   onCheck,
   hasPanelContent,
   panelOpen,
   onTogglePanel,
+  chatOpen,
+  onToggleChat,
 }: ChapterToolbarProps) {
   const aiDisabled = busy || aiBlocked;
   return (
@@ -29,23 +31,25 @@ export function ChapterToolbar({
       <Button size="sm" variant="secondary" disabled={aiDisabled} onClick={onGeneratePlan}>
         Generate Plan
       </Button>
-      <Button size="sm" disabled={aiDisabled} onClick={onGenerateDraft}>
-        Generate Draft
-      </Button>
       <Button size="sm" variant="secondary" disabled={aiDisabled} onClick={onCheck}>
         Check
       </Button>
-      {/* Without this, a plan saved on the server is unreachable after a reload
-          unless you regenerate it. */}
-      <Button
-        size="sm"
-        variant="secondary"
-        disabled={!hasPanelContent}
-        onClick={onTogglePanel}
-        className="ml-auto"
-      >
-        {panelOpen ? 'Hide plan' : 'Show plan'}
-      </Button>
+      <div className="ml-auto flex items-center gap-2">
+        {/* Without this, a plan saved on the server is unreachable after a reload
+            unless you regenerate it. */}
+        <Button size="sm" variant="secondary" disabled={!hasPanelContent} onClick={onTogglePanel}>
+          {panelOpen ? 'Hide plan' : 'Show plan'}
+        </Button>
+        {/* Never disabled: the chat is where a running generation is followed. */}
+        <Button
+          size="sm"
+          variant={chatOpen ? 'primary' : 'secondary'}
+          aria-pressed={chatOpen}
+          onClick={onToggleChat}
+        >
+          Chat
+        </Button>
+      </div>
     </div>
   );
 }

@@ -63,7 +63,7 @@ describe('DocumentEditor', () => {
 
   it.each([
     ['bible', /AI reads this/],
-    ['chapter', /generate a draft/],
+    ['chapter', /ask the chat for a draft/],
     ['note', /not included in the AI context/],
   ] as const)('shows a %s helper while the body is empty', (kind, helper) => {
     render(

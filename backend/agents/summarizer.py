@@ -7,7 +7,7 @@ client = anthropic.AsyncAnthropic()
 
 async def summarize_node(text: str, model_key: str) -> tuple[str, Usage]:
     """Condense a chapter body into the continuity-relevant facts the planner,
-    drafter, and checker need from prior chapters.
+    chat, and checker need from prior chapters.
 
     Returns the summary and what it cost. These calls run implicitly, before
     every generation, so they are real spend and are metered like any other."""

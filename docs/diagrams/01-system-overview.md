@@ -12,32 +12,40 @@ graph TB
     subgraph server["FastAPI process — backend/"]
         MAIN["main.py<br/>/auth/* · /projects · /health<br/>SPA catch-all"]
         DOCS["routes/documents.py<br/>/projects/{pid}/documents/*"]
-        GEN["routes/generate.py<br/>/plan · /check<br/>/draft/stream · /revise/stream · /rewrite/stream"]
+        GEN["routes/generate.py<br/>/plan · /check<br/>/revise/stream · /rewrite/stream"]
+        CHAT["routes/chat.py<br/>/chat · /chat/stream<br/>/chat/messages/{id}/outcome"]
         DEPS["routes/deps.py + auth.py<br/>JWT bearer → require_project"]
         STORE["doc_storage.py<br/>document CRUD, ordering"]
+        CSTORE["chat_storage.py<br/>chat messages, proposals"]
         CTX["context.py<br/>prior-chapter summaries"]
-        AGENTS["agents/<br/>planner · drafter · rewriter<br/>checker · summarizer"]
+        AGENTS["agents/<br/>planner · chat · reviser · rewriter<br/>checker · summarizer"]
         DB["db.py<br/>async engine + session"]
     end
 
-    ANTHROPIC["Anthropic API<br/>model from settings.json"]
+    ANTHROPIC["Anthropic API<br/>model chosen per writer, backend/llm.py"]
     SQL[("SQLite ./maya.db<br/>or PostgreSQL via DATABASE_URL")]
 
     SPA -->|"fetch, Bearer JWT"| MAIN
     SPA --> DOCS
     SPA -->|"POST, reads SSE body"| GEN
+    SPA -->|"POST, reads SSE body"| CHAT
 
     MAIN --> DEPS
     DOCS --> DEPS
     GEN --> DEPS
+    CHAT --> DEPS
     DOCS --> STORE
     GEN --> STORE
     GEN --> CTX
     GEN --> AGENTS
+    CHAT --> CSTORE
+    CHAT --> CTX
+    CHAT --> AGENTS
     CTX --> AGENTS
     AGENTS -->|"messages.create / messages.stream"| ANTHROPIC
     DEPS --> DB
     STORE --> DB
+    CSTORE --> DB
     CTX --> DB
     DB --> SQL
 
@@ -50,8 +58,9 @@ graph TB
 **Every data route is project-scoped and authenticated.**
 `require_project` (`backend/routes/deps.py`) resolves the JWT to a `User`, loads the `Project`, and returns 404 — not 403 — when the caller does not own it, so a project id belonging to someone else is indistinguishable from one that never existed.
 
-**Only `routes/generate.py` talks to the agents.**
-`routes/documents.py` is plain CRUD. This is the seam worth keeping: document storage has no idea a model exists.
+**Only the generation routes — `routes/generate.py` and `routes/chat.py` — talk to the agents.**
+`routes/documents.py` is plain CRUD.
+This is the seam worth keeping: document storage has no idea a model exists.
 
 **The agents never touch the database.**
 Each agent function takes a plain `state` dict and returns a plain dict; assembling that state from documents and persisting the result is the route's job.

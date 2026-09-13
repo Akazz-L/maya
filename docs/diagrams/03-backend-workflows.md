@@ -1,6 +1,6 @@
 # Backend workflows
 
-Every generation route lives in `backend/routes/generate.py` under the prefix `/projects/{project_id}/documents/{document_id}`, and every one of them starts the same way: authenticate, resolve the project, refuse if the writer's AI budget is spent, insist the document is a chapter, then assemble agent state.
+Every generation route lives in `backend/routes/generate.py` or `backend/routes/chat.py` under the prefix `/projects/{project_id}/documents/{document_id}`, and every one of them starts the same way: authenticate, resolve the project, refuse if the writer's AI budget is spent, insist the document is a chapter, then assemble agent state.
 
 Every model call runs on the writer's chosen model (`user.model_key`) and reports its token usage to a `Meter` (`backend/usage.py`).
 The meter holds that usage in memory and writes it as `usage_events` rows in the same commit that persists the route's own result.
@@ -39,14 +39,14 @@ sequenceDiagram
     end
     U-->>R: User
 
-    R->>S: _require_chapter → get_document()
+    R->>S: require_chapter → get_document()
     S->>DB: SELECT document scoped to project
     alt kind is bible or note
         R-->>UI: 400 Cannot generate on a {kind} document
     end
     S-->>R: Document
 
-    Note over R,C: _base_state() assembles the agent state dict
+    Note over R,C: build_chapter_state() assembles the agent state dict
     R->>S: get_bible_body(project_id)
     R->>C: build_previous_summaries(project_id, position, model_key, meter.add)
     C-->>R: summaries of earlier chapters (any refreshed one is metered)
@@ -78,35 +78,37 @@ Because the gate runs before any `StreamingResponse` exists, a blocked stream fa
 
 **The `usage` in every response is the writer's meter after this call**, so the editor updates its spend without polling.
 
+**Planning is optional.**
+Nothing calls the planner except `/plan`; a chapter without a plan is drafted in the chat from its brief and the writer's message.
+
 Note what **Check** does *not* do: it reads `document.body` from the database, not from the request.
-Whatever the writer has typed but not yet saved is invisible to it — which is why the frontend flushes its pending autosave before calling this route (see [05](05-frontend-flows.md#generating-a-draft)).
+Whatever the writer has typed but not yet saved is invisible to it — which is why the frontend saves pending edits before calling this route (see [05](05-frontend-flows.md#saving-before-the-server-reads)).
 
-## Draft and Revise — server-sent events
+## Revise — server-sent events
 
-Both streaming routes share the same skeleton and differ in two places: what seeds the state, and whether the finished prose is appended or replaces the body.
+Revise rewrites the chapter to fix the issues Check reported, streaming the result.
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant UI as Frontend
     participant R as routes/generate.py
-    participant A as agents/drafter.py
+    participant A as agents/reviser.py
     participant API as Anthropic API
     participant DB as Database
 
-    UI->>R: POST …/draft/stream  {plan}
-    R->>R: require_project → require_ai_budget → _require_chapter
+    UI->>R: POST …/revise/stream
+    R->>R: require_project → require_ai_budget → require_chapter
     Note right of R: A spent budget is refused here with a 402,<br/>before any stream exists.
+    alt the chapter has no body, or no issues
+        R-->>UI: 400 There is nothing to revise
+    end
 
-    Note over R,DB: The plan is persisted BEFORE the stream opens,<br/>so an edit made in the panel survives a failed generation.
-    R->>DB: document.plan = body.plan, commit
-
-    R->>R: _base_state(), then scene_plan ← body.plan
+    R->>R: build_chapter_state(), then draft ← body, continuity_issues ← issues
     Note right of R: Refreshed summaries go to the meter.<br/>If this step fails, they are flushed before the 500.
-    R->>R: remember `existing = document.body`
     R-->>UI: 200 text/event-stream<br/>Cache-Control: no-cache, X-Accel-Buffering: no
 
-    R->>A: drafter_token_stream(state, model_key, meter.add)
+    R->>A: reviser_token_stream(state, model_key, meter.add)
     A->>API: messages.stream(**request_params(model_key))
 
     loop for each text delta
@@ -117,31 +119,93 @@ sequenceDiagram
     A->>R: on_usage(usage) once the final message arrives
 
     alt the stream completed
-        R->>R: draft = "".join(buffer)
-        Note right of R: draft → existing + "\n\n" + draft<br/>revise → replaces the body wholesale
-        R->>DB: document.body = …, summary_hash = None, insert usage_events, commit
+        R->>DB: document.body = the revision, summary_hash = None, insert usage_events, commit
         R-->>UI: data: {"type":"done","body":"<full body>","usage":{…}}
-    else any exception mid-stream
+    else cut off at max_tokens, or any other exception
         R->>DB: meter.flush() — usage billed so far, commit
         R-->>UI: data: {"type":"error","detail":"…"}
         Note right of R: The response is already 200 and streaming,<br/>so failures arrive as a frame, never a status code.
     end
 ```
 
-Three things this diagram is trying to make obvious:
-
 **The error frame exists because the status code is already spent.**
 Headers go out before the first token, so nothing after that point can be reported as a 4xx or 5xx.
 The client must treat an `error` frame as a failed request.
 
+**A truncated revision is an error, not a shorter chapter.**
+Revise replaces the body wholesale, so a reply cut off at `max_tokens` would silently delete the end of the chapter.
+`reviser_token_stream` raises `RevisionTruncatedError` instead, and the route writes the body only after the stream completes.
+
 **`X-Accel-Buffering: no`** tells a reverse proxy not to buffer the response, which would otherwise hold the tokens back and deliver them in one lump at the end.
 
-**Draft appends, revise replaces.**
-`/draft/stream` concatenates onto whatever body already exists — running it twice gives you two scenes.
-`/revise/stream` overwrites, because it was given the current draft plus its issues and returned a corrected version of the same text.
-Its state seeds `draft` from `document.body` and `continuity_issues` from `document.issues`, which is exactly the condition that makes `_build_messages` take its revision branch.
+## Chapter chat
 
-Both paths clear `summary_hash`, because the body just changed and any cached summary of it is now stale.
+`routes/chat.py` is where drafting happens.
+Each writer message is one turn: one model call (two when an edit needs correcting), streamed back as reply text plus at most one proposal.
+The route never changes `document.body`; it stores the proposal, and the editor applies it if the writer accepts.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as Frontend
+    participant R as routes/chat.py
+    participant CS as chat_storage.py
+    participant A as agents/chat.py
+    participant API as Anthropic API
+    participant DB as Database
+
+    UI->>R: POST …/chat/stream {content}
+    R->>R: require_project → require_ai_budget → require_chapter
+    R->>CS: list_messages(document)
+    alt the last reply's proposal is unresolved
+        R-->>UI: 409 Accept or discard the pending proposal first
+    end
+    R->>R: build_chapter_state() + draft, history, message<br/>base_hash = sha256(body)
+    R-->>UI: 200 text/event-stream
+
+    R->>A: chat_event_stream(state, model_key, meter.add)
+    A->>API: messages.stream(system = rules + bible, history, chapter + message, tools)
+    loop reply text
+        API-->>A: text delta
+        A-->>R: TextDelta
+        R-->>UI: data: {"type":"delta","text":"…"}
+    end
+    opt write_draft, streamed as it is written
+        API-->>A: input_json snapshot
+        A-->>R: ProposalProgress
+        R-->>UI: data: {"type":"proposal_progress","mode":"…","text":"…"}
+    end
+    A->>A: build_proposal(body, tool call) → proposed_body
+    alt the edits do not match the chapter
+        A->>API: the reply + a tool_result marked is_error, once
+    end
+    A-->>R: ProposalReady
+
+    R->>CS: add_turn(message, reply, proposal + base_hash, outcome null)
+    R->>DB: insert both messages and usage_events, commit
+    R-->>UI: data: {"type":"done","messages":[user, assistant],"usage":{…}}
+
+    Note over UI: The writer reviews the proposal in the editor
+    UI->>R: POST …/chat/messages/{id}/outcome {accepted · discarded · stale}
+    R->>DB: proposal.outcome = …, proposed_body = null, commit
+```
+
+**A failed turn leaves the conversation as it was.**
+Both messages are written in the same commit as the usage, and only once the reply is complete.
+On an `error` frame nothing but the billed usage is stored, so the writer can simply send again.
+
+**The next message waits for an outcome.**
+While a proposal is unresolved the route answers 409.
+The outcome is stated at the start of the following message, so the model is never asked anything while assuming a discarded change is in the text.
+
+**History is rendered as text.**
+Earlier turns go to the model as plain user and assistant messages, with a proposal described (a draft of N words, or its list of edits) rather than replayed as a tool call.
+A writer can switch models mid-conversation, and no request depends on how an earlier model's thinking blocks must be replayed.
+The rules and the bible come first and the chapter text last, so the stable prefix is cacheable; the model sees the most recent 40 messages.
+
+**Edits are validated before the writer sees them.**
+Every `find` must occur exactly once in the current body, and no two edits may overlap.
+A call that fails gets one correction inside the turn; a second failure becomes an `error` frame.
 
 ## Summary caching
 
@@ -183,7 +247,7 @@ With it, the planner and checker see the ten most recent chapters — a delibera
 ## Selection rewrite
 
 `/rewrite/stream` is the one generation route that never writes to the document; the only thing it persists is its usage.
-It also skips `_base_state`, so it refreshes no summaries.
+It also skips `build_chapter_state`, so it refreshes no summaries.
 The client sends the selected span plus a window of prose on each side; the rewriter returns only the replacement; the client splices it in when the writer accepts, and the ordinary autosave persists it.
 
 ```mermaid
@@ -194,7 +258,7 @@ sequenceDiagram
     participant M as Anthropic
 
     B->>R: POST /rewrite/stream {instruction, selection, before, after}
-    R->>R: require_ai_budget · _require_chapter · get_bible_body
+    R->>R: require_ai_budget · require_chapter · get_bible_body
     R->>A: rewriter_token_stream(state, model_key, meter.add)
     A->>M: messages.stream(system=bible + rules, user=instruction + context + passage)
     loop each token

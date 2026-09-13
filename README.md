@@ -1,15 +1,18 @@
 # Maya
 
-An iterative, chapter-by-chapter novel-writing assistant. Instead of generating a
-book in one shot, Maya keeps a project as a list of documents — a story bible plus
-chapters and notes — and runs each chapter through separate agent passes
-(planner → drafter → checker), each with a narrow job.
+An iterative, chapter-by-chapter novel-writing assistant.
+Instead of generating a book in one shot, Maya keeps a project as a list of documents — a story bible plus chapters and notes — and works on each chapter with agents that each have a narrow job: an optional planner, a chat assistant that drafts and edits, and a continuity checker.
 
 Documents are plain text with a name, added and reordered freely from a sidebar.
-Every project has one pinned Story Bible. Chapter documents carry a short brief
-("what happens in this chapter") and get Generate Plan, Generate Draft, and Check
-actions, with the scene plan and any continuity issues in a resizable panel below
-the prose. Prior chapters are summarized automatically and fed back in as context.
+Every project has one pinned Story Bible.
+Chapter documents carry a short brief ("what happens in this chapter") and get Generate Plan and Check actions, with the scene plan and any continuity issues in a resizable panel below the prose.
+Prior chapters are summarized automatically and fed back in as context.
+
+Beside each chapter is a chat that does the drafting.
+Ask it for a first draft, a draft from the saved scene plan (the plan panel's Generate Draft → sends exactly that), a continuation, or changes to what is already written.
+Planning is optional: a chapter can go straight from a prompt to a draft.
+Every change the chat makes arrives as a proposal in the editor, streamed in place and shown as a diff you accept or discard.
+The conversation is kept per chapter, and the assistant is told what became of each proposal.
 
 Inside a chapter, select any passage and press ⌘K (or click the Rewrite pill) to ask
 for a targeted rewrite; the suggestion streams in place and shows as a diff you can
@@ -74,8 +77,8 @@ every toolbar action has something to act on:
 |---|---|---|
 | Story Bible | Filled in, not the empty template | Context for every agent |
 | Chapter 1 | Prose plus a pre-cached summary | **Check**, and prior-chapter context |
-| Chapter 2 | Scene plan saved, body empty | **Generate Draft** from an existing plan |
-| Chapter 3 | Brief only | **Generate Plan**, then the plan-to-draft path |
+| Chapter 2 | Scene plan saved, body empty | **Generate Draft →** in the plan panel, which drafts through the chat |
+| Chapter 3 | Brief only | **Generate Plan**, or a draft straight from a chat prompt |
 | Research note | Scratch notes | Notes are excluded from all agent context |
 
 Chapter 1's summary is seeded already hashed, so drafting a later chapter costs
@@ -129,9 +132,7 @@ They render directly on GitHub and in most editors.
 
 ## Model choice and the AI budget
 
-The model is per user, chosen from the picker in the editor header and applied to
-every AI call — plan, draft, revise, check, rewrite, and the chapter summaries that
-run implicitly before each of those.
+The model is per user, chosen from the picker in the editor header and applied to every AI call — plan, chat, revise, check, rewrite, and the chapter summaries that run implicitly before each of those.
 A change takes effect on the next call; anything already streaming keeps the model
 it started on.
 

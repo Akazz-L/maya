@@ -27,9 +27,11 @@ graph TD
     WS --> TB["ChapterToolbar<br/>chapter documents only"]
     WS --> ED["DocumentEditor<br/>title · brief · ProseEditor"]
     ED --> RL["RewriteLayer<br/>chapters only: pill · prompt · review bar"]
+    ED --> PL["ProposalLayer<br/>chapters only: streamed proposal · review bar"]
     WS --> PP["PlanPanel<br/>resizable, tabbed"]
     PP --> PF["PlanForm"]
     PP --> IL["IssuesList → IssueCard"]
+    WS --> CP["ChatPane<br/>chapters only, collapsible"]
 
     classDef screen fill:#eef4ff,stroke:#5b7cba
     class LOGIN,PROJ,WS1,WS2,WS screen
@@ -37,11 +39,13 @@ graph TD
 
 `AuthProvider` sits **inside** `BrowserRouter` on purpose: it calls `useNavigate` to redirect on logout, which is only legal beneath a router.
 
-`ChapterToolbar` and `PlanPanel` render only when the open document has `kind === 'chapter'`.
-Bible and note documents get the editor and nothing else — they have no plan, no issues, and no generation actions.
+`ChapterToolbar`, `PlanPanel`, and `ChatPane` render only when the open document has `kind === 'chapter'`.
+Bible and note documents get the editor and nothing else — they have no plan, no issues, no chat, and no generation actions.
 
 The body is a CodeMirror 6 view (`ProseEditor`), not a textarea, so the chapter rewrite flow can draw over the real document.
 `editor/rewriteExtension.ts` holds the overlay as editor state and renders it as decorations; `RewriteLayer` drives it and only ever changes the document through the single Accept transaction, which is why an accepted rewrite autosaves and undoes like any other edit.
+`editor/proposalExtension.ts` is a second, independent overlay for chat proposals, so neither flow can clear the other's decoration; both draw through `editor/diffWidget.ts`.
+`ProposalLayer` likewise changes the document only through its Accept transaction, and only after the editor's text still hashes to the proposal's `base_hash`.
 
 ## Module layers
 
@@ -54,13 +58,14 @@ graph TD
     end
 
     subgraph components["components/ — presentational"]
-        CMP["DocumentSidebar · DocumentEditor · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChapterToolbar · PlanPanel<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
+        CMP["DocumentSidebar · DocumentEditor · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChatPane · ProposalLayer · ProposalReviewBar<br/>ChapterToolbar · PlanPanel<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
     end
 
     subgraph hooks["hooks/ — server state"]
         Q["queries.ts<br/>useDocuments · useDocument<br/>useCreateDocument · useDeleteDocument<br/>useReorderDocuments"]
         DS["useDraftStream.ts<br/>isStreaming · error · run()"]
         SR["useSelectionRewrite.ts<br/>idle → prompting → streaming → reviewing"]
+        CH["useChat.ts<br/>messages · streaming reply · pending proposal"]
     end
 
     subgraph api["api/ — transport"]
@@ -79,12 +84,15 @@ graph TD
     PS --> EP
     WSS --> Q
     WSS --> DS
+    WSS --> CH
     WSS --> EP
     WSS --> CMP
     PS --> CMP
     AS --> CMP
     Q --> EP
     DS --> ST
+    CH --> EP
+    CH --> ST
     EP --> CL
     CL --> TK
     ST --> TK
@@ -101,7 +109,7 @@ The dependency arrows only point downward: components never call `api/` directly
 
 One deliberate exception: **saving is not a hook.**
 `WorkspaceScreen` calls `updateDocument` directly rather than through a mutation, so it can hold the in-flight promise in a ref and await it before opening a stream.
-See [05](05-frontend-flows.md#generating-a-draft).
+See [05](05-frontend-flows.md#saving-before-the-server-reads).
 
 ## Who owns which state
 
@@ -112,6 +120,7 @@ graph LR
         K2["['project', projectId]"]
         K3["documentsKey → ['documents', projectId]"]
         K4["documentKey → ['document', projectId, documentId]"]
+        K5["chatKey → ['chat', projectId, documentId]"]
     end
 
     subgraph ctx["AuthContext — session"]
@@ -124,6 +133,8 @@ graph LR
         L3["streamBody · saveState · error"]
         L4["docVersion — editor remount key"]
         L5["pendingSave — ref to the in-flight save"]
+        L6["chatOpen"]
+        L7["editorFlush — ref to the editor's debounce flush"]
     end
 
     subgraph ed["DocumentEditor — draft text"]
@@ -134,11 +145,13 @@ graph LR
         S1["maya.token"]
         S2["maya.sidebar.collapsed"]
         S3["maya.panel.height"]
+        S4["maya.chat.open"]
     end
 
     T -.->|mirrored| S1
     L1 -.->|mirrored| S2
     L1 -.->|mirrored| S3
+    L6 -.->|mirrored| S4
 ```
 
 Two conventions are worth internalizing:

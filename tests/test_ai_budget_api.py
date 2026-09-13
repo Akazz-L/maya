@@ -139,21 +139,30 @@ async def test_a_plan_records_what_it_cost(chapter, sample_scene_plan, db, user)
     assert resp.json()["usage"]["blocked"] is True
 
 
+async def _give_issues(client, project_id, doc_id):
+    """Revise needs a draft and the issues Check found in it."""
+    await client.patch(
+        f"/projects/{project_id}/documents/{doc_id}",
+        json={
+            "body": "Elena raised her right hand.",
+            "issues": [
+                {"issue": "hand", "severity": "critical", "location": "p1", "suggested_fix": "left"}
+            ],
+        },
+    )
+
+
 @pytest.mark.asyncio
-async def test_a_completed_draft_stream_reports_usage_in_its_done_frame(
-    chapter, sample_scene_plan
-):
+async def test_a_completed_revise_stream_reports_usage_in_its_done_frame(chapter):
     client, project_id, doc_id = chapter
+    await _give_issues(client, project_id, doc_id)
 
     async def fake_stream(state, model_key, on_usage):
         yield "Prose."
         on_usage(Usage(input_tokens=1_000_000))
 
-    with patch("backend.routes.generate.drafter_token_stream", new=fake_stream):
-        resp = await client.post(
-            f"/projects/{project_id}/documents/{doc_id}/draft/stream",
-            json={"plan": sample_scene_plan},
-        )
+    with patch("backend.routes.generate.reviser_token_stream", new=fake_stream):
+        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/revise/stream")
     done = next(f for f in _parse_sse(resp.text) if f["type"] == "done")
     assert done["usage"]["spent_usd"] == 1.0
     assert done["usage"]["percent"] == 20.0
@@ -233,17 +242,17 @@ async def _exploding_stream(state, model_key, on_usage):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("path,body", [("draft/stream", {"plan": {}}), ("revise/stream", None)])
 async def test_summaries_stay_metered_when_the_stream_after_them_fails(
-    chapter_after_a_written_one, db, path, body
+    chapter_after_a_written_one, db
 ):
     client, project_id, doc_id = chapter_after_a_written_one
+    await _give_issues(client, project_id, doc_id)
 
     with (
         _billed_summary(),
-        patch("backend.routes.generate.drafter_token_stream", new=_exploding_stream),
+        patch("backend.routes.generate.reviser_token_stream", new=_exploding_stream),
     ):
-        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/{path}", json=body)
+        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/revise/stream")
 
     assert "model exploded" in next(f for f in _parse_sse(resp.text) if f["type"] == "error")["detail"]
     assert await _operations(db) == ["summarize"]
@@ -259,8 +268,8 @@ async def test_summaries_stay_metered_when_the_stream_after_them_fails(
     [
         ("plan", None),
         ("check", None),
-        ("draft/stream", {"plan": {}}),
         ("revise/stream", None),
+        ("chat/stream", {"content": "Draft it."}),
         ("rewrite/stream", {"instruction": "tighten", "selection": "Some prose."}),
     ],
 )
@@ -284,9 +293,7 @@ async def test_a_blocked_stream_fails_as_a_status_not_an_error_frame(chapter, db
     client, project_id, doc_id = chapter
     await _spend(db, user, 5.00)
 
-    resp = await client.post(
-        f"/projects/{project_id}/documents/{doc_id}/draft/stream", json={"plan": {}}
-    )
+    resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/revise/stream")
     assert resp.status_code == 402
     assert "text/event-stream" not in resp.headers.get("content-type", "")
 
