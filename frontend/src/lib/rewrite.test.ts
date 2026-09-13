@@ -1,6 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { contextWindows, matchEdgeWhitespace, stripContextEcho, wordDiff } from './rewrite';
 
+describe('wordDiff on texts that differ almost everywhere', () => {
+  it('gives up on a word-by-word diff and shows the passage replaced', () => {
+    // A new draft of a long chapter against the old one. The two share common
+    // words in different orders, which is the expensive case: uncapped, the
+    // diff takes about a second and yields thousands of fragments.
+    const vocabulary = 'the a she he it was of and to in on at by with her his rain door hall light'.split(' ');
+    const prose = (seed: number) => {
+      let x = seed;
+      return Array.from({ length: 5000 }, () => {
+        x = (x * 1103515245 + 12345) % 2147483648;
+        return vocabulary[x % vocabulary.length];
+      }).join(' ');
+    };
+    const oldText = prose(1);
+    const newText = prose(2);
+    expect(wordDiff(oldText, newText)).toEqual([
+      { value: oldText, added: false, removed: true },
+      { value: newText, added: true, removed: false },
+    ]);
+  });
+});
+
 describe('contextWindows', () => {
   it('splits text around the range', () => {
     const text = 'aaa SELECTED zzz';
