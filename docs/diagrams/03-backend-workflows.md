@@ -1,6 +1,10 @@
 # Backend workflows
 
-Every generation route lives in `backend/routes/generate.py` under the prefix `/projects/{project_id}/documents/{document_id}`, and every one of them starts the same way: authenticate, resolve the project, insist the document is a chapter, then assemble agent state.
+Every generation route lives in `backend/routes/generate.py` under the prefix `/projects/{project_id}/documents/{document_id}`, and every one of them starts the same way: authenticate, resolve the project, refuse if the writer's AI budget is spent, insist the document is a chapter, then assemble agent state.
+
+Every model call runs on the writer's chosen model (`user.model_key`) and reports its token usage to a `Meter` (`backend/usage.py`).
+The meter holds that usage in memory and writes it as `usage_events` rows in the same commit that persists the route's own result.
+On any failure after a billed call it still writes what was collected, so spend is never dropped with the error.
 
 ## Plan and Check
 
@@ -13,6 +17,7 @@ sequenceDiagram
     participant UI as Frontend
     participant R as routes/generate.py
     participant D as routes/deps.py + auth.py
+    participant U as usage.py
     participant S as doc_storage.py
     participant C as context.py
     participant A as agents/planner or checker
@@ -27,6 +32,13 @@ sequenceDiagram
     end
     D-->>R: Project
 
+    R->>U: require_ai_budget(user)
+    U->>DB: SUM usage_events.cost_micro_usd for this UTC month
+    alt spend has reached the budget
+        U-->>UI: 402 AI budget for this month is used up
+    end
+    U-->>R: User
+
     R->>S: _require_chapter → get_document()
     S->>DB: SELECT document scoped to project
     alt kind is bible or note
@@ -36,25 +48,35 @@ sequenceDiagram
 
     Note over R,C: _base_state() assembles the agent state dict
     R->>S: get_bible_body(project_id)
-    R->>C: build_previous_summaries(project_id, document.position)
-    C-->>R: summaries of earlier chapters
+    R->>C: build_previous_summaries(project_id, position, model_key, meter.add)
+    C-->>R: summaries of earlier chapters (any refreshed one is metered)
     Note right of R: outline_beat ← document.brief<br/>scene_plan ← document.plan or {}
 
     alt Check
         R->>R: state["draft"] = document.body
     end
 
-    R->>A: planner_node(state) / checker_node(state)
-    A->>API: messages.create(tools=[…], tool_choice=forced)
+    R->>A: planner_node(state, model_key) / checker_node(state, model_key)
+    A->>API: messages.create(**request_params(model_key), tools=[…], tool_choice=forced)
     API-->>A: tool_use block
-    alt no tool_use block in the response
-        A-->>UI: RuntimeError → 500
+    alt no tool_use block, or any other failure
+        A-->>R: RuntimeError
+        R->>DB: meter.flush() — the refreshed summaries were billed, commit
+        R-->>UI: 500
     end
-    A-->>R: {scene_plan} / {continuity_issues}
+    A-->>R: {scene_plan, usage} / {continuity_issues, usage}
 
-    R->>DB: document.plan = … (or document.issues = …), commit
-    R-->>UI: {"plan": …} / {"issues": …}
+    R->>R: meter.add("plan" or "check", usage)
+    R->>DB: document.plan = … (or document.issues = …), insert usage_events, commit
+    R-->>UI: {"plan": …, "usage": …} / {"issues": …, "usage": …}
 ```
+
+**The budget gate is the same on all five routes, and it is pre-flight only.**
+It reads the ledger and reserves nothing, and a call's cost lands only when the call finishes.
+So a request that starts under the cap always runs to completion, and a writer with several requests in flight at once can overshoot by one call per request.
+Because the gate runs before any `StreamingResponse` exists, a blocked stream fails as a plain `402`, not as an error frame.
+
+**The `usage` in every response is the writer's meter after this call**, so the editor updates its spend without polling.
 
 Note what **Check** does *not* do: it reads `document.body` from the database, not from the request.
 Whatever the writer has typed but not yet saved is invisible to it — which is why the frontend flushes its pending autosave before calling this route (see [05](05-frontend-flows.md#generating-a-draft)).
@@ -73,16 +95,18 @@ sequenceDiagram
     participant DB as Database
 
     UI->>R: POST …/draft/stream  {plan}
-    R->>R: require_project → _require_chapter
+    R->>R: require_project → require_ai_budget → _require_chapter
+    Note right of R: A spent budget is refused here with a 402,<br/>before any stream exists.
 
     Note over R,DB: The plan is persisted BEFORE the stream opens,<br/>so an edit made in the panel survives a failed generation.
     R->>DB: document.plan = body.plan, commit
 
     R->>R: _base_state(), then scene_plan ← body.plan
+    Note right of R: Refreshed summaries go to the meter.<br/>If this step fails, they are flushed before the 500.
     R->>R: remember `existing = document.body`
     R-->>UI: 200 text/event-stream<br/>Cache-Control: no-cache, X-Accel-Buffering: no
 
-    R->>A: drafter_token_stream(state, model_key, on_usage)
+    R->>A: drafter_token_stream(state, model_key, meter.add)
     A->>API: messages.stream(**request_params(model_key))
 
     loop for each text delta
@@ -90,13 +114,15 @@ sequenceDiagram
         A-->>R: yield text
         R-->>UI: data: {"type":"delta","text":"…"}
     end
+    A->>R: on_usage(usage) once the final message arrives
 
     alt the stream completed
         R->>R: draft = "".join(buffer)
         Note right of R: draft → existing + "\n\n" + draft<br/>revise → replaces the body wholesale
-        R->>DB: document.body = …, summary_hash = None, commit
-        R-->>UI: data: {"type":"done","body":"<full body>"}
+        R->>DB: document.body = …, summary_hash = None, insert usage_events, commit
+        R-->>UI: data: {"type":"done","body":"<full body>","usage":{…}}
     else any exception mid-stream
+        R->>DB: meter.flush() — usage billed so far, commit
         R-->>UI: data: {"type":"error","detail":"…"}
         Note right of R: The response is already 200 and streaming,<br/>so failures arrive as a frame, never a status code.
     end
@@ -124,7 +150,7 @@ Without caching, drafting chapter 12 would summarize eleven chapters from scratc
 
 ```mermaid
 flowchart TD
-    START(["build_previous_summaries(project_id, position)"]) --> Q["SELECT documents<br/>kind = 'chapter'<br/>AND position &lt; this one<br/>AND body != ''<br/>ORDER BY position"]
+    START(["build_previous_summaries(project_id, position, model_key, on_usage)"]) --> Q["SELECT documents<br/>kind = 'chapter'<br/>AND position &lt; this one<br/>AND body != ''<br/>ORDER BY position"]
     Q --> CAP["Keep the last MAX_PRIOR_CHAPTERS (10)"]
     CAP --> SPLIT{"For each document:<br/>summary is NULL<br/>or summary_hash != sha256(body)?"}
     SPLIT -->|"no — cache is valid"| REUSE["Reuse document.summary"]
@@ -132,15 +158,21 @@ flowchart TD
 
     STALE --> ANY{"any stale?"}
     ANY -->|no| OUT
-    ANY -->|yes| GATHER["asyncio.gather(summarize_node(d.body) …)<br/>one concurrent API call per stale document"]
-    GATHER --> WRITE["After the gather returns:<br/>write summary + summary_hash, commit"]
-    WRITE --> OUT
+    ANY -->|yes| GATHER["asyncio.gather(summarize_node(d.body, model_key) …, return_exceptions=True)<br/>one concurrent API call per stale document"]
+    GATHER --> WRITE["After the gather returns, for each summary that came back:<br/>write summary + summary_hash, on_usage(usage)<br/>then commit"]
+    WRITE --> FAILED{"did any summary fail?"}
+    FAILED -->|yes| RAISE(["Raise the first failure"])
+    FAILED -->|no| OUT
     REUSE --> OUT(["Return summaries, oldest first"])
 
     style GATHER fill:#fff4e5,stroke:#d08770
 ```
 
 **Only the API calls run concurrently.** `AsyncSession` is not concurrency-safe, so every database write happens *after* `gather` returns, never inside the coroutines it is awaiting.
+For the same reason usage is reported through `on_usage` (the route's `meter.add`), which only appends to a list; the meter writes it later, in one commit.
+
+**A failed summary does not discard its siblings.**
+Each summary that came back was a billed call, so it is stored and reported before the first failure is raised.
 
 **The 10-chapter cap is a cost ceiling.**
 Without it, the first generation on chapter 30 fires 29 model calls.
@@ -150,7 +182,8 @@ With it, the planner and checker see the ten most recent chapters — a delibera
 
 ## Selection rewrite
 
-`/rewrite/stream` is the one generation route that writes nothing.
+`/rewrite/stream` is the one generation route that never writes to the document; the only thing it persists is its usage.
+It also skips `_base_state`, so it refreshes no summaries.
 The client sends the selected span plus a window of prose on each side; the rewriter returns only the replacement; the client splices it in when the writer accepts, and the ordinary autosave persists it.
 
 ```mermaid
@@ -161,15 +194,22 @@ sequenceDiagram
     participant M as Anthropic
 
     B->>R: POST /rewrite/stream {instruction, selection, before, after}
-    R->>R: _require_chapter · get_bible_body
-    R->>A: rewriter_token_stream(state)
+    R->>R: require_ai_budget · _require_chapter · get_bible_body
+    R->>A: rewriter_token_stream(state, model_key, meter.add)
     A->>M: messages.stream(system=bible + rules, user=instruction + context + passage)
     loop each token
         M-->>A: text delta
         A-->>R: yield text
         R-->>B: data: {"type":"delta","text"}
     end
-    R-->>B: data: {"type":"done","body": replacement}
+    A->>R: on_usage(usage), even when the reply was truncated
+    alt completed
+        R->>R: meter.flush() — insert usage_events, commit
+        R-->>B: data: {"type":"done","body": replacement,"usage":{…}}
+    else truncated at max_tokens, or any other failure
+        R->>R: meter.flush()
+        R-->>B: data: {"type":"error","detail":"…"}
+    end
     Note over B: writer reviews the diff in place
     B->>B: Accept → one editor transaction → autosave PATCH /documents/{id}
 ```
