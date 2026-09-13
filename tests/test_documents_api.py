@@ -2,7 +2,9 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_new_project_has_an_empty_bible(authed_client):
+async def test_new_project_has_a_seeded_bible(authed_client):
+    from backend.bible_markdown import BIBLE_TEMPLATE
+
     client, project_id = authed_client
     resp = await client.get(f"/projects/{project_id}/documents")
     assert resp.status_code == 200
@@ -12,8 +14,7 @@ async def test_new_project_has_an_empty_bible(authed_client):
     assert docs[0]["title"] == "Story Bible"
 
     detail = await client.get(f"/projects/{project_id}/documents/{docs[0]['id']}")
-    # Empty, not templated: the editor's placeholder only shows on an empty body.
-    assert detail.json()["body"] == ""
+    assert detail.json()["body"] == BIBLE_TEMPLATE
 
 
 @pytest.mark.asyncio
