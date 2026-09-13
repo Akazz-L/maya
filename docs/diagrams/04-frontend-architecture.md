@@ -25,7 +25,8 @@ graph TD
     WS2 --- WS
     WS --> SIDE["DocumentSidebar<br/>select · create · rename<br/>delete · drag to reorder"]
     WS --> TB["ChapterToolbar<br/>chapter documents only"]
-    WS --> ED["DocumentEditor<br/>title · brief · ProseEditor"]
+    TB --> GP["GeneratePlanButton<br/>pop-up: the notes the plan reads"]
+    WS --> ED["DocumentEditor<br/>title · ChapterNotes · ProseEditor"]
     ED --> RL["RewriteLayer<br/>chapters only: pill · prompt · review bar"]
     ED --> PL["ProposalLayer<br/>chapters only: streamed proposal · review bar"]
     WS --> PP["PlanPanel<br/>resizable, tabbed"]
@@ -58,7 +59,7 @@ graph TD
     end
 
     subgraph components["components/ — presentational"]
-        CMP["DocumentSidebar · DocumentEditor · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChatPane · ProposalLayer · ProposalReviewBar<br/>ChapterToolbar · PlanPanel<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
+        CMP["DocumentSidebar · DocumentEditor · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChatPane · ProposalLayer · ProposalReviewBar<br/>ChapterToolbar · GeneratePlanButton · ChapterNotes · PlanPanel<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
     end
 
     subgraph hooks["hooks/ — server state"]
@@ -138,7 +139,7 @@ graph LR
     end
 
     subgraph ed["DocumentEditor — draft text"]
-        E1["title · brief · body<br/>seeded once, never re-synced"]
+        E1["title · brief (chapter notes) · body<br/>seeded once, never re-synced"]
     end
 
     subgraph ls["localStorage"]

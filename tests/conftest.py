@@ -79,7 +79,7 @@ def sample_bible():
 @pytest.fixture
 def base_state(sample_bible):
     return {
-        "outline_beat": "Elena arrives at the Citadel gates and confronts the Gatekeeper",
+        "brief": "Elena arrives at the Citadel gates and confronts the Gatekeeper",
         "story_bible": sample_bible,
         "previous_summaries": [],
         "scene_plan": {},

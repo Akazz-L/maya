@@ -82,8 +82,8 @@ _SYSTEM_RULES = (
     "You are a writing partner working with an author on one chapter of their work of literary fiction.\n"
     "Follow the voice and prose rules given in the story bible below, and give each character "
     "the speech patterns their dialogue examples establish.\n\n"
-    "Every message from the writer arrives with the chapter as it stands: its brief, its scene "
-    "plan if it has one, a summary of the previous chapter, and the current chapter text, "
+    "Every message from the writer arrives with the chapter as it stands: the author's notes "
+    "for it if they wrote any, its scene plan if it has one, a summary of the previous chapter, and the current chapter text, "
     "including any edits the writer made by hand.\n\n"
     "To change the chapter:\n"
     "- For a first draft, a draft from the scene plan, or a rewrite of the whole chapter, "
@@ -319,7 +319,7 @@ def build_turn(state: dict) -> tuple[list[dict], list[dict]]:
 
     summaries = state["previous_summaries"]
     parts = [
-        f"CHAPTER BRIEF:\n{state['outline_beat'] or '(none)'}",
+        f"CHAPTER NOTES:\n{state['brief'].strip() or '(The author has not written notes for this chapter.)'}",
         f"SCENE PLAN:\n{_plan_text(state['scene_plan'])}",
         f"PREVIOUS CHAPTER:\n{summaries[-1] if summaries else 'This is the first chapter.'}",
         f"CURRENT CHAPTER TEXT:\n{state['draft'] or '(The chapter is empty.)'}",

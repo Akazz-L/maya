@@ -197,6 +197,12 @@ def test_a_first_chapter_without_a_plan_says_so(state):
     assert "The chapter is empty." in content
 
 
+def test_a_chapter_without_notes_says_so(state):
+    state.update(brief="  ")
+    content = build_turn(state)[1][-1]["content"]
+    assert "CHAPTER NOTES:\n(The author has not written notes for this chapter.)" in content
+
+
 def test_the_last_outcome_reaches_the_new_message_and_history_is_cached(state):
     edit = {"kind": "edit", "edits": [{"find": "a", "replace": "b"}], "outcome": "accepted"}
     state["history"] = [_user("Fix it."), _assistant("Done.", edit)]

@@ -82,7 +82,7 @@ sequenceDiagram
     RQ-->>ED: mounted with key `${doc.id}:${docVersion}`
 
     loop while typing
-        U->>ED: keystroke in title / brief / body
+        U->>ED: keystroke in title / chapter notes / body
         ED->>ED: queueSave() — merge into the pending patch,<br/>restart the 800 ms timer
     end
     ED->>WS: onSave(patch) after the debounce
@@ -136,6 +136,10 @@ sequenceDiagram
 Awaiting only `pendingSave` covers a save already in flight, but not an edit still inside the debounce window, which has not been sent at all.
 The editor fills `editorFlush` with a function that cancels its timer and saves immediately; `settle()` calls it, then awaits the save.
 This is also why saving bypasses React Query's mutation machinery: the workspace has to hold the in-flight promise.
+
+**Generate Plan settles twice.**
+Its pop-up shows the chapter notes the planner will read, so it calls `settle()` before opening; notes typed a moment earlier are saved and shown, not the stale cached ones.
+Generate then settles again before `POST …/plan`, as every server-side read does.
 
 **Revise streams into the editor.**
 It sets `streamBody`, which the editor renders through `bodyOverride` without touching its own state, and keeps the editor read-only (`readOnly={stream.isStreaming}`) so the writer and the server never write at once.
@@ -200,7 +204,7 @@ A failed message is removed from the pane and its text goes back into the input.
 
 **The plan panel's Generate Draft → is a chat message.**
 It opens the chat and sends "Draft this chapter from the scene plan."; the agent reads the saved plan along with the rest of the chapter's context.
-Nothing plans on its own: a chapter without a plan is drafted from its brief and the writer's message.
+Nothing plans on its own: a chapter without a plan is drafted from its chapter notes, if any, and the writer's message.
 
 ## Panel visibility
 

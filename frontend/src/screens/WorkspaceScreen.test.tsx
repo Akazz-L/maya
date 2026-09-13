@@ -163,7 +163,7 @@ describe('WorkspaceScreen', () => {
     mockApi();
     renderAt('/p/p1/d/c1');
     expect(await screen.findByLabelText('Document body')).toHaveTextContent('The rain.');
-    expect(screen.getByDisplayValue('Mara waits.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /chapter notes/i })).toHaveTextContent('Mara waits.');
   });
 
   it('shows the generate toolbar and the chat on a chapter', async () => {
@@ -291,8 +291,64 @@ describe('WorkspaceScreen', () => {
 
     renderAt('/p/p1/d/c1');
     await userEvent.click(await screen.findByRole('button', { name: /generate plan/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /^generate$/i }));
 
     expect(await screen.findByText('$4.50 / $5.00 · 90%')).toBeInTheDocument();
+  });
+
+  it('shows the notes a plan will read, saving ones typed moments ago first', async () => {
+    const patches: string[] = [];
+    mockApi({
+      handle: (_url, init) => {
+        if (init?.method === 'PATCH') patches.push(String(init.body));
+        return undefined;
+      },
+    });
+    renderAt('/p/p1/d/c1');
+    await editorReady();
+
+    await userEvent.click(screen.getByRole('button', { name: /chapter notes/i }));
+    await userEvent.type(screen.getByLabelText('Chapter notes'), ' The bell rings.');
+    await userEvent.click(screen.getByRole('button', { name: /generate plan/i }));
+
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Mara waits. The bell rings.');
+    expect(patches).toContain('{"brief":"Mara waits. The bell rings."}');
+  });
+
+  it('plans a chapter without notes, saying the AI will propose what comes next', async () => {
+    const fetchMock = mockApi({
+      chapter: { ...CHAPTER, brief: '' },
+      handle: (url, init) =>
+        url.endsWith('/plan') && init?.method === 'POST'
+          ? json({ plan: EMPTY_PLAN, usage: ME.usage })
+          : undefined,
+    });
+    renderAt('/p/p1/d/c1');
+
+    await userEvent.click(await screen.findByRole('button', { name: /generate plan/i }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent(/no chapter notes yet/i);
+    await userEvent.click(screen.getByRole('button', { name: /^generate$/i }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) => String(url).endsWith('/plan') && (init as RequestInit)?.method === 'POST',
+        ),
+      ).toBe(true),
+    );
+    expect(await screen.findByRole('button', { name: /hide plan/i })).toBeEnabled();
+  });
+
+  it('jumps from the plan pop-up to the chapter notes', async () => {
+    mockApi();
+    renderAt('/p/p1/d/c1');
+    await editorReady();
+
+    await userEvent.click(screen.getByRole('button', { name: /generate plan/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /edit notes/i }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Chapter notes')).toHaveFocus();
   });
 
   it('refetches the meter when the server refuses a generation', async () => {
@@ -315,6 +371,7 @@ describe('WorkspaceScreen', () => {
 
     renderAt('/p/p1/d/c1');
     await userEvent.click(await screen.findByRole('button', { name: /generate plan/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /^generate$/i }));
 
     expect(await screen.findByText(/budget for this month is used up/i)).toBeInTheDocument();
     expect(await screen.findByText(/budget used — ai paused/i)).toBeInTheDocument();
