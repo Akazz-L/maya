@@ -3,95 +3,62 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChapterToolbar } from './ChapterToolbar';
 
-describe('ChapterToolbar', () => {
-  it('fires each action', async () => {
-    const props = {
-      busy: false,
-      aiBlocked: false,
-      onGeneratePlan: vi.fn(),
-      onGenerateDraft: vi.fn(),
-      onCheck: vi.fn(),
-      hasPanelContent: false,
-      panelOpen: false,
-      onTogglePanel: vi.fn(),
-    };
-    render(<ChapterToolbar {...props} />);
+function props(overrides: Partial<React.ComponentProps<typeof ChapterToolbar>> = {}) {
+  return {
+    view: 'write' as const,
+    onViewChange: vi.fn(),
+    issueCount: null,
+    busy: false,
+    aiBlocked: false,
+    onGenerateDraft: vi.fn(),
+    onCheck: vi.fn(),
+    ...overrides,
+  };
+}
 
-    await userEvent.click(screen.getByRole('button', { name: /generate plan/i }));
+describe('ChapterToolbar', () => {
+  it('marks the current view as selected', () => {
+    render(<ChapterToolbar {...props({ view: 'plan' })} />);
+    expect(screen.getByRole('tab', { name: 'Plan' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Write' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('switches views', async () => {
+    const p = props();
+    render(<ChapterToolbar {...p} />);
+    await userEvent.click(screen.getByRole('tab', { name: 'Plan' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Issues' }));
+    expect(p.onViewChange).toHaveBeenNthCalledWith(1, 'plan');
+    expect(p.onViewChange).toHaveBeenNthCalledWith(2, 'issues');
+  });
+
+  it('shows the issue count on the issues tab', () => {
+    render(<ChapterToolbar {...props({ issueCount: 2 })} />);
+    expect(screen.getByRole('tab', { name: 'Issues (2)' })).toBeInTheDocument();
+  });
+
+  it('fires the model actions', async () => {
+    const p = props();
+    render(<ChapterToolbar {...p} />);
     await userEvent.click(screen.getByRole('button', { name: /generate draft/i }));
     await userEvent.click(screen.getByRole('button', { name: /^check$/i }));
-
-    expect(props.onGeneratePlan).toHaveBeenCalled();
-    expect(props.onGenerateDraft).toHaveBeenCalled();
-    expect(props.onCheck).toHaveBeenCalled();
+    expect(p.onGenerateDraft).toHaveBeenCalled();
+    expect(p.onCheck).toHaveBeenCalled();
   });
 
-  it('disables everything while busy', () => {
-    render(
-      <ChapterToolbar
-        busy
-        aiBlocked={false}
-        onGeneratePlan={vi.fn()}
-        onGenerateDraft={vi.fn()}
-        onCheck={vi.fn()}
-        hasPanelContent={false}
-        panelOpen={false}
-        onTogglePanel={vi.fn()}
-      />,
-    );
-    screen.getAllByRole('button').forEach((b) => expect(b).toBeDisabled());
-  });
-
-  it('disables the model actions but not the panel toggle when AI is blocked', () => {
-    render(
-      <ChapterToolbar
-        busy={false}
-        aiBlocked
-        onGeneratePlan={vi.fn()}
-        onGenerateDraft={vi.fn()}
-        onCheck={vi.fn()}
-        hasPanelContent
-        panelOpen={false}
-        onTogglePanel={vi.fn()}
-      />,
-    );
-    expect(screen.getByRole('button', { name: /generate plan/i })).toBeDisabled();
+  it('disables the model actions but not the view switcher while busy', () => {
+    // Switching views calls no model; locking it would strand a writer in the
+    // Plan view for as long as a plan takes to generate.
+    render(<ChapterToolbar {...props({ busy: true })} />);
     expect(screen.getByRole('button', { name: /generate draft/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /^check$/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /show plan/i })).toBeEnabled();
+    screen.getAllByRole('tab').forEach((t) => expect(t).toBeEnabled());
   });
 
-  it('disables the panel toggle when there is nothing to show', () => {
-    render(
-      <ChapterToolbar
-        busy={false}
-        aiBlocked={false}
-        onGeneratePlan={vi.fn()}
-        onGenerateDraft={vi.fn()}
-        onCheck={vi.fn()}
-        hasPanelContent={false}
-        panelOpen={false}
-        onTogglePanel={vi.fn()}
-      />,
-    );
-    expect(screen.getByRole('button', { name: /show plan/i })).toBeDisabled();
-  });
-
-  it('toggles a saved plan back into view', async () => {
-    const onTogglePanel = vi.fn();
-    render(
-      <ChapterToolbar
-        busy={false}
-        aiBlocked={false}
-        onGeneratePlan={vi.fn()}
-        onGenerateDraft={vi.fn()}
-        onCheck={vi.fn()}
-        hasPanelContent
-        panelOpen={false}
-        onTogglePanel={onTogglePanel}
-      />,
-    );
-    await userEvent.click(screen.getByRole('button', { name: /show plan/i }));
-    expect(onTogglePanel).toHaveBeenCalled();
+  it('disables the model actions when AI is blocked', () => {
+    render(<ChapterToolbar {...props({ aiBlocked: true })} />);
+    expect(screen.getByRole('button', { name: /generate draft/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^check$/i })).toBeDisabled();
+    screen.getAllByRole('tab').forEach((t) => expect(t).toBeEnabled());
   });
 });

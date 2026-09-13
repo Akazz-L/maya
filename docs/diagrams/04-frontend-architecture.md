@@ -27,9 +27,10 @@ graph TD
     WS --> TB["ChapterToolbar<br/>chapter documents only"]
     WS --> ED["DocumentEditor<br/>title · brief · ProseEditor"]
     ED --> RL["RewriteLayer<br/>chapters only: pill · prompt · review bar"]
-    WS --> PP["PlanPanel<br/>resizable, tabbed"]
-    PP --> PF["PlanForm"]
-    PP --> IL["IssuesList → IssueCard"]
+    WS --> PV["PlanView<br/>chapter view: plan"]
+    PV --> PF["PlanForm"]
+    WS --> IV["IssuesView<br/>chapter view: issues"]
+    IV --> IL["IssuesList → IssueCard"]
 
     classDef screen fill:#eef4ff,stroke:#5b7cba
     class LOGIN,PROJ,WS1,WS2,WS screen
@@ -37,7 +38,8 @@ graph TD
 
 `AuthProvider` sits **inside** `BrowserRouter` on purpose: it calls `useNavigate` to redirect on logout, which is only legal beneath a router.
 
-`ChapterToolbar` and `PlanPanel` render only when the open document has `kind === 'chapter'`.
+`ChapterToolbar`, `PlanView`, and `IssuesView` render only when the open document has `kind === 'chapter'`.
+The toolbar's Write / Plan / Issues switcher decides which one fills the pane; see [05](05-frontend-flows.md#chapter-views).
 Bible and note documents get the editor and nothing else — they have no plan, no issues, and no generation actions.
 
 The body is a CodeMirror 6 view (`ProseEditor`), not a textarea, so the chapter rewrite flow can draw over the real document.
@@ -54,7 +56,7 @@ graph TD
     end
 
     subgraph components["components/ — presentational"]
-        CMP["DocumentSidebar · DocumentEditor · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChapterToolbar · PlanPanel<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
+        CMP["DocumentSidebar · DocumentEditor · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChapterToolbar · PlanView · IssuesView<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
     end
 
     subgraph hooks["hooks/ — server state"]
@@ -119,8 +121,8 @@ graph LR
     end
 
     subgraph local["WorkspaceScreen — ephemeral UI"]
-        L1["collapsed · panelHeight"]
-        L2["panelOverride — { id, open }"]
+        L1["collapsed"]
+        L2["chapterView · undoState — { id, plan }"]
         L3["streamBody · saveState · error"]
         L4["docVersion — editor remount key"]
         L5["pendingSave — ref to the in-flight save"]
@@ -133,18 +135,16 @@ graph LR
     subgraph ls["localStorage"]
         S1["maya.token"]
         S2["maya.sidebar.collapsed"]
-        S3["maya.panel.height"]
     end
 
     T -.->|mirrored| S1
     L1 -.->|mirrored| S2
-    L1 -.->|mirrored| S3
 ```
 
 Two conventions are worth internalizing:
 
 **`patchCache` writes to the query cache, `save` writes to the server.**
-Generation results (`plan`, `issues`) are pushed into the cache with `qc.setQueryData` and separately persisted — no refetch round-trip, so the panel updates the instant the response lands.
+Generation results (`plan`, `issues`) are pushed into the cache with `qc.setQueryData` and separately persisted — no refetch round-trip, so the Plan and Issues views update the instant the response lands.
 
 **The editor's local state is seeded from props once and never re-synced.**
 An effect that copied props into state would fight the user's in-flight typing.

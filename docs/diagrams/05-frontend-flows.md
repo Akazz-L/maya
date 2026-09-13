@@ -124,8 +124,9 @@ sequenceDiagram
     alt the document has no plan yet
         WS->>BE: POST …/plan
         BE-->>WS: {plan}
-        WS->>WS: patchCache({plan}) and open the panel
+        WS->>WS: patchDocument(id, {plan})
     end
+    WS->>WS: view = write, so the stream is in sight
 
     rect rgb(255, 244, 229)
         Note over WS,BE: The ordering that matters
@@ -169,22 +170,33 @@ Holding the in-flight promise in a ref and awaiting it first is what makes that 
 
 **Revise takes the same path** with a `null` request body — the server already has the draft and the issues it needs — and its `done` frame replaces the body rather than extending it.
 
-## Panel visibility
+## Chapter views
 
-A small piece of state with non-obvious rules, in `WorkspaceScreen`:
+A chapter fills its pane with one of three views, picked from the Write / Plan / Issues switcher in `ChapterToolbar`.
+The choice is `chapterView` in `WorkspaceScreen`, and it resets to Write whenever the route's document changes.
+The reset happens during render rather than in an effect, so the previous document's view never paints over the new one.
 
 ```mermaid
 flowchart TD
-    A{"Is the open document a chapter?"} -->|no| HIDE(["Panel hidden — no toolbar either"])
-    A -->|yes| B{"hasPanelContent:<br/>a saved plan, or any issues?"}
-    B -->|no| HIDE2(["Panel hidden — the toggle is disabled"])
-    B -->|yes| C{"Is there a panelOverride<br/>for THIS document id?"}
-    C -->|no| OPEN(["Open — the default when there is content"])
-    C -->|yes| D{"override.open"}
-    D -->|true| OPEN
-    D -->|false| CLOSED(["Closed — a deliberate hide"])
+    OPEN(["Writer opens the Plan view"]) --> A{"Does the chapter have a plan?"}
+    A -->|yes| SHOW(["Show it — no model call"])
+    A -->|no| B{"Busy, or out of AI budget?"}
+    B -->|no| GEN["POST …/plan<br/>'Planning from your brief…'"]
+    B -->|yes| EMPTY(["Empty state — Start a blank plan<br/>(and Generate plan when in budget)"])
+    GEN -->|ok| SHOW
+    GEN -->|error| FAIL(["Retry, or Start a blank plan"])
 ```
 
-The default is open whenever there is something to show, so a plan saved on the server survives a reload instead of becoming unreachable.
-The override records a deliberate show or hide and is **scoped to one document id**, so switching documents falls back to the default rather than carrying your last choice across.
-Dropping a plan clears `hasPanelContent`, and the panel closes on its own.
+**The editor is hidden, not unmounted.**
+It stays mounted behind the Plan and Issues views, so it keeps its undo history, scroll position, and selection.
+
+**Regenerate offers Undo instead of a confirm dialog.**
+The plan it replaces is kept in `undoState`, tagged with its document id, and Undo saves it back.
+Editing the plan by hand, leaving the Plan view, or switching documents forgets it.
+
+**Plan and Check pass the document id as the mutation variable.**
+A result that lands after the writer has switched documents is written to the document it was asked for, not the one on screen.
+A regenerate also awaits `pendingSave` first, so a plan edit still in flight cannot land after the new plan and restore the old one.
+
+Generate Draft and Revise switch back to Write so the stream is in sight, and Check switches to Issues when its result arrives.
+The switcher itself is never disabled: changing views calls no model, and a writer must be able to leave the Plan view while a plan generates.

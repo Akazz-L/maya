@@ -6,10 +6,11 @@ chapters and notes — and runs each chapter through separate agent passes
 (planner → drafter → checker), each with a narrow job.
 
 Documents are plain text with a name, added and reordered freely from a sidebar.
-Every project has one pinned Story Bible. Chapter documents carry a short brief
-("what happens in this chapter") and get Generate Plan, Generate Draft, and Check
-actions, with the scene plan and any continuity issues in a resizable panel below
-the prose. Prior chapters are summarized automatically and fed back in as context.
+Every project has one pinned Story Bible.
+Chapter documents carry a short brief ("what happens in this chapter") and a Write / Plan / Issues switcher.
+Opening Plan on a chapter without one generates a scene plan from the brief; edit it, regenerate it (with undo), or draft straight from it.
+Check reports continuity issues in the Issues view.
+Prior chapters are summarized automatically and fed back in as context.
 
 Inside a chapter, select any passage and press ⌘K (or click the Rewrite pill) to ask
 for a targeted rewrite; the suggestion streams in place and shows as a diff you can
@@ -75,7 +76,7 @@ every toolbar action has something to act on:
 | Story Bible | Filled in, not the empty template | Context for every agent |
 | Chapter 1 | Prose plus a pre-cached summary | **Check**, and prior-chapter context |
 | Chapter 2 | Scene plan saved, body empty | **Generate Draft** from an existing plan |
-| Chapter 3 | Brief only | **Generate Plan**, then the plan-to-draft path |
+| Chapter 3 | Brief only | Opening **Plan** generates one, then the plan-to-draft path |
 | Research note | Scratch notes | Notes are excluded from all agent context |
 
 Chapter 1's summary is seeded already hashed, so drafting a later chapter costs
