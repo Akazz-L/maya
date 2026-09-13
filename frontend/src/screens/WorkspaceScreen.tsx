@@ -9,15 +9,23 @@ import {
   updateDocument,
   type DocumentPatch,
 } from '../api/endpoints';
-import type { DocumentDetail, Issue, ProposalOutcome, ScenePlan } from '../api/types';
+import {
+  EMPTY_PLAN,
+  type DocumentDetail,
+  type Issue,
+  type ProposalOutcome,
+  type ScenePlan,
+} from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { ChapterToolbar } from '../components/ChapterToolbar';
+import { chapterPanelId, chapterTabId, type ChapterView } from '../components/chapterView';
 import { ChatPane } from '../components/ChatPane';
 import { ModelPicker } from '../components/ModelPicker';
 import { UsageMeter } from '../components/UsageMeter';
 import { DocumentEditor, type SaveState } from '../components/DocumentEditor';
 import { DocumentSidebar } from '../components/DocumentSidebar';
-import { PlanPanel } from '../components/PlanPanel';
+import { IssuesView } from '../components/IssuesView';
+import { PlanView } from '../components/PlanView';
 import type { ProposalView } from '../components/ProposalLayer';
 import { Button } from '../components/ui/button';
 import { useChat } from '../hooks/useChat';
@@ -36,10 +44,9 @@ import {
 } from '../hooks/queries';
 
 const COLLAPSE_KEY = 'maya.sidebar.collapsed';
-const HEIGHT_KEY = 'maya.panel.height';
 const CHAT_KEY = 'maya.chat.open';
 
-/** What the plan panel's Generate Draft asks the chat; the agent reads the saved plan. */
+/** What the Plan view's Draft from plan asks the chat; the agent reads the saved plan. */
 const DRAFT_FROM_PLAN = 'Draft this chapter from the scene plan.';
 
 export function WorkspaceScreen() {
@@ -49,14 +56,21 @@ export function WorkspaceScreen() {
   const qc = useQueryClient();
 
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1');
-  const [panelHeight, setPanelHeight] = useState(
-    () => Number(localStorage.getItem(HEIGHT_KEY)) || 240,
-  );
   const [chatOpen, setChatOpen] = useState(() => localStorage.getItem(CHAT_KEY) !== '0');
-  // The panel is open by default whenever the document has a plan or issues, so a
-  // saved plan survives a reload. This override records a deliberate show/hide,
-  // scoped to one document so switching documents falls back to the default.
-  const [panelOverride, setPanelOverride] = useState<{ id: string; open: boolean } | null>(null);
+  const [chapterView, setView] = useState<ChapterView>('write');
+  // Tagged with its document, because a regenerate can finish after the writer moved on.
+  const [undoState, setUndoState] = useState<{ id: string; plan: ScenePlan } | null>(null);
+  // Opening a document, or coming back to one, starts on the prose with no undo
+  // pending. Reset during render rather than in an effect, so the previous
+  // document's view never paints over the new one.
+  const [viewedDocId, setViewedDocId] = useState(documentId);
+  if (viewedDocId !== documentId) {
+    setViewedDocId(documentId);
+    setView('write');
+    setUndoState(null);
+  }
+  // Whether a chat proposal was on screen last render; see where it is compared.
+  const [proposalShown, setProposalShown] = useState(false);
   // Bumped whenever the server rewrites the body, to remount the editor onto it.
   const [docVersion, setDocVersion] = useState(0);
   const [streamBody, setStreamBody] = useState<string | undefined>(undefined);
@@ -94,13 +108,17 @@ export function WorkspaceScreen() {
     }
   }, [documentId, documents.data, navigate, projectId]);
 
-  const patchCache = useCallback(
-    (fields: Partial<DocumentDetail>) => {
-      qc.setQueryData(documentKey(projectId!, documentId!), (old?: DocumentDetail) =>
+  const patchDocument = useCallback(
+    (id: string, fields: Partial<DocumentDetail>) => {
+      qc.setQueryData(documentKey(projectId!, id), (old?: DocumentDetail) =>
         old ? { ...old, ...fields } : old,
       );
     },
-    [qc, projectId, documentId],
+    [qc, projectId],
+  );
+  const patchCache = useCallback(
+    (fields: Partial<DocumentDetail>) => patchDocument(documentId!, fields),
+    [patchDocument, documentId],
   );
 
   const save = useCallback(
@@ -132,13 +150,17 @@ export function WorkspaceScreen() {
     await pendingSave.current;
   }, []);
 
+  // Plan and check take the document id as their variable rather than reading
+  // the route: a result that lands after the writer has switched documents
+  // belongs to the document it was asked for, not the one now open.
   const planMut = useMutation({
-    // The planner reads the saved brief.
-    mutationFn: () => settle().then(() => generatePlan(projectId!, documentId!)),
-    onSuccess: (res) => {
-      patchCache({ plan: res.plan });
+    // The planner reads the saved brief. Plan edits save immediately too, and a
+    // late one could otherwise land after the new plan and restore the old one.
+    mutationFn: (id: string) => settle().then(() => generatePlan(projectId!, id)),
+    onMutate: () => setError(null),
+    onSuccess: (res, id) => {
+      patchDocument(id, { plan: res.plan });
       applyUsage(res.usage);
-      setPanelOverride({ id: documentId!, open: true });
     },
     onError: (e: Error) => {
       setError(e.message);
@@ -148,11 +170,12 @@ export function WorkspaceScreen() {
 
   const checkMut = useMutation({
     // Check reads Document.body server-side.
-    mutationFn: () => settle().then(() => checkDocument(projectId!, documentId!)),
-    onSuccess: (res) => {
-      patchCache({ issues: res.issues });
+    mutationFn: (id: string) => settle().then(() => checkDocument(projectId!, id)),
+    onMutate: () => setError(null),
+    onSuccess: (res, id) => {
+      patchDocument(id, { issues: res.issues });
       applyUsage(res.usage);
-      setPanelOverride({ id: documentId!, open: true });
+      if (id === documentId) setView('issues');
     },
     onError: (e: Error) => {
       setError(e.message);
@@ -191,7 +214,32 @@ export function WorkspaceScreen() {
     }
   };
 
-  const revise = () => runStream(reviseStreamUrl(projectId!, documentId!), null);
+  const revise = () => {
+    setView('write');
+    return runStream(reviseStreamUrl(projectId!, documentId!), null);
+  };
+
+  /** Generate a plan, keeping the one it replaces so the writer can undo. */
+  const regeneratePlan = () => {
+    const id = documentId!;
+    const previous = document.data?.plan ?? null;
+    setUndoState(null);
+    planMut.mutate(id, {
+      onSuccess: () => {
+        if (previous) setUndoState({ id, plan: previous });
+      },
+    });
+  };
+
+  const setPlan = (plan: ScenePlan) => {
+    patchCache({ plan });
+    save({ plan });
+  };
+
+  const openChat = () => {
+    localStorage.setItem(CHAT_KEY, '1');
+    setChatOpen(true);
+  };
 
   const toggleChat = () =>
     setChatOpen((open) => {
@@ -200,8 +248,9 @@ export function WorkspaceScreen() {
     });
 
   const draftFromPlan = () => {
-    localStorage.setItem(CHAT_KEY, '1');
-    setChatOpen(true);
+    setUndoState(null);
+    setView('write'); // the draft streams into the editor and is reviewed there
+    openChat();
     void chat.send(DRAFT_FROM_PLAN);
   };
 
@@ -210,10 +259,6 @@ export function WorkspaceScreen() {
 
   const doc = document.data;
   const isChapter = doc?.kind === 'chapter';
-  // A dropped plan leaves nothing to show, so the panel closes on its own.
-  const hasPanelContent = Boolean(doc?.plan || doc?.issues?.length);
-  const overrideApplies = panelOverride !== null && panelOverride.id === documentId;
-  const panelOpen = hasPanelContent && (!overrideApplies || panelOverride.open);
   // The server refuses generation once the budget is spent (402). Kept apart
   // from `busy`, which is transient in-flight state: being out of budget
   // disables only the affordances that would call the model.
@@ -233,6 +278,15 @@ export function WorkspaceScreen() {
           showDiff: pending.proposal.kind === 'edit',
         }
       : null;
+  // A proposal is reviewed in the editor, so when one appears the Write view
+  // comes forward. Only on its arrival: the writer can still switch away.
+  const proposalOnScreen = isChapter && proposal !== null;
+  if (proposalOnScreen !== proposalShown) {
+    setProposalShown(proposalOnScreen);
+    if (proposalOnScreen) setView('write');
+  }
+  const view: ChapterView = isChapter ? chapterView : 'write';
+
   const chatBusy = chat.streaming !== null || pending !== null;
   const busy =
     planMut.isPending ||
@@ -241,6 +295,7 @@ export function WorkspaceScreen() {
     deleteDoc.isPending ||
     rewriteBusy ||
     chatBusy;
+  const planForThisDoc = planMut.variables === documentId;
 
   const chatDisabledReason = aiBlocked
     ? 'AI budget used — chat is paused.'
@@ -253,6 +308,18 @@ export function WorkspaceScreen() {
   const resolveProposal = (outcome: ProposalOutcome) => {
     if (pending) void chat.resolve(pending.messageId, outcome);
   };
+
+  const changeView = (next: ChapterView) => {
+    setView(next);
+    if (next !== 'plan') setUndoState(null);
+    // Opening an empty plan generates one; opening a saved plan never calls the model.
+    if (next === 'plan' && !doc?.plan && !busy && !aiBlocked) regeneratePlan();
+  };
+
+  const tabPanel = (panel: ChapterView) =>
+    isChapter
+      ? { role: 'tabpanel', id: chapterPanelId(panel), 'aria-labelledby': chapterTabId(panel) }
+      : {};
 
   return (
     <div className="flex h-screen flex-col bg-[#f5f5f0]">
@@ -318,34 +385,83 @@ export function WorkspaceScreen() {
         <div className="flex flex-1 flex-col overflow-hidden">
           {isChapter && (
             <ChapterToolbar
+              view={view}
+              onViewChange={changeView}
+              issueCount={doc?.issues?.length ?? null}
               busy={busy}
               aiBlocked={aiBlocked}
-              onGeneratePlan={() => planMut.mutate()}
-              onCheck={() => checkMut.mutate()}
-              hasPanelContent={hasPanelContent}
-              panelOpen={panelOpen}
-              onTogglePanel={() => setPanelOverride({ id: documentId!, open: !panelOpen })}
+              onCheck={() => checkMut.mutate(documentId!)}
               chatOpen={chatOpen}
               onToggleChat={toggleChat}
             />
           )}
 
           {doc ? (
-            <DocumentEditor
-              key={`${doc.id}:${docVersion}`}
-              document={doc}
-              projectId={projectId}
-              readOnly={stream.isStreaming}
-              onSave={save}
-              saveState={saveState}
-              bodyOverride={streamBody}
-              onBusyChange={setRewriteBusy}
-              aiBlocked={aiBlocked}
-              onUsage={applyUsage}
-              proposal={isChapter ? proposal : null}
-              onProposalResolve={resolveProposal}
-              flushRef={editorFlush}
-            />
+            <>
+              {/* Hidden rather than unmounted behind the Plan and Issues views, so the
+                  editor keeps its undo history, scroll and selection. */}
+              <div
+                hidden={view !== 'write'}
+                className="flex flex-1 flex-col overflow-hidden"
+                {...tabPanel('write')}
+              >
+                <DocumentEditor
+                  key={`${doc.id}:${docVersion}`}
+                  document={doc}
+                  projectId={projectId}
+                  readOnly={stream.isStreaming}
+                  onSave={save}
+                  saveState={saveState}
+                  bodyOverride={streamBody}
+                  onBusyChange={setRewriteBusy}
+                  aiBlocked={aiBlocked}
+                  onUsage={applyUsage}
+                  proposal={isChapter ? proposal : null}
+                  onProposalResolve={resolveProposal}
+                  flushRef={editorFlush}
+                />
+              </div>
+
+              {view === 'plan' && (
+                <div className="flex flex-1 flex-col overflow-hidden" {...tabPanel('plan')}>
+                  <PlanView
+                    plan={doc.plan}
+                    generating={planMut.isPending && planForThisDoc}
+                    failed={planMut.isError && planForThisDoc}
+                    canUndo={undoState?.id === documentId}
+                    busy={busy}
+                    aiBlocked={aiBlocked}
+                    onChange={(plan) => {
+                      setUndoState(null);
+                      setPlan(plan);
+                    }}
+                    onGenerate={regeneratePlan}
+                    onUndo={() => {
+                      if (!undoState) return;
+                      setUndoState(null);
+                      setPlan(undoState.plan);
+                    }}
+                    onStartBlank={() => setPlan(EMPTY_PLAN)}
+                    onGenerateDraft={draftFromPlan}
+                  />
+                </div>
+              )}
+
+              {view === 'issues' && (
+                <div className="flex flex-1 flex-col overflow-hidden" {...tabPanel('issues')}>
+                  <IssuesView
+                    issues={doc.issues}
+                    busy={busy}
+                    aiBlocked={aiBlocked}
+                    onChange={(issues: Issue[]) => {
+                      patchCache({ issues });
+                      save({ issues });
+                    }}
+                    onRevise={revise}
+                  />
+                </div>
+              )}
+            </>
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
               {documents.isLoading || document.isLoading ? 'Loading…' : 'Select a document.'}
@@ -356,35 +472,6 @@ export function WorkspaceScreen() {
             <p className="border-t border-red-200 bg-red-50 px-6 py-1.5 text-xs text-red-700">
               {error}
             </p>
-          )}
-
-          {isChapter && panelOpen && (
-            <PlanPanel
-              plan={doc?.plan ?? null}
-              issues={doc?.issues ?? null}
-              height={panelHeight}
-              onHeightChange={(h) => {
-                setPanelHeight(h);
-                localStorage.setItem(HEIGHT_KEY, String(h));
-              }}
-              onPlanChange={(plan: ScenePlan) => {
-                patchCache({ plan });
-                save({ plan });
-              }}
-              onIssuesChange={(issues: Issue[]) => {
-                patchCache({ issues });
-                save({ issues });
-              }}
-              onDrop={() => {
-                patchCache({ plan: null });
-                save({ plan: null });
-                setPanelOverride({ id: documentId!, open: false });
-              }}
-              onGenerateDraft={draftFromPlan}
-              onRevise={revise}
-              busy={busy}
-              aiBlocked={aiBlocked}
-            />
           )}
         </div>
 

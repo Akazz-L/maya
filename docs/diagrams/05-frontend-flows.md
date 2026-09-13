@@ -198,26 +198,40 @@ If the editor's text hashes to anything else — the chapter was changed in anot
 While a proposal is unresolved the chat input is disabled with the reason shown, and the server would refuse the message with a 409 anyway.
 A failed message is removed from the pane and its text goes back into the input.
 
-**The plan panel's Generate Draft → is a chat message.**
-It opens the chat and sends "Draft this chapter from the scene plan."; the agent reads the saved plan along with the rest of the chapter's context.
-Nothing plans on its own: a chapter without a plan is drafted from its brief and the writer's message.
+**The Plan view's Draft from plan → is a chat message.**
+It switches to the Write view, opens the chat, and sends "Draft this chapter from the scene plan."; the agent reads the saved plan along with the rest of the chapter's context.
+Nothing plans on its own when drafting: a chapter without a plan is drafted from its brief and the writer's message.
 
-## Panel visibility
+**A proposal brings the Write view forward.**
+It is reviewed in the editor, so when one starts streaming (or a saved one loads) while Plan or Issues is open, the view switches to Write.
+It switches once, on arrival; the writer can still move to another view while the proposal waits.
 
-A small piece of state with non-obvious rules, in `WorkspaceScreen`:
+## Chapter views
+
+A chapter fills its main pane with one of three views, picked from the Write / Plan / Issues switcher in `ChapterToolbar`; the chat stays beside all three.
+The choice is `chapterView` in `WorkspaceScreen`, and it resets to Write whenever the route's document changes.
+The reset happens during render rather than in an effect, so the previous document's view never paints over the new one.
 
 ```mermaid
 flowchart TD
-    A{"Is the open document a chapter?"} -->|no| HIDE(["Panel hidden — no toolbar either"])
-    A -->|yes| B{"hasPanelContent:<br/>a saved plan, or any issues?"}
-    B -->|no| HIDE2(["Panel hidden — the toggle is disabled"])
-    B -->|yes| C{"Is there a panelOverride<br/>for THIS document id?"}
-    C -->|no| OPEN(["Open — the default when there is content"])
-    C -->|yes| D{"override.open"}
-    D -->|true| OPEN
-    D -->|false| CLOSED(["Closed — a deliberate hide"])
+    OPEN(["Writer opens the Plan view"]) --> A{"Does the chapter have a plan?"}
+    A -->|yes| SHOW(["Show it — no model call"])
+    A -->|no| B{"Busy, or out of AI budget?"}
+    B -->|no| GEN["settle(), then POST …/plan<br/>'Planning from your brief…'"]
+    B -->|yes| EMPTY(["Empty state — Start a blank plan<br/>(and Generate plan when in budget)"])
+    GEN -->|ok| SHOW
+    GEN -->|error| FAIL(["Retry, or Start a blank plan"])
 ```
 
-The default is open whenever there is something to show, so a plan saved on the server survives a reload instead of becoming unreachable.
-The override records a deliberate show or hide and is **scoped to one document id**, so switching documents falls back to the default rather than carrying your last choice across.
-Dropping a plan clears `hasPanelContent`, and the panel closes on its own.
+**The editor is hidden, not unmounted.**
+It stays mounted behind the Plan and Issues views, so it keeps its undo history, scroll position, and selection.
+
+**Regenerate offers Undo instead of a confirm dialog.**
+The plan it replaces is kept in `undoState`, tagged with its document id, and Undo saves it back.
+Editing the plan by hand, leaving the Plan view, or switching documents forgets it.
+
+**Plan and Check pass the document id as the mutation variable.**
+A result that lands after the writer has switched documents is written to the document it was asked for, not the one on screen.
+
+Revise switches back to Write so the stream is in sight, and Check switches to Issues when its result arrives.
+The switcher itself is never disabled: changing views calls no model, and a writer must be able to leave the Plan view while a plan generates.
