@@ -104,6 +104,29 @@ class Document(Base):
     project: Mapped["Project"] = relationship("Project", back_populates="documents")
 
 
+class ChatMessage(Base):
+    """One message in a chapter's chat, in conversation order.
+
+    An assistant message may carry a proposal: a change to the chapter body the
+    writer has yet to accept or discard. `proposal` is a JSON column, which does
+    not track in-place mutation, so a change must assign a new dict.
+    """
+
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        UniqueConstraint("document_id", "position", name="uq_chat_messages_document_position"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    position: Mapped[int] = mapped_column(nullable=False)
+    #: user | assistant
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    proposal: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, server_default=func.now())
+
+
 class DraftState(Base):
     __tablename__ = "draft_states"
 
@@ -143,7 +166,8 @@ class UsageEvent(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, server_default=func.now())
     model_key: Mapped[str] = mapped_column(String(16), nullable=False)
-    #: plan | draft | revise | check | rewrite | summarize
+    #: plan | chat | revise | check | rewrite | summarize (draft on rows written
+    #: before chat replaced the draft route)
     operation: Mapped[str] = mapped_column(String(16), nullable=False)
     input_tokens: Mapped[int] = mapped_column(default=0)
     output_tokens: Mapped[int] = mapped_column(default=0)

@@ -6,7 +6,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth import get_current_user
 from backend.db import get_db
-from backend.db_models import Project, User
+from backend.db_models import Document, Project, User
+from backend.doc_storage import get_document
+
+
+async def require_chapter(
+    db: AsyncSession, project_id: uuid.UUID, document_id: uuid.UUID
+) -> Document:
+    """Resolve a document in the project, or 404. Only chapters take AI
+    generation, so any other kind is a 400."""
+    document = await get_document(db, project_id, document_id)
+    if document.kind != "chapter":
+        raise HTTPException(
+            status_code=400, detail=f"Cannot generate on a {document.kind} document"
+        )
+    return document
 
 
 async def require_project(

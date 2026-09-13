@@ -2,10 +2,10 @@ import hashlib
 import uuid
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db_models import Document
+from backend.db_models import ChatMessage, Document
 
 VALID_KINDS = {"bible", "chapter", "note"}
 
@@ -77,6 +77,9 @@ async def delete_document(
     document = await get_document(db, project_id, document_id)
     if document.kind == "bible":
         raise HTTPException(status_code=409, detail="The story bible cannot be deleted")
+    # The foreign key cascades on PostgreSQL, but SQLite enforces it only under
+    # a pragma the app does not set, so the chat is removed explicitly.
+    await db.execute(delete(ChatMessage).where(ChatMessage.document_id == document.id))
     await db.delete(document)
     await db.flush()
     # Close the gap so positions stay contiguous.
