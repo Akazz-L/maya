@@ -61,6 +61,44 @@ describe('DocumentEditor', () => {
     expect(screen.queryByLabelText('Chapter brief')).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['bible', /AI reads this/],
+    ['chapter', /generate a draft/],
+    ['note', /not included in the AI context/],
+  ] as const)('shows a %s helper while the body is empty', (kind, helper) => {
+    render(
+      <DocumentEditor
+        document={{ ...DOC, kind, body: '' }}
+        projectId="p1"
+        readOnly={false}
+        onSave={vi.fn()}
+        saveState="idle"
+      />,
+    );
+    expect(screen.getByLabelText('Document body')).toHaveTextContent(helper);
+  });
+
+  it('hides the helper once the body has text', () => {
+    render(
+      <DocumentEditor
+        document={{ ...DOC, kind: 'note', body: '' }}
+        projectId="p1"
+        readOnly={false}
+        onSave={vi.fn()}
+        saveState="idle"
+      />,
+    );
+    typeAtEnd('Document body', 'Salt prices.');
+    expect(screen.getByLabelText('Document body')).not.toHaveTextContent(/AI context/);
+  });
+
+  it('prompts for the chapter brief', () => {
+    render(
+      <DocumentEditor document={{ ...DOC, brief: '' }} projectId="p1" readOnly={false} onSave={vi.fn()} saveState="idle" />,
+    );
+    expect(screen.getByLabelText('Chapter brief')).toHaveAttribute('placeholder', expect.stringMatching(/What happens/));
+  });
+
   it('disables the body while read-only', () => {
     render(<DocumentEditor document={DOC} projectId="p1" readOnly onSave={vi.fn()} saveState="idle" />);
     expect(screen.getByLabelText('Document body')).toHaveAttribute('contenteditable', 'false');

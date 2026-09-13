@@ -14,7 +14,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefm
 _logger = logging.getLogger(__name__)
 
 from backend.auth import create_access_token, get_current_user, hash_password, verify_password
-from backend.bible_markdown import BIBLE_TEMPLATE
 from backend.db import get_db, init_db
 from backend.db_models import Document, Project, User
 from backend.routes import documents as documents_routes
@@ -168,12 +167,13 @@ async def create_project(
     project = Project(user_id=current_user.id, name=body.name)
     db.add(project)
     await db.flush()
-    # Every project opens on a story bible; seed it with the conventional headings.
+    # Every project opens on a story bible. It starts empty so the editor's
+    # placeholder can say what belongs there; seeded text would hide it.
     db.add(Document(
         project_id=project.id,
         title="Story Bible",
         kind="bible",
-        body=BIBLE_TEMPLATE,
+        body="",
         position=0,
     ))
     await db.commit()
