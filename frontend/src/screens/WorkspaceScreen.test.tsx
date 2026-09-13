@@ -259,6 +259,35 @@ describe('WorkspaceScreen', () => {
     );
   });
 
+  it('removes a plan without generating another, and undo brings it back', async () => {
+    // Planning is optional: every chat draft and check is sent the saved plan,
+    // so a writer must be able to go back to having none.
+    const fetchMock = mockApi({ chapter: { ...CHAPTER, plan: SAVED_PLAN } });
+    renderAt('/p/p1/d/c1');
+    await userEvent.click(await screen.findByRole('tab', { name: 'Plan' }));
+    await userEvent.click(await screen.findByRole('button', { name: /remove plan/i }));
+
+    expect(await screen.findByText(/no plan yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/plan removed/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/projects/p1/documents/c1',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ plan: null }) }),
+      ),
+    );
+    expect(planRequests(fetchMock)).toBe(0);
+
+    await userEvent.click(screen.getByRole('button', { name: /undo/i }));
+
+    expect(await screen.findByDisplayValue('Reach the gate')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/projects/p1/documents/c1',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ plan: SAVED_PLAN }) }),
+      ),
+    );
+  });
+
   it('forgets the undo once the regenerated plan is edited by hand', async () => {
     mockApi({ chapter: { ...CHAPTER, plan: SAVED_PLAN } });
     renderAt('/p/p1/d/c1');

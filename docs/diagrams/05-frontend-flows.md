@@ -226,8 +226,10 @@ flowchart TD
 **The editor is hidden, not unmounted.**
 It stays mounted behind the Plan and Issues views, so it keeps its undo history, scroll position, and selection.
 
-**Regenerate offers Undo instead of a confirm dialog.**
-The plan it replaces is kept in `undoState`, tagged with its document id, and Undo saves it back.
+**Regenerate and Remove plan offer Undo instead of a confirm dialog.**
+The plan they replace is kept in `undoState`, tagged with its document id, and Undo saves it back.
+Removing matters because planning is optional: the chat, checker, and reviser are sent whatever plan is saved, so a stale or empty one would keep steering them.
+Removal does not generate a replacement; only opening the Plan view on a chapter without a plan does.
 Editing the plan by hand, leaving the Plan view, or switching documents forgets it.
 
 **Plan and Check pass the document id as the mutation variable.**

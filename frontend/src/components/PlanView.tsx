@@ -2,19 +2,24 @@ import type { ScenePlan } from '../api/types';
 import { Button } from './ui/button';
 import { PlanForm } from './PlanForm';
 
+/** What the Undo bar would revert: a regenerate, or removing the plan. */
+export type PlanUndo = 'regenerated' | 'removed';
+
 interface PlanViewProps {
   plan: ScenePlan | null;
   /** A plan request is in flight: the first plan, a retry, or a regenerate. */
   generating: boolean;
   /** The last plan request failed; its reason is in the workspace error bar. */
   failed: boolean;
-  /** A regenerate replaced the plan and the one before it can still be restored. */
-  canUndo: boolean;
+  /** The plan was just regenerated or removed, and the one before it can still be restored. */
+  undo: PlanUndo | null;
   busy: boolean;
   /** Out of AI budget: generating and drafting are disabled; editing by hand is not. */
   aiBlocked: boolean;
   onChange: (plan: ScenePlan) => void;
   onGenerate: () => void;
+  /** Planning is optional: without a plan, the chat and checker work from the brief. */
+  onRemove: () => void;
   onUndo: () => void;
   onStartBlank: () => void;
   onGenerateDraft: () => void;
@@ -24,11 +29,12 @@ export function PlanView({
   plan,
   generating,
   failed,
-  canUndo,
+  undo,
   busy,
   aiBlocked,
   onChange,
   onGenerate,
+  onRemove,
   onUndo,
   onStartBlank,
   onGenerateDraft,
@@ -43,6 +49,11 @@ export function PlanView({
         </div>
         {plan && (
           <div className="flex items-center gap-2">
+            {/* Calls no model, so the budget has no say; but a regenerate in flight
+                would land after the removal and bring a plan straight back. */}
+            <Button size="sm" variant="secondary" disabled={generating} onClick={onRemove}>
+              Remove plan
+            </Button>
             <Button size="sm" variant="secondary" disabled={aiDisabled} onClick={onGenerate}>
               ↻ Regenerate
             </Button>
@@ -53,12 +64,12 @@ export function PlanView({
         )}
       </div>
 
-      {canUndo && (
+      {undo && (
         <div
           role="status"
           className="flex items-center gap-3 border-b border-blue-100 bg-blue-50 px-6 py-1.5 text-xs text-blue-800"
         >
-          Plan regenerated.
+          {undo === 'regenerated' ? 'Plan regenerated.' : 'Plan removed.'}
           <button
             type="button"
             onClick={onUndo}

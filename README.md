@@ -6,7 +6,7 @@ Instead of generating a book in one shot, Maya keeps a project as a list of docu
 Documents are plain text with a name, added and reordered freely from a sidebar.
 Every project has one pinned Story Bible.
 Chapter documents carry a short brief ("what happens in this chapter") and a Write / Plan / Issues switcher.
-Opening Plan on a chapter without one generates a scene plan from the brief; edit it, regenerate it (with undo), or draft from it.
+Opening Plan on a chapter without one generates a scene plan from the brief; edit it, regenerate or remove it (with undo), or draft from it.
 Check reports continuity issues in the Issues view.
 Prior chapters are summarized automatically and fed back in as context.
 

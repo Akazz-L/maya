@@ -25,7 +25,7 @@ import { UsageMeter } from '../components/UsageMeter';
 import { DocumentEditor, type SaveState } from '../components/DocumentEditor';
 import { DocumentSidebar } from '../components/DocumentSidebar';
 import { IssuesView } from '../components/IssuesView';
-import { PlanView } from '../components/PlanView';
+import { PlanView, type PlanUndo } from '../components/PlanView';
 import type { ProposalView } from '../components/ProposalLayer';
 import { Button } from '../components/ui/button';
 import { useChat } from '../hooks/useChat';
@@ -59,7 +59,11 @@ export function WorkspaceScreen() {
   const [chatOpen, setChatOpen] = useState(() => localStorage.getItem(CHAT_KEY) !== '0');
   const [chapterView, setView] = useState<ChapterView>('write');
   // Tagged with its document, because a regenerate can finish after the writer moved on.
-  const [undoState, setUndoState] = useState<{ id: string; plan: ScenePlan } | null>(null);
+  const [undoState, setUndoState] = useState<{
+    id: string;
+    plan: ScenePlan;
+    reason: PlanUndo;
+  } | null>(null);
   // Opening a document, or coming back to one, starts on the prose with no undo
   // pending. Reset during render rather than in an effect, so the previous
   // document's view never paints over the new one.
@@ -226,12 +230,12 @@ export function WorkspaceScreen() {
     setUndoState(null);
     planMut.mutate(id, {
       onSuccess: () => {
-        if (previous) setUndoState({ id, plan: previous });
+        if (previous) setUndoState({ id, plan: previous, reason: 'regenerated' });
       },
     });
   };
 
-  const setPlan = (plan: ScenePlan) => {
+  const setPlan = (plan: ScenePlan | null) => {
     patchCache({ plan });
     save({ plan });
   };
@@ -428,7 +432,7 @@ export function WorkspaceScreen() {
                     plan={doc.plan}
                     generating={planMut.isPending && planForThisDoc}
                     failed={planMut.isError && planForThisDoc}
-                    canUndo={undoState?.id === documentId}
+                    undo={undoState && undoState.id === documentId ? undoState.reason : null}
                     busy={busy}
                     aiBlocked={aiBlocked}
                     onChange={(plan) => {
@@ -436,6 +440,13 @@ export function WorkspaceScreen() {
                       setPlan(plan);
                     }}
                     onGenerate={regeneratePlan}
+                    onRemove={() => {
+                      // Planning is optional: a stale or empty plan would otherwise
+                      // keep steering every chat draft and check.
+                      if (!doc.plan) return;
+                      setUndoState({ id: documentId!, plan: doc.plan, reason: 'removed' });
+                      setPlan(null);
+                    }}
                     onUndo={() => {
                       if (!undoState) return;
                       setUndoState(null);

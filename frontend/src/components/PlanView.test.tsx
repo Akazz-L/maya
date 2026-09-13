@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { PlanView } from './PlanView';
+import { PlanView, type PlanUndo } from './PlanView';
 import { EMPTY_PLAN, type ScenePlan } from '../api/types';
 
 function props(overrides: Partial<React.ComponentProps<typeof PlanView>> = {}) {
@@ -9,11 +9,12 @@ function props(overrides: Partial<React.ComponentProps<typeof PlanView>> = {}) {
     plan: { ...EMPTY_PLAN, goal: 'Escape' } as ScenePlan | null,
     generating: false,
     failed: false,
-    canUndo: false,
+    undo: null as PlanUndo | null,
     busy: false,
     aiBlocked: false,
     onChange: vi.fn(),
     onGenerate: vi.fn(),
+    onRemove: vi.fn(),
     onUndo: vi.fn(),
     onStartBlank: vi.fn(),
     onGenerateDraft: vi.fn(),
@@ -57,9 +58,31 @@ describe('PlanView', () => {
   });
 
   it('offers to undo a regenerate', async () => {
-    const p = props({ canUndo: true });
+    const p = props({ undo: 'regenerated' });
     render(<PlanView {...p} />);
     expect(screen.getByText(/plan regenerated/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /undo/i }));
+    expect(p.onUndo).toHaveBeenCalled();
+  });
+
+  it('removes the plan, even once the budget is spent', async () => {
+    // Removing calls no model; planning is optional, so a plan must be removable.
+    const p = props({ aiBlocked: true });
+    render(<PlanView {...p} />);
+    await userEvent.click(screen.getByRole('button', { name: /remove plan/i }));
+    expect(p.onRemove).toHaveBeenCalled();
+  });
+
+  it('will not remove a plan while a regenerate is in flight', () => {
+    // The regenerated plan would land after the removal and bring a plan back.
+    render(<PlanView {...props({ generating: true, busy: true })} />);
+    expect(screen.getByRole('button', { name: /remove plan/i })).toBeDisabled();
+  });
+
+  it('offers to undo a removal from the empty state', async () => {
+    const p = props({ plan: null, undo: 'removed' });
+    render(<PlanView {...p} />);
+    expect(screen.getByText(/plan removed/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /undo/i }));
     expect(p.onUndo).toHaveBeenCalled();
   });
