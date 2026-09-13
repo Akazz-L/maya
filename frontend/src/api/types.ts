@@ -37,7 +37,7 @@ export interface DocumentSummary {
 /** A single open document, from GET /projects/{id}/documents/{did}. */
 export interface DocumentDetail extends DocumentSummary {
   body: string;
-  /** Chapter only — the planner's outline beat. Empty on bible and note documents. */
+  /** Chapter only — the writer's optional chapter notes, read by the planner and the chat. Empty on bible and note documents. */
   brief: string;
   plan: ScenePlan | null;
   issues: Issue[] | null;

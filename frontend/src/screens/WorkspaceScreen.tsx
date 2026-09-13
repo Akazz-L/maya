@@ -70,6 +70,8 @@ export function WorkspaceScreen() {
   const pendingSave = useRef<Promise<unknown>>(Promise.resolve());
   // Filled by the editor: saves an edit still waiting out the autosave debounce.
   const editorFlush = useRef<(() => void) | null>(null);
+  // Filled by the editor: expands the chapter notes and focuses them.
+  const notesFocus = useRef<(() => void) | null>(null);
 
   const project = useQuery({
     queryKey: ['project', projectId],
@@ -133,7 +135,7 @@ export function WorkspaceScreen() {
   }, []);
 
   const planMut = useMutation({
-    // The planner reads the saved brief.
+    // The planner reads the saved chapter notes.
     mutationFn: () => settle().then(() => generatePlan(projectId!, documentId!)),
     onSuccess: (res) => {
       patchCache({ plan: res.plan });
@@ -320,7 +322,10 @@ export function WorkspaceScreen() {
             <ChapterToolbar
               busy={busy}
               aiBlocked={aiBlocked}
+              brief={doc?.brief ?? ''}
+              beforeOpenPlan={settle}
               onGeneratePlan={() => planMut.mutate()}
+              onEditNotes={() => notesFocus.current?.()}
               onCheck={() => checkMut.mutate()}
               hasPanelContent={hasPanelContent}
               panelOpen={panelOpen}
@@ -345,6 +350,7 @@ export function WorkspaceScreen() {
               proposal={isChapter ? proposal : null}
               onProposalResolve={resolveProposal}
               flushRef={editorFlush}
+              notesFocusRef={notesFocus}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400">

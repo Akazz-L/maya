@@ -50,7 +50,7 @@ sequenceDiagram
     R->>S: get_bible_body(project_id)
     R->>C: build_previous_summaries(project_id, position, model_key, meter.add)
     C-->>R: summaries of earlier chapters (any refreshed one is metered)
-    Note right of R: outline_beat ← document.brief<br/>scene_plan ← document.plan or {}
+    Note right of R: brief ← document.brief<br/>scene_plan ← document.plan or {}
 
     alt Check
         R->>R: state["draft"] = document.body
@@ -79,7 +79,11 @@ Because the gate runs before any `StreamingResponse` exists, a blocked stream fa
 **The `usage` in every response is the writer's meter after this call**, so the editor updates its spend without polling.
 
 **Planning is optional.**
-Nothing calls the planner except `/plan`; a chapter without a plan is drafted in the chat from its brief and the writer's message.
+Nothing calls the planner except `/plan`; a chapter without a plan is drafted in the chat from its notes, if any, and the writer's message.
+
+**Chapter notes are optional.**
+The planner plans from `brief` when the writer wrote some notes, keeping everything they specify.
+With no notes it proposes the chapter that most naturally comes next, from the bible and the earlier chapters.
 
 Note what **Check** does *not* do: it reads `document.body` from the database, not from the request.
 Whatever the writer has typed but not yet saved is invisible to it — which is why the frontend saves pending edits before calling this route (see [05](05-frontend-flows.md#saving-before-the-server-reads)).

@@ -7,7 +7,10 @@ function props(overrides: Partial<React.ComponentProps<typeof ChapterToolbar>> =
   return {
     busy: false,
     aiBlocked: false,
+    brief: 'Mara waits.',
+    beforeOpenPlan: vi.fn(() => Promise.resolve()),
     onGeneratePlan: vi.fn(),
+    onEditNotes: vi.fn(),
     onCheck: vi.fn(),
     hasPanelContent: false,
     panelOpen: false,
@@ -24,10 +27,22 @@ describe('ChapterToolbar', () => {
     render(<ChapterToolbar {...p} />);
 
     await userEvent.click(screen.getByRole('button', { name: /generate plan/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /^generate$/i }));
     await userEvent.click(screen.getByRole('button', { name: /^check$/i }));
 
     expect(p.onGeneratePlan).toHaveBeenCalled();
     expect(p.onCheck).toHaveBeenCalled();
+  });
+
+  it('shows the chapter notes before generating a plan from them', async () => {
+    const p = props();
+    render(<ChapterToolbar {...p} />);
+    await userEvent.click(screen.getByRole('button', { name: /generate plan/i }));
+
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Mara waits.');
+    await userEvent.click(screen.getByRole('button', { name: /edit notes/i }));
+    expect(p.onEditNotes).toHaveBeenCalled();
+    expect(p.onGeneratePlan).not.toHaveBeenCalled();
   });
 
   it('no longer drafts behind a hidden plan: drafting lives in the chat', () => {

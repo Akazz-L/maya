@@ -98,7 +98,7 @@ async def test_the_agent_sees_the_chapter_the_history_and_the_message(chapter):
 
     state = seen[0]
     assert state["draft"] == BODY
-    assert state["outline_beat"] == "Elena reaches the gates."
+    assert state["brief"] == "Elena reaches the gates."
     assert state["message"] == "Second."
     assert [(m["role"], m["content"]) for m in state["history"]] == [("user", "First."), ("assistant", "One.")]
 

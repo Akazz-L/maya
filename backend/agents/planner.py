@@ -30,6 +30,23 @@ _PLAN_TOOL = {
 }
 
 
+def _task_text(brief: str) -> str:
+    """What to plan. The writer's notes are optional: without them the planner
+    proposes the chapter that should come next rather than planning nothing."""
+    if brief.strip():
+        return (
+            "Create a scene plan for this chapter from the author's notes. Keep everything "
+            "the notes specify, and fill in only what they leave open.\n\n"
+            f"CHAPTER NOTES:\n{brief.strip()}"
+        )
+    return (
+        "The author has not written notes for this chapter. Propose the chapter that most "
+        "naturally comes next: pick up where the previous chapters leave off and stay "
+        "consistent with the story bible. If there are no previous chapters, plan an "
+        "opening chapter."
+    )
+
+
 async def planner_node(state: dict, model_key: str) -> dict:
     summaries = state["previous_summaries"]
 
@@ -51,8 +68,7 @@ async def planner_node(state: dict, model_key: str) -> dict:
             {
                 "role": "user",
                 "content": (
-                    f"Create a scene plan for this chapter beat:\n\n"
-                    f"OUTLINE BEAT: {state['outline_beat']}\n\n"
+                    f"{_task_text(state['brief'])}\n\n"
                     f"STORY BIBLE:\n{state['story_bible']}\n\n"
                     f"PREVIOUS CHAPTERS:\n{summaries_text}"
                 ),

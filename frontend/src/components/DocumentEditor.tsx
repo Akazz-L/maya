@@ -3,6 +3,7 @@ import type { EditorView } from '@codemirror/view';
 import type { DocumentDetail, DocumentKind, ProposalOutcome, UsageSnapshot } from '../api/types';
 import { proposalExtension } from '../editor/proposalExtension';
 import { rewriteExtension, type RewriteHost } from '../editor/rewriteExtension';
+import { ChapterNotes } from './ChapterNotes';
 import { ProposalLayer, type ProposalView } from './ProposalLayer';
 import { ProseEditor } from './ProseEditor';
 import { RewriteLayer } from './RewriteLayer';
@@ -15,7 +16,7 @@ export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 // get out of the way. Each says what the AI does with that kind of document.
 const BODY_PLACEHOLDER: Record<DocumentKind, string> = {
   bible: 'Characters, world, voice, and timeline. The AI reads this before every draft and rewrite.',
-  chapter: 'Write the chapter, or ask the chat for a draft from the brief…',
+  chapter: 'Write the chapter, or ask the chat for a draft…',
   note: 'Research, ideas, reminders. Notes are not included in the AI context.',
 };
 
@@ -47,6 +48,8 @@ interface DocumentEditorProps {
    * debounce, for callers about to ask the server to read the document.
    */
   flushRef?: { current: (() => void) | null };
+  /** Chapters only: filled with a function that expands and focuses the chapter notes. */
+  notesFocusRef?: { current: (() => void) | null };
 }
 
 function SaveIndicator({ state }: { state: SaveState }) {
@@ -75,6 +78,7 @@ export function DocumentEditor({
   proposal = null,
   onProposalResolve,
   flushRef,
+  notesFocusRef,
 }: DocumentEditorProps) {
   const [title, setTitle] = useState(document.title);
   const [brief, setBrief] = useState(document.brief);
@@ -167,15 +171,13 @@ export function DocumentEditor({
       </div>
 
       {isChapter && (
-        <input
+        <ChapterNotes
           value={brief}
-          placeholder="What happens in this chapter? The AI plans and drafts from this…"
-          aria-label="Chapter brief"
-          onChange={(e) => {
-            setBrief(e.target.value);
-            queueSave({ brief: e.target.value });
+          focusRef={notesFocusRef}
+          onChange={(value) => {
+            setBrief(value);
+            queueSave({ brief: value });
           }}
-          className="border-b border-gray-200 bg-[#fcfcfa] px-6 py-2 text-sm text-gray-600 outline-none"
         />
       )}
 

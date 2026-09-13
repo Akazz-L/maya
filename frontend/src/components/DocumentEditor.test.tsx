@@ -21,10 +21,10 @@ beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
 afterEach(() => vi.useRealTimers());
 
 describe('DocumentEditor', () => {
-  it('renders the title, brief, and body', () => {
+  it('renders the title, chapter notes, and body', () => {
     render(<DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={vi.fn()} saveState="idle" />);
     expect(screen.getByDisplayValue('Chapter 1')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Mara waits.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /chapter notes/i })).toHaveTextContent('Mara waits.');
     expect(screen.getByLabelText('Document body')).toHaveTextContent('The rain.');
   });
 
@@ -48,7 +48,7 @@ describe('DocumentEditor', () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it('hides the brief field on non-chapter documents', () => {
+  it('hides the chapter notes on non-chapter documents', () => {
     render(
       <DocumentEditor
         document={{ ...DOC, kind: 'bible', brief: '' }}
@@ -58,7 +58,7 @@ describe('DocumentEditor', () => {
         saveState="idle"
       />,
     );
-    expect(screen.queryByLabelText('Chapter brief')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /chapter notes/i })).not.toBeInTheDocument();
   });
 
   it.each([
@@ -92,11 +92,18 @@ describe('DocumentEditor', () => {
     expect(screen.getByLabelText('Document body')).not.toHaveTextContent(/AI context/);
   });
 
-  it('prompts for the chapter brief', () => {
+  it('saves chapter notes, newlines included, as the brief', async () => {
+    const onSave = vi.fn();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(
-      <DocumentEditor document={{ ...DOC, brief: '' }} projectId="p1" readOnly={false} onSave={vi.fn()} saveState="idle" />,
+      <DocumentEditor document={{ ...DOC, brief: '' }} projectId="p1" readOnly={false} onSave={onSave} saveState="idle" />,
     );
-    expect(screen.getByLabelText('Chapter brief')).toHaveAttribute('placeholder', expect.stringMatching(/What happens/));
+
+    await user.click(screen.getByRole('button', { name: /chapter notes/i }));
+    await user.type(screen.getByLabelText('Chapter notes'), 'Mara waits.{Enter}The bell rings.');
+    act(() => void vi.advanceTimersByTime(800));
+
+    expect(onSave).toHaveBeenLastCalledWith({ brief: 'Mara waits.\nThe bell rings.' });
   });
 
   it('disables the body while read-only', () => {

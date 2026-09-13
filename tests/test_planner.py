@@ -52,12 +52,26 @@ async def test_planner_calls_claude_with_tool_choice(base_state):
 
 
 @pytest.mark.asyncio
-async def test_planner_includes_outline_beat_in_prompt(base_state):
+async def test_planner_plans_from_the_writers_notes(base_state):
     mock_response = _mock_tool_response(VALID_PLAN)
     with patch("backend.agents.planner.client.messages.create", new_callable=AsyncMock, return_value=mock_response) as mock_create:
         await planner_node(base_state, MODEL_KEY)
     prompt_text = mock_create.call_args.kwargs["messages"][0]["content"]
-    assert base_state["outline_beat"] in prompt_text
+    assert f"CHAPTER NOTES:\n{base_state['brief']}" in prompt_text
+    assert "has not written notes" not in prompt_text
+
+
+@pytest.mark.parametrize("brief", ["", "  \n "])
+@pytest.mark.asyncio
+async def test_planner_proposes_the_next_chapter_without_notes(base_state, brief):
+    base_state["brief"] = brief
+    mock_response = _mock_tool_response(VALID_PLAN)
+    with patch("backend.agents.planner.client.messages.create", new_callable=AsyncMock, return_value=mock_response) as mock_create:
+        await planner_node(base_state, MODEL_KEY)
+    prompt_text = mock_create.call_args.kwargs["messages"][0]["content"]
+    assert "CHAPTER NOTES:" not in prompt_text
+    assert "has not written notes for this chapter" in prompt_text
+    assert "comes next" in prompt_text
 
 
 @pytest.mark.asyncio

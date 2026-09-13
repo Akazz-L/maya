@@ -8,10 +8,10 @@ Creates one user and one project whose documents cover every state the
 workspace can be in, so each toolbar action has something to act on:
 
   Story Bible   a filled bible, not the empty heading template
-  Chapter 1     brief + prose + a cached summary, so it is ready to be
+  Chapter 1     notes + prose + a cached summary, so it is ready to be
                 context for later chapters without spending a summarizer call
-  Chapter 2     brief + saved scene plan, empty body -> Generate Draft from the plan
-  Chapter 3     brief only -> Generate Plan, or a draft straight from a chat prompt
+  Chapter 2     notes + saved scene plan, empty body -> Generate Draft from the plan
+  Chapter 3     notes only -> Generate Plan, or a draft straight from a chat prompt
   Research note a note document, which every agent deliberately ignores
 
 Re-running replaces the demo project so the demo always starts pristine. Any
@@ -293,7 +293,7 @@ async def seed(email: str, password: str, project_name: str) -> None:
             elif document.plan:
                 state = "plan saved, no prose yet"
             else:
-                state = "brief only"
+                state = "notes only"
         print(f"  [{document.position}] {document.title} ({document.kind}, {state})")
 
     print(f"\nLog in at http://localhost:5173 with {email} / {password}")

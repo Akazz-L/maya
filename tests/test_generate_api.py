@@ -52,7 +52,20 @@ async def test_plan_uses_the_document_brief_not_an_outline(chapter, sample_scene
     mock = AsyncMock(return_value={"scene_plan": sample_scene_plan, "usage": Usage()})
     with patch("backend.routes.generate.planner_node", new=mock):
         await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
-    assert mock.call_args.args[0]["outline_beat"] == "Elena reaches the gates."
+    assert mock.call_args.args[0]["brief"] == "Elena reaches the gates."
+
+
+@pytest.mark.asyncio
+async def test_plan_works_on_a_chapter_without_notes(authed_client, sample_scene_plan):
+    client, project_id = authed_client
+    doc_id = (
+        await client.post(f"/projects/{project_id}/documents", json={"title": "Chapter 1"})
+    ).json()["id"]
+    mock = AsyncMock(return_value={"scene_plan": sample_scene_plan, "usage": Usage()})
+    with patch("backend.routes.generate.planner_node", new=mock):
+        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
+    assert resp.status_code == 200
+    assert mock.call_args.args[0]["brief"] == ""
 
 
 @pytest.mark.asyncio

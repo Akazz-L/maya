@@ -33,7 +33,7 @@ erDiagram
         string title
         string kind "bible | chapter | note"
         text body "the prose"
-        text brief "chapter only — the outline beat"
+        text brief "chapter only — the writer's optional notes"
         json plan "ScenePlan or null"
         json issues "Issue[] or null"
         text summary "cached continuity summary"
@@ -122,7 +122,7 @@ It is not a class — this diagram describes the keys, not a type that exists in
 
 | Key | Where it comes from |
 |---|---|
-| `outline_beat` | `document.brief` — what happens in this chapter |
+| `brief` | `document.brief` — the writer's chapter notes, shown as "Chapter notes"; may be empty |
 | `story_bible` | the body of the project's one `bible` document |
 | `previous_summaries` | earlier chapters, oldest first (see [03](03-backend-workflows.md#summary-caching)) |
 | `scene_plan` | `document.plan`, or `{}` when there is none |
@@ -135,7 +135,7 @@ It is not a class — this diagram describes the keys, not a type that exists in
 classDiagram
     class AgentState {
         <<dict>>
-        str outline_beat
+        str brief
         str story_bible
         list~str~ previous_summaries
         dict scene_plan
@@ -165,7 +165,7 @@ classDiagram
     class planner_node {
         <<async>>
         +planner_node(state) dict
-        reads outline_beat, story_bible, previous_summaries
+        reads brief, story_bible, previous_summaries
         returns scene_plan
     }
     class chat_event_stream {

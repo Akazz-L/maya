@@ -20,14 +20,15 @@ async def build_chapter_state(
     model_key: str,
     on_usage: Callable[[Usage], None],
 ) -> dict:
-    """Assemble agent state for a chapter from the project's documents. The beat
-    comes from the document's own brief, so a chapter can sit anywhere.
+    """Assemble agent state for a chapter from the project's documents. The
+    writer's notes come from the document's own brief, so a chapter can sit
+    anywhere; they are optional and may be empty.
 
     Building this can itself call the model — any prior chapter whose summary
     has gone stale is re-summarized here — so it reports through `on_usage`.
     """
     return {
-        "outline_beat": document.brief,
+        "brief": document.brief,
         "story_bible": await get_bible_body(db, document.project_id),
         "previous_summaries": await build_previous_summaries(
             db, document.project_id, document.position, model_key, on_usage
