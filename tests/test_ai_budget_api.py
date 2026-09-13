@@ -269,6 +269,7 @@ async def test_summaries_stay_metered_when_the_stream_after_them_fails(
         ("plan", None),
         ("check", None),
         ("revise/stream", None),
+        ("chat/stream", {"content": "Draft it."}),
         ("rewrite/stream", {"instruction": "tighten", "selection": "Some prose."}),
     ],
 )
