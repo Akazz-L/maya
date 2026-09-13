@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
-import type { DocumentDetail, ProposalOutcome, UsageSnapshot } from '../api/types';
+import type { DocumentDetail, DocumentKind, ProposalOutcome, UsageSnapshot } from '../api/types';
 import { proposalExtension } from '../editor/proposalExtension';
 import { rewriteExtension, type RewriteHost } from '../editor/rewriteExtension';
 import { ProposalLayer, type ProposalView } from './ProposalLayer';
@@ -10,6 +10,14 @@ import { RewriteLayer } from './RewriteLayer';
 export const AUTOSAVE_MS = 800;
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+// Shown only while the body is empty, so they guide a blank document and then
+// get out of the way. Each says what the AI does with that kind of document.
+const BODY_PLACEHOLDER: Record<DocumentKind, string> = {
+  bible: 'Characters, world, voice, and timeline. The AI reads this before every draft and rewrite.',
+  chapter: 'Write the chapter, or ask the chat for a draft from the brief…',
+  note: 'Research, ideas, reminders. Notes are not included in the AI context.',
+};
 
 export interface EditorPatch {
   title?: string;
@@ -161,7 +169,7 @@ export function DocumentEditor({
       {isChapter && (
         <input
           value={brief}
-          placeholder="What happens in this chapter…"
+          placeholder="What happens in this chapter? The AI plans and drafts from this…"
           aria-label="Chapter brief"
           onChange={(e) => {
             setBrief(e.target.value);
@@ -175,7 +183,7 @@ export function DocumentEditor({
         value={bodyOverride ?? body}
         readOnly={readOnly || rewriteBusy || proposal !== null}
         ariaLabel="Document body"
-        placeholder={isChapter ? 'Write, or ask the chat for a draft…' : undefined}
+        placeholder={BODY_PLACEHOLDER[document.kind]}
         extensions={extensions}
         onViewReady={setView}
         onChange={(text) => {
