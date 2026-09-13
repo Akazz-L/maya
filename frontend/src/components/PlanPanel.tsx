@@ -19,6 +19,8 @@ interface PlanPanelProps {
   onGenerateDraft: () => void;
   onRevise: () => void;
   busy: boolean;
+  /** Out of AI budget: generate and revise are disabled; dropping a plan is not. */
+  aiBlocked: boolean;
 }
 
 export function PlanPanel({
@@ -32,6 +34,7 @@ export function PlanPanel({
   onGenerateDraft,
   onRevise,
   busy,
+  aiBlocked,
 }: PlanPanelProps) {
   const [tab, setTab] = useState<'plan' | 'issues'>('plan');
 
@@ -88,14 +91,14 @@ export function PlanPanel({
               <Button size="sm" variant="secondary" onClick={onDrop} disabled={busy}>
                 ✕ Drop
               </Button>
-              <Button size="sm" onClick={onGenerateDraft} disabled={busy || !plan}>
+              <Button size="sm" onClick={onGenerateDraft} disabled={busy || aiBlocked || !plan}>
                 Generate Draft →
               </Button>
             </>
           ) : (
             <Button
               size="sm"
-              disabled={busy || !issues?.length}
+              disabled={busy || aiBlocked || !issues?.length}
               onClick={() => {
                 if (
                   window.confirm(

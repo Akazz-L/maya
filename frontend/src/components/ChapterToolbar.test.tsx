@@ -7,6 +7,7 @@ describe('ChapterToolbar', () => {
   it('fires each action', async () => {
     const props = {
       busy: false,
+      aiBlocked: false,
       onGeneratePlan: vi.fn(),
       onGenerateDraft: vi.fn(),
       onCheck: vi.fn(),
@@ -29,6 +30,7 @@ describe('ChapterToolbar', () => {
     render(
       <ChapterToolbar
         busy
+        aiBlocked={false}
         onGeneratePlan={vi.fn()}
         onGenerateDraft={vi.fn()}
         onCheck={vi.fn()}
@@ -40,10 +42,30 @@ describe('ChapterToolbar', () => {
     screen.getAllByRole('button').forEach((b) => expect(b).toBeDisabled());
   });
 
+  it('disables the model actions but not the panel toggle when AI is blocked', () => {
+    render(
+      <ChapterToolbar
+        busy={false}
+        aiBlocked
+        onGeneratePlan={vi.fn()}
+        onGenerateDraft={vi.fn()}
+        onCheck={vi.fn()}
+        hasPanelContent
+        panelOpen={false}
+        onTogglePanel={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /generate plan/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /generate draft/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^check$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /show plan/i })).toBeEnabled();
+  });
+
   it('disables the panel toggle when there is nothing to show', () => {
     render(
       <ChapterToolbar
         busy={false}
+        aiBlocked={false}
         onGeneratePlan={vi.fn()}
         onGenerateDraft={vi.fn()}
         onCheck={vi.fn()}
@@ -60,6 +82,7 @@ describe('ChapterToolbar', () => {
     render(
       <ChapterToolbar
         busy={false}
+        aiBlocked={false}
         onGeneratePlan={vi.fn()}
         onGenerateDraft={vi.fn()}
         onCheck={vi.fn()}

@@ -187,16 +187,16 @@ export function WorkspaceScreen() {
   const hasPanelContent = Boolean(doc?.plan || doc?.issues?.length);
   const overrideApplies = panelOverride !== null && panelOverride.id === documentId;
   const panelOpen = hasPanelContent && (!overrideApplies || panelOverride.open);
-  // The server refuses generation once the budget is spent (402). Folding it
-  // into `busy` disables every affordance that would earn one.
+  // The server refuses generation once the budget is spent (402). Kept apart
+  // from `busy`, which is transient in-flight state: being out of budget
+  // disables only the affordances that would call the model.
   const aiBlocked = me.data?.usage.blocked ?? false;
   const busy =
     planMut.isPending ||
     checkMut.isPending ||
     stream.isStreaming ||
     deleteDoc.isPending ||
-    rewriteBusy ||
-    aiBlocked;
+    rewriteBusy;
 
   return (
     <div className="flex h-screen flex-col bg-[#f5f5f0]">
@@ -263,6 +263,7 @@ export function WorkspaceScreen() {
           {isChapter && (
             <ChapterToolbar
               busy={busy}
+              aiBlocked={aiBlocked}
               onGeneratePlan={() => planMut.mutate()}
               onGenerateDraft={generateDraft}
               onCheck={() => checkMut.mutate()}
@@ -324,6 +325,7 @@ export function WorkspaceScreen() {
               onGenerateDraft={generateDraft}
               onRevise={revise}
               busy={busy}
+              aiBlocked={aiBlocked}
             />
           )}
         </div>

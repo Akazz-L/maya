@@ -203,6 +203,28 @@ describe('WorkspaceScreen', () => {
     expect(screen.getByRole('button', { name: /^check$/i })).toBeDisabled();
   });
 
+  it('still lets a writer drop a saved plan once the budget is spent', async () => {
+    // Dropping a plan calls no model, so running out of budget must not lock it.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/me'))
+        return json({ ...ME, usage: { ...ME.usage, spent_usd: 5, percent: 100, blocked: true } });
+      if (url.endsWith('/documents')) return json(DOCS);
+      if (url.includes('/documents/c1'))
+        return json({ ...CHAPTER, plan: { ...EMPTY_PLAN, goal: 'Reach the gate' } });
+      return json({ project_id: 'p1', name: 'Novel' });
+    });
+    renderAt('/p/p1/d/c1');
+
+    expect(await screen.findByDisplayValue('Reach the gate')).toBeInTheDocument();
+    expect(await screen.findByText(/budget used — ai paused/i)).toBeInTheDocument();
+    // One in the toolbar, one in the panel.
+    screen
+      .getAllByRole('button', { name: /generate draft/i })
+      .forEach((b) => expect(b).toBeDisabled());
+    expect(screen.getByRole('button', { name: /drop/i })).toBeEnabled();
+  });
+
   it('says why rewrite is unavailable rather than doing nothing on ⌘K', async () => {
     mockApi({
       ...ME,
