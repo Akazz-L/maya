@@ -3,6 +3,7 @@
 // the document except through the single Accept transaction.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
+import type { UsageSnapshot } from '../api/types';
 import { acceptTx, setRewriteOverlay, type RewriteHost } from '../editor/rewriteExtension';
 import { useSelectionRewrite } from '../hooks/useSelectionRewrite';
 import { contextWindows, type TextRange } from '../lib/rewrite';
@@ -17,6 +18,10 @@ export interface RewriteLayerProps {
   documentId: string;
   /** False while a generation stream owns the editor. */
   enabled: boolean;
+  /** True once the month's AI budget is spent; the pill says so rather than failing. */
+  aiBlocked?: boolean;
+  /** The writer's spend including a finished rewrite. */
+  onUsage?: (usage: UsageSnapshot | undefined) => void;
   /** True while a rewrite is streaming or under review. */
   onBusyChange: (busy: boolean) => void;
 }
@@ -67,9 +72,11 @@ export function RewriteLayer({
   projectId,
   documentId,
   enabled,
+  aiBlocked = false,
   onBusyChange,
+  onUsage,
 }: RewriteLayerProps) {
-  const rewrite = useSelectionRewrite({ projectId, documentId });
+  const rewrite = useSelectionRewrite({ projectId, documentId, onUsage });
   const { phase, range, original, instruction, replacement, error } = rewrite.state;
   const [selection, setSelection] = useState<TextRange | null>(null);
   const [showDiff, setShowDiff] = useState(true);
@@ -78,7 +85,7 @@ export function RewriteLayer({
   const busy = phase === 'streaming' || phase === 'reviewing';
 
   const open = () => {
-    if (!enabled || !selection) return false;
+    if (!enabled || aiBlocked || !selection) return false;
     setShowDiff(true);
     rewrite.open(selection, view.state.sliceDoc(selection.from, selection.to));
     return true;
@@ -201,16 +208,23 @@ export function RewriteLayer({
 
   return (
     <div ref={card} className="absolute z-20" style={{ top: FALLBACK.top, left: FALLBACK.left }}>
-      {phase === 'idle' && (
-        <button
-          type="button"
-          onClick={open}
-          className="flex items-center gap-1.5 rounded-full border border-violet-200 bg-white py-1 pl-2.5 pr-2 text-xs font-medium text-violet-700 shadow-md shadow-violet-900/10 hover:bg-violet-50"
-        >
-          <span aria-hidden>✦</span> Rewrite
-          <kbd className="rounded bg-violet-50 px-1 font-sans text-[10px] text-violet-500">⌘K</kbd>
-        </button>
-      )}
+      {phase === 'idle' &&
+        // Still shown when the budget is spent, so ⌘K on a selection explains
+        // itself instead of doing nothing.
+        (aiBlocked ? (
+          <span className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white py-1 px-2.5 text-xs font-medium text-gray-400 shadow-md shadow-gray-900/10">
+            <span aria-hidden>✦</span> Rewrite paused — AI budget used
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={open}
+            className="flex items-center gap-1.5 rounded-full border border-violet-200 bg-white py-1 pl-2.5 pr-2 text-xs font-medium text-violet-700 shadow-md shadow-violet-900/10 hover:bg-violet-50"
+          >
+            <span aria-hidden>✦</span> Rewrite
+            <kbd className="rounded bg-violet-50 px-1 font-sans text-[10px] text-violet-500">⌘K</kbd>
+          </button>
+        ))}
 
       {phase === 'prompting' && (
         <RewritePrompt

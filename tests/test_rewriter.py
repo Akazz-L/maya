@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.conftest import MODEL_KEY, stub_usage
+
 from backend.agents.rewriter import (
     RewriteTruncatedError,
     _build_rewrite_messages,
@@ -56,15 +58,20 @@ async def test_token_stream_yields_text_deltas(sample_bible):
 
     stream = MagicMock()
     stream.text_stream = fake_text_stream()
-    stream.get_final_message = AsyncMock(return_value=MagicMock(stop_reason="end_turn"))
+    stream.get_final_message = AsyncMock(return_value=stub_usage(MagicMock(stop_reason="end_turn")))
 
     @asynccontextmanager
     async def fake_stream(**kwargs):
         yield stream
 
     with patch("backend.agents.rewriter.client.messages.stream", new=fake_stream):
-        out = [t async for t in rewriter_token_stream(_state(sample_bible))]
+        seen = []
+        out = [
+            t
+            async for t in rewriter_token_stream(_state(sample_bible), MODEL_KEY, seen.append)
+        ]
     assert out == ["She ", "froze."]
+    assert [u.output_tokens for u in seen] == [340]
 
 
 @pytest.mark.asyncio
@@ -77,12 +84,44 @@ async def test_token_stream_raises_when_the_reply_is_truncated(sample_bible):
 
     stream = MagicMock()
     stream.text_stream = fake_text_stream()
-    stream.get_final_message = AsyncMock(return_value=MagicMock(stop_reason="max_tokens"))
+    stream.get_final_message = AsyncMock(return_value=stub_usage(MagicMock(stop_reason="max_tokens")))
 
     @asynccontextmanager
     async def fake_stream(**kwargs):
         yield stream
 
+    seen = []
     with patch("backend.agents.rewriter.client.messages.stream", new=fake_stream):
         with pytest.raises(RewriteTruncatedError, match="shorter passage"):
-            [t async for t in rewriter_token_stream(_state(sample_bible))]
+            [
+                t
+                async for t in rewriter_token_stream(
+                    _state(sample_bible), MODEL_KEY, seen.append
+                )
+            ]
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_rewrite_still_reports_its_usage(sample_bible):
+    """The call was billed whether or not the reply was usable, so the writer's
+    budget has to see it."""
+
+    async def fake_text_stream():
+        yield "She froze and then"
+
+    stream = MagicMock()
+    stream.text_stream = fake_text_stream()
+    stream.get_final_message = AsyncMock(
+        return_value=stub_usage(MagicMock(stop_reason="max_tokens"))
+    )
+
+    @asynccontextmanager
+    async def fake_stream(**kwargs):
+        yield stream
+
+    seen = []
+    with patch("backend.agents.rewriter.client.messages.stream", new=fake_stream):
+        with pytest.raises(RewriteTruncatedError):
+            async for _ in rewriter_token_stream(_state(sample_bible), MODEL_KEY, seen.append):
+                pass
+    assert len(seen) == 1

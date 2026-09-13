@@ -1,28 +1,22 @@
-import json
 import os
-from pathlib import Path
+from decimal import Decimal
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-_SETTINGS_PATH = Path(__file__).parent.parent / "settings.json"
-_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+_DEFAULT_MONTHLY_BUDGET_USD = "5.00"
 
 
-def _load_model() -> str:
-    try:
-        data = json.loads(_SETTINGS_PATH.read_text())
-        return data.get("model", _DEFAULT_MODEL)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return _DEFAULT_MODEL
+def get_monthly_budget_micro_usd() -> int:
+    """Default monthly AI budget, in micro-dollars.
 
-
-_MODEL = _load_model()
-
-
-def get_model() -> str:
-    return _MODEL
+    The default for every user; a non-NULL User.monthly_budget_micro_usd
+    overrides it. Read per call rather than cached at import so a redeploy with
+    a new value takes effect without special handling in tests.
+    """
+    dollars = Decimal(os.getenv("MONTHLY_BUDGET_USD", _DEFAULT_MONTHLY_BUDGET_USD))
+    return int(dollars * 1_000_000)
 
 
 def get_database_url() -> str:

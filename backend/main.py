@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,8 +18,10 @@ from backend.bible_markdown import BIBLE_TEMPLATE
 from backend.db import get_db, init_db
 from backend.db_models import Document, Project, User
 from backend.routes import documents as documents_routes
+from backend.llm import MODELS
 from backend.routes import generate as generate_routes
 from backend.settings import get_jwt_secret
+from backend.usage import snapshot as usage_snapshot
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 _DIST_DIR = _FRONTEND_DIR / "dist"
@@ -76,6 +78,77 @@ async def login(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return TokenResponse(access_token=create_access_token(user.id))
+
+
+# ---------------------------------------------------------------------------
+# Account: model choice and AI budget
+# ---------------------------------------------------------------------------
+
+class ModelOption(BaseModel):
+    key: str
+    label: str
+    hint: str
+
+
+class MeResponse(BaseModel):
+    # `model_key` collides with Pydantic's protected `model_` namespace, which
+    # would otherwise warn on every import.
+    model_config = ConfigDict(protected_namespaces=())
+
+    email: str
+    model_key: str
+    #: The catalogue the picker renders. Served from the backend so labels and
+    #: relative cost live only in backend/llm.py.
+    models: list[ModelOption]
+    usage: dict
+
+
+class ModelUpdate(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    model_key: str
+
+
+def _model_options() -> list[ModelOption]:
+    return [ModelOption(key=k, label=s.label, hint=s.hint) for k, s in MODELS.items()]
+
+
+async def _me(db: AsyncSession, user: User) -> MeResponse:
+    return MeResponse(
+        email=user.email,
+        model_key=user.model_key,
+        models=_model_options(),
+        usage=(await usage_snapshot(db, user)).as_dict(),
+    )
+
+
+@app.get("/me", response_model=MeResponse)
+async def read_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _me(db, current_user)
+
+
+@app.patch("/me", response_model=MeResponse)
+async def update_me(
+    body: ModelUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change which model this writer generates with.
+
+    Takes effect on the next call; a generation already streaming keeps the
+    model it started on.
+    """
+    if body.model_key not in MODELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown model {body.model_key!r}. Choose one of: {', '.join(MODELS)}.",
+        )
+    current_user.model_key = body.model_key
+    await db.commit()
+    return await _me(db, current_user)
 
 
 # ---------------------------------------------------------------------------

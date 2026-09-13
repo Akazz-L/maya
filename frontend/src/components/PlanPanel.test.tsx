@@ -20,6 +20,7 @@ function props(overrides: Partial<React.ComponentProps<typeof PlanPanel>> = {}) 
     onGenerateDraft: vi.fn(),
     onRevise: vi.fn(),
     busy: false,
+    aiBlocked: false,
     ...overrides,
   };
 }
@@ -70,6 +71,22 @@ describe('PlanPanel', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     await userEvent.click(screen.getByRole('button', { name: /revise draft/i }));
     expect(p.onRevise).not.toHaveBeenCalled();
+  });
+
+  it('still drops a plan when AI is blocked, but will not draft from it', async () => {
+    // Dropping only edits the document; it calls no model, so the budget has
+    // no say in it.
+    const p = props({ aiBlocked: true });
+    render(<PlanPanel {...p} />);
+    expect(screen.getByRole('button', { name: /generate draft/i })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: /drop/i }));
+    expect(p.onDrop).toHaveBeenCalled();
+  });
+
+  it('does not offer revise when AI is blocked', async () => {
+    render(<PlanPanel {...props({ issues: ISSUES, aiBlocked: true })} />);
+    await userEvent.click(screen.getByRole('button', { name: /issues/i }));
+    expect(screen.getByRole('button', { name: /revise draft/i })).toBeDisabled();
   });
 
   it('shows the issue count on the tab', () => {

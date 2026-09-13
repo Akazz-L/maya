@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 // In dev, proxy the backend API routes to the FastAPI server on :8000.
-const API_ROUTES = ['/auth', '/projects', '/static'];
+const API_ROUTES = ['/auth', '/me', '/projects', '/static'];
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

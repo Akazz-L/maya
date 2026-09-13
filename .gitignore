@@ -16,3 +16,6 @@ NOTES.md
 # paths that exist on one machine. Plans and specs under .claude stay tracked.
 .claude/worktrees/
 .superpowers/brainstorm/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

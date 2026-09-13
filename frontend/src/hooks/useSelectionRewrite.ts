@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { rewriteStreamUrl } from '../api/endpoints';
 import { streamPost } from '../api/stream';
+import type { UsageSnapshot } from '../api/types';
 import { matchEdgeWhitespace, stripContextEcho, type TextRange } from '../lib/rewrite';
 
 export type RewritePhase = 'idle' | 'prompting' | 'streaming' | 'reviewing';
@@ -76,12 +77,20 @@ export interface RewriteContext {
 export function useSelectionRewrite({
   projectId,
   documentId,
+  onUsage,
 }: {
   projectId: string;
   documentId: string;
+  /** The writer's spend including this rewrite, reported when the stream ends. */
+  onUsage?: (usage: UsageSnapshot | undefined) => void;
 }) {
   const [state, dispatch] = useReducer(rewriteReducer, initialRewriteState);
   const abortRef = useRef<AbortController | null>(null);
+  // Held in a ref so `submit` stays stable across renders of the layer above.
+  const onUsageRef = useRef(onUsage);
+  useEffect(() => {
+    onUsageRef.current = onUsage;
+  });
 
   const open = useCallback(
     (range: TextRange, original: string) => dispatch({ type: 'open', range, original }),
@@ -105,11 +114,13 @@ export function useSelectionRewrite({
           { instruction, ...context },
           {
             onDelta: (text) => dispatch({ type: 'delta', text }),
-            onDone: (text) =>
+            onDone: (text, usage) => {
+              onUsageRef.current?.(usage);
               dispatch({
                 type: 'done',
                 text: stripContextEcho(text, context.before, context.after),
-              }),
+              });
+            },
           },
           controller.signal,
         );
