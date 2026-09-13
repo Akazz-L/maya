@@ -1,10 +1,14 @@
 """Render a legacy structured story bible into the markdown a bible document holds.
 
 Used by migration 0002 to convert existing projects, and by project creation to
-seed a new bible with the conventional headings.
+seed a new bible with a one-line explanation and the conventional headings.
 """
 
-BIBLE_TEMPLATE = "## Characters\n\n## World\n\n## Style\n\n## Timeline\n"
+BIBLE_TEMPLATE = (
+    "Your story's reference. The AI reads it before every draft and rewrite, "
+    "so fill in each section below.\n\n"
+    "## Characters\n\n## World\n\n## Style\n\n## Timeline\n"
+)
 
 
 def _bullets(items) -> list[str]:

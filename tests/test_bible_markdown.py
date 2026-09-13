@@ -36,6 +36,11 @@ def test_template_has_the_four_headings():
         assert heading in BIBLE_TEMPLATE
 
 
+def test_template_opens_with_an_explanation():
+    intro = BIBLE_TEMPLATE.split("## Characters")[0]
+    assert "AI reads it" in intro
+
+
 def test_renders_characters_with_traits_and_dialogue(structured_bible):
     md = render_bible_markdown(structured_bible)
     assert "### Elena" in md
