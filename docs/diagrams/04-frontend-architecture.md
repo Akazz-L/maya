@@ -25,13 +25,13 @@ graph TD
     WS2 --- WS
     WS --> SIDE["DocumentSidebar<br/>select · create · rename<br/>delete · drag to reorder"]
     WS --> TB["ChapterToolbar<br/>chapter documents only"]
-    TB --> GP["GeneratePlanButton<br/>pop-up: the notes the plan reads"]
     WS --> ED["DocumentEditor<br/>title · ChapterNotes · ProseEditor"]
     ED --> RL["RewriteLayer<br/>chapters only: pill · prompt · review bar"]
     ED --> PL["ProposalLayer<br/>chapters only: streamed proposal · review bar"]
-    WS --> PP["PlanPanel<br/>resizable, tabbed"]
-    PP --> PF["PlanForm"]
-    PP --> IL["IssuesList → IssueCard"]
+    WS --> PV["PlanView<br/>chapter view: plan"]
+    PV --> PF["PlanForm"]
+    WS --> IV["IssuesView<br/>chapter view: issues"]
+    IV --> IL["IssuesList → IssueCard"]
     WS --> CP["ChatPane<br/>chapters only, collapsible"]
 
     classDef screen fill:#eef4ff,stroke:#5b7cba
@@ -40,7 +40,8 @@ graph TD
 
 `AuthProvider` sits **inside** `BrowserRouter` on purpose: it calls `useNavigate` to redirect on logout, which is only legal beneath a router.
 
-`ChapterToolbar`, `PlanPanel`, and `ChatPane` render only when the open document has `kind === 'chapter'`.
+`ChapterToolbar`, `PlanView`, `IssuesView`, and `ChatPane` render only when the open document has `kind === 'chapter'`.
+The toolbar's Write / Plan / Issues switcher decides which view fills the main pane, and the chat stays beside all three; see [05](05-frontend-flows.md#chapter-views).
 Bible and note documents get the editor and nothing else — they have no plan, no issues, no chat, and no generation actions.
 
 The body is a CodeMirror 6 view (`ProseEditor`), not a textarea, so the chapter rewrite flow can draw over the real document.
@@ -59,7 +60,7 @@ graph TD
     end
 
     subgraph components["components/ — presentational"]
-        CMP["DocumentSidebar · DocumentEditor · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChatPane · ProposalLayer · ProposalReviewBar<br/>ChapterToolbar · GeneratePlanButton · ChapterNotes · PlanPanel<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
+        CMP["DocumentSidebar · DocumentEditor · ChapterNotes · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChatPane · ProposalLayer · ProposalReviewBar<br/>ChapterToolbar · PlanView · IssuesView<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
     end
 
     subgraph hooks["hooks/ — server state"]
@@ -129,13 +130,13 @@ graph LR
     end
 
     subgraph local["WorkspaceScreen — ephemeral UI"]
-        L1["collapsed · panelHeight"]
-        L2["panelOverride — { id, open }"]
+        L1["collapsed"]
+        L2["chapterView · undoState — { id, plan }"]
         L3["streamBody · saveState · error"]
         L4["docVersion — editor remount key"]
         L5["pendingSave — ref to the in-flight save"]
         L6["chatOpen"]
-        L7["editorFlush — ref to the editor's debounce flush"]
+        L7["editorFlush · notesFocus — refs filled by the editor"]
     end
 
     subgraph ed["DocumentEditor — draft text"]
@@ -145,20 +146,18 @@ graph LR
     subgraph ls["localStorage"]
         S1["maya.token"]
         S2["maya.sidebar.collapsed"]
-        S3["maya.panel.height"]
         S4["maya.chat.open"]
     end
 
     T -.->|mirrored| S1
     L1 -.->|mirrored| S2
-    L1 -.->|mirrored| S3
     L6 -.->|mirrored| S4
 ```
 
 Two conventions are worth internalizing:
 
 **`patchCache` writes to the query cache, `save` writes to the server.**
-Generation results (`plan`, `issues`) are pushed into the cache with `qc.setQueryData` and separately persisted — no refetch round-trip, so the panel updates the instant the response lands.
+Generation results (`plan`, `issues`) are pushed into the cache with `qc.setQueryData` and separately persisted — no refetch round-trip, so the Plan and Issues views update the instant the response lands.
 
 **The editor's local state is seeded from props once and never re-synced.**
 An effect that copied props into state would fight the user's in-flight typing.

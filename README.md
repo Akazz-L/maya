@@ -5,12 +5,14 @@ Instead of generating a book in one shot, Maya keeps a project as a list of docu
 
 Documents are plain text with a name, added and reordered freely from a sidebar.
 Every project has one pinned Story Bible.
-Chapter documents carry optional chapter notes — an outline, a line of intent, or nothing at all — and get Generate Plan and Check actions, with the scene plan and any continuity issues in a resizable panel below the prose.
-Generate Plan first shows the notes it will plan from; with no notes, the planner proposes the chapter that comes next.
+Chapter documents carry optional chapter notes — an outline, a line of intent, or nothing at all — and a Write / Plan / Issues switcher.
+Opening Plan on a chapter without one generates a scene plan from the notes; with no notes, the planner proposes the chapter that comes next.
+Edit the plan, regenerate or remove it (with undo), or draft from it.
+Check reports continuity issues in the Issues view.
 Prior chapters are summarized automatically and fed back in as context.
 
 Beside each chapter is a chat that does the drafting.
-Ask it for a first draft, a draft from the saved scene plan (the plan panel's Generate Draft → sends exactly that), a continuation, or changes to what is already written.
+Ask it for a first draft, a draft from the saved scene plan (the Plan view's Draft from plan → sends exactly that), a continuation, or changes to what is already written.
 Planning is optional: a chapter can go straight from a prompt to a draft.
 Every change the chat makes arrives as a proposal in the editor, streamed in place and shown as a diff you accept or discard.
 The conversation is kept per chapter, and the assistant is told what became of each proposal.
@@ -78,8 +80,8 @@ every toolbar action has something to act on:
 |---|---|---|
 | Story Bible | Filled in, not the empty template | Context for every agent |
 | Chapter 1 | Prose plus a pre-cached summary | **Check**, and prior-chapter context |
-| Chapter 2 | Scene plan saved, body empty | **Generate Draft →** in the plan panel, which drafts through the chat |
-| Chapter 3 | Notes only | **Generate Plan**, or a draft straight from a chat prompt |
+| Chapter 2 | Scene plan saved, body empty | **Draft from plan →** in the Plan view, which drafts through the chat |
+| Chapter 3 | Notes only | Opening **Plan** generates one, or a draft straight from a chat prompt |
 | Research note | Scratch notes | Notes are excluded from all agent context |
 
 Chapter 1's summary is seeded already hashed, so drafting a later chapter costs
