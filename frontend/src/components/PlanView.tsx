@@ -7,6 +7,8 @@ export type PlanUndo = 'regenerated' | 'removed';
 
 interface PlanViewProps {
   plan: ScenePlan | null;
+  /** The saved chapter notes: what the planner reads, shown so a plan never surprises. */
+  notes: string;
   /** A plan request is in flight: the first plan, a retry, or a regenerate. */
   generating: boolean;
   /** The last plan request failed; its reason is in the workspace error bar. */
@@ -18,15 +20,18 @@ interface PlanViewProps {
   aiBlocked: boolean;
   onChange: (plan: ScenePlan) => void;
   onGenerate: () => void;
-  /** Planning is optional: without a plan, the chat and checker work from the brief. */
+  /** Planning is optional: without a plan, the chat and checker work from the chapter notes. */
   onRemove: () => void;
   onUndo: () => void;
   onStartBlank: () => void;
   onGenerateDraft: () => void;
+  /** Takes the writer to the chapter notes, which live in the Write view. */
+  onEditNotes: () => void;
 }
 
 export function PlanView({
   plan,
+  notes,
   generating,
   failed,
   undo,
@@ -38,8 +43,10 @@ export function PlanView({
   onUndo,
   onStartBlank,
   onGenerateDraft,
+  onEditNotes,
 }: PlanViewProps) {
   const aiDisabled = busy || aiBlocked;
+  const trimmedNotes = notes.trim();
   return (
     <section className="flex flex-1 flex-col overflow-hidden bg-[#fafaf7]">
       <div className="flex items-center justify-between gap-4 border-b border-gray-200 bg-white px-6 py-2">
@@ -63,6 +70,33 @@ export function PlanView({
           </div>
         )}
       </div>
+
+      {/* A plan is generated the moment this view opens, so what it reads stays in
+          sight: a plan drawn from forgotten notes, or from none, is never a surprise. */}
+      <section
+        aria-label="What the plan is built from"
+        className="flex items-start gap-3 border-b border-gray-200 bg-[#fcfcfa] px-6 py-2 text-xs"
+      >
+        {trimmedNotes ? (
+          <div className="min-w-0 flex-1">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
+              Chapter notes
+            </span>
+            <p className="line-clamp-2 whitespace-pre-wrap text-gray-600">{trimmedNotes}</p>
+          </div>
+        ) : (
+          <p className="min-w-0 flex-1 text-amber-800">
+            No chapter notes yet, so the AI proposes what happens next from the story so far.
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={onEditNotes}
+          className="shrink-0 font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900"
+        >
+          {trimmedNotes ? 'Edit notes' : 'Add notes'}
+        </button>
+      </section>
 
       {undo && (
         <div
@@ -90,7 +124,9 @@ export function PlanView({
             </fieldset>
           ) : generating ? (
             <p className="animate-pulse py-16 text-center text-sm text-gray-500">
-              Planning from your brief…
+              {trimmedNotes
+                ? 'Planning from your chapter notes…'
+                : 'Proposing a plan from the story so far…'}
             </p>
           ) : (
             <div className="flex flex-col items-center gap-3 py-16 text-center">

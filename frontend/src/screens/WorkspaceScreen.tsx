@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { flushSync } from 'react-dom';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
   checkDocument,
@@ -318,8 +319,19 @@ export function WorkspaceScreen() {
   const changeView = (next: ChapterView) => {
     setView(next);
     if (next !== 'plan') setUndoState(null);
+    if (next !== 'plan') return;
     // Opening an empty plan generates one; opening a saved plan never calls the model.
-    if (next === 'plan' && !doc?.plan && !busy && !aiBlocked) regeneratePlan();
+    if (!doc?.plan && !busy && !aiBlocked) regeneratePlan();
+    // Generating saves pending edits first; otherwise save them now, so the notes
+    // the Plan view shows include anything typed a moment ago.
+    else void settle();
+  };
+
+  /** The chapter notes live in the Write view: switch there, then focus them. */
+  const editNotes = () => {
+    // Committed synchronously: the notes cannot take focus while the editor is hidden.
+    flushSync(() => changeView('write'));
+    notesFocus.current?.();
   };
 
   const tabPanel = (panel: ChapterView) =>
@@ -457,6 +469,8 @@ export function WorkspaceScreen() {
                     }}
                     onStartBlank={() => setPlan(EMPTY_PLAN)}
                     onGenerateDraft={draftFromPlan}
+                    notes={doc.brief}
+                    onEditNotes={editNotes}
                   />
                 </div>
               )}

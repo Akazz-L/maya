@@ -217,11 +217,16 @@ flowchart TD
     OPEN(["Writer opens the Plan view"]) --> A{"Does the chapter have a plan?"}
     A -->|yes| SHOW(["Show it — no model call"])
     A -->|no| B{"Busy, or out of AI budget?"}
-    B -->|no| GEN["settle(), then POST …/plan<br/>'Planning from your brief…'"]
+    B -->|no| GEN["settle(), then POST …/plan<br/>'Planning from your chapter notes…'"]
     B -->|yes| EMPTY(["Empty state — Start a blank plan<br/>(and Generate plan when in budget)"])
     GEN -->|ok| SHOW
     GEN -->|error| FAIL(["Retry, or Start a blank plan"])
 ```
+
+**The Plan view shows what a plan is built from.**
+A plan is generated the moment the view opens, with no confirmation, so the chapter notes it reads stay in sight above it — or a note that there are none and the AI proposes the next chapter from the story so far.
+Opening the view always settles first, so notes typed a moment earlier are saved and shown rather than the stale cached ones.
+Edit notes switches to Write inside `flushSync` before calling `notesFocus`, because the notes cannot take focus while the editor is still hidden.
 
 **The editor is hidden, not unmounted.**
 It stays mounted behind the Plan and Issues views, so it keeps its undo history, scroll position, and selection.

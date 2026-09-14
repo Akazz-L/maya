@@ -7,6 +7,7 @@ Documents are plain text with a name, added and reordered freely from a sidebar.
 Every project has one pinned Story Bible.
 Chapter documents carry optional chapter notes — an outline, a line of intent, or nothing at all — and a Write / Plan / Issues switcher.
 Opening Plan on a chapter without one generates a scene plan from the notes; with no notes, the planner proposes the chapter that comes next.
+The Plan view keeps the notes it plans from in sight, one click from editing them.
 Edit the plan, regenerate or remove it (with undo), or draft from it.
 Check reports continuity issues in the Issues view.
 Prior chapters are summarized automatically and fed back in as context.

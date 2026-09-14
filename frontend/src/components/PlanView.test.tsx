@@ -7,6 +7,8 @@ import { EMPTY_PLAN, type ScenePlan } from '../api/types';
 function props(overrides: Partial<React.ComponentProps<typeof PlanView>> = {}) {
   return {
     plan: { ...EMPTY_PLAN, goal: 'Escape' } as ScenePlan | null,
+    notes: 'Mara waits.\nThe bell rings.',
+    onEditNotes: vi.fn(),
     generating: false,
     failed: false,
     undo: null as PlanUndo | null,
@@ -44,8 +46,27 @@ describe('PlanView', () => {
 
   it('shows progress rather than an empty form while the first plan generates', () => {
     render(<PlanView {...props({ plan: null, generating: true })} />);
-    expect(screen.getByText(/planning from your brief/i)).toBeInTheDocument();
+    expect(screen.getByText(/planning from your chapter notes/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /blank plan/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the chapter notes the plan is built from, one click from editing them', async () => {
+    const p = props();
+    render(<PlanView {...p} />);
+    expect(screen.getByRole('region', { name: /what the plan is built from/i })).toHaveTextContent(
+      'Mara waits. The bell rings.',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /edit notes/i }));
+    expect(p.onEditNotes).toHaveBeenCalled();
+  });
+
+  it('says a plan without notes is proposed from the story so far, and offers to add some', async () => {
+    const p = props({ plan: null, notes: '  \n', generating: true });
+    render(<PlanView {...p} />);
+    expect(screen.getByText(/no chapter notes yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/proposing a plan from the story so far/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /add notes/i }));
+    expect(p.onEditNotes).toHaveBeenCalled();
   });
 
   it('locks the fields while a regenerate is in flight', () => {

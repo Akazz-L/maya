@@ -172,6 +172,8 @@ async function editorReady() {
 
 afterEach(() => {
   clearToken();
+  // The chat and chapter notes remember whether they are open; no test inherits that.
+  localStorage.clear();
   vi.restoreAllMocks();
 });
 
@@ -187,9 +189,7 @@ describe('WorkspaceScreen', () => {
     mockApi();
     renderAt('/p/p1/d/c1');
     expect(await screen.findByLabelText('Document body')).toHaveTextContent('The rain.');
-    expect(screen.getByRole('button', { name: /chapter notes/i })).toHaveTextContent(
-      'Mara waits.',
-    );
+    expect(screen.getByRole('button', { name: /chapter notes/i })).toHaveTextContent('Mara waits.');
   });
 
   it('opens a chapter on the Write view, with the chat beside it', async () => {
@@ -231,6 +231,68 @@ describe('WorkspaceScreen', () => {
     expect(await screen.findByDisplayValue('Burn the map')).toBeInTheDocument();
     expect(screen.getByLabelText('Document body')).not.toBeVisible();
     expect(planRequests(fetchMock)).toBe(1);
+  });
+
+  it('saves notes typed moments ago before planning from them, and shows them', async () => {
+    const calls: string[] = [];
+    mockApi({
+      handle: (url, init) => {
+        if (init?.method === 'PATCH') calls.push(`PATCH ${String(init.body)}`);
+        if (url.endsWith('/plan') && init?.method === 'POST') calls.push('plan');
+        return undefined;
+      },
+    });
+    renderAt('/p/p1/d/c1');
+    await editorReady();
+
+    await userEvent.click(screen.getByRole('button', { name: /chapter notes/i }));
+    await userEvent.type(screen.getByLabelText('Chapter notes'), ' The bell rings.');
+    await userEvent.click(screen.getByRole('tab', { name: 'Plan' }));
+
+    await waitFor(() => expect(calls).toContain('plan'));
+    expect(calls[0]).toBe('PATCH {"brief":"Mara waits. The bell rings."}');
+    expect(
+      await screen.findByRole('region', { name: /what the plan is built from/i }),
+    ).toHaveTextContent('Mara waits. The bell rings.');
+  });
+
+  it('plans a chapter without notes, saying the AI proposes what comes next', async () => {
+    const fetchMock = mockApi({ chapter: { ...CHAPTER, brief: '' } });
+    renderAt('/p/p1/d/c1');
+    await userEvent.click(await screen.findByRole('tab', { name: 'Plan' }));
+
+    expect(await screen.findByDisplayValue('Burn the map')).toBeInTheDocument();
+    expect(screen.getByText(/no chapter notes yet/i)).toBeInTheDocument();
+    expect(planRequests(fetchMock)).toBe(1);
+  });
+
+  it('jumps from the Plan view to the chapter notes, focused and ready to edit', async () => {
+    // Open notes are already mounted, hidden with the editor: the focus must
+    // wait for the Write view to be committed, or it silently goes nowhere.
+    localStorage.setItem('maya.notes.open', '1');
+    mockApi({ chapter: { ...CHAPTER, plan: SAVED_PLAN } });
+    renderAt('/p/p1/d/c1');
+    await editorReady();
+    await userEvent.click(screen.getByRole('tab', { name: 'Plan' }));
+    await screen.findByDisplayValue('Reach the gate');
+
+    // jsdom focuses an element inside [hidden] anyway; a browser ignores the call.
+    // Record where each focus lands so the test fails the way a browser would.
+    const focusedInsideHidden: boolean[] = [];
+    const realFocus = HTMLElement.prototype.focus;
+    vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (
+      this: HTMLElement,
+      options?: FocusOptions,
+    ) {
+      focusedInsideHidden.push(this.closest('[hidden]') !== null);
+      realFocus.call(this, options);
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /edit notes/i }));
+
+    expect(screen.getByRole('tab', { name: 'Write' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByLabelText('Chapter notes')).toHaveFocus();
+    expect(focusedInsideHidden).not.toContain(true);
   });
 
   it('shows a saved plan without calling the model', async () => {
@@ -412,7 +474,7 @@ describe('WorkspaceScreen', () => {
     renderAt('/p/p1/d/c1', qc);
 
     await userEvent.click(await screen.findByRole('tab', { name: 'Plan' }));
-    await screen.findByText(/planning from your brief/i);
+    await screen.findByText(/planning from your chapter notes/i);
     await userEvent.click(screen.getByText('Story Bible'));
     await waitFor(() =>
       expect(screen.getByLabelText('Document body')).toHaveTextContent('## Characters'),
