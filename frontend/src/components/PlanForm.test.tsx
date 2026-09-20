@@ -15,12 +15,8 @@ describe('PlanForm', () => {
   it('emits an updated plan when a field changes', async () => {
     const onChange = vi.fn();
     render(<PlanForm plan={EMPTY_PLAN} onChange={onChange} />);
-    // Field order: [0] Goal, [1] POV Character, [2] Location, ... — type into POV.
-    const pov = screen.getAllByRole('textbox')[1];
-    await userEvent.type(pov, 'M');
-    expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ pov_character: 'M' }),
-    );
+    await userEvent.type(screen.getByLabelText('POV Character'), 'M');
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ pov_character: 'M' }));
   });
 
   it('adds and removes beats', async () => {
@@ -34,5 +30,18 @@ describe('PlanForm', () => {
     onChange.mockClear();
     await userEvent.click(screen.getByTitle('Remove'));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ beats: [] }));
+  });
+
+  it('gives each beat a wrapping multiline field, not a one-line box', async () => {
+    // A beat is a sentence or two; a single-line input hides all but its start.
+    const onChange = vi.fn();
+    const plan: ScenePlan = { ...EMPTY_PLAN, beats: ['first'] };
+    render(<PlanForm plan={plan} onChange={onChange} />);
+
+    const beat = screen.getByLabelText('Beat 1');
+    expect(beat.tagName).toBe('TEXTAREA');
+
+    await userEvent.type(beat, '!');
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ beats: ['first!'] }));
   });
 });

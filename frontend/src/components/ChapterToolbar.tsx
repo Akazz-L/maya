@@ -1,57 +1,71 @@
-import { GeneratePlanButton } from './GeneratePlanButton';
+import { cn } from '../lib/utils';
+import { chapterPanelId, chapterTabId, type ChapterView } from './chapterView';
 import { Button } from './ui/button';
 
 interface ChapterToolbarProps {
+  view: ChapterView;
+  onViewChange: (view: ChapterView) => void;
+  /** Issues from the last Review, or null when none has run: the tab appears with the first. */
+  issueCount: number | null;
   busy: boolean;
-  /** Out of AI budget: the model actions are disabled, the toggles are not. */
+  /** Out of AI budget: Review is disabled, the view switcher and chat toggle are not. */
   aiBlocked: boolean;
-  /** The saved chapter notes, shown before a plan is generated from them. */
-  brief: string;
-  /** Saves pending edits before the plan pop-up shows the notes. */
-  beforeOpenPlan: () => Promise<unknown>;
-  onGeneratePlan: () => void;
-  onEditNotes: () => void;
-  onCheck: () => void;
-  /** Whether the panel has anything to show — a saved plan or issues. */
-  hasPanelContent: boolean;
-  panelOpen: boolean;
-  onTogglePanel: () => void;
+  onReview: () => void;
   chatOpen: boolean;
   onToggleChat: () => void;
 }
 
 export function ChapterToolbar({
+  view,
+  onViewChange,
+  issueCount,
   busy,
   aiBlocked,
-  brief,
-  beforeOpenPlan,
-  onGeneratePlan,
-  onEditNotes,
-  onCheck,
-  hasPanelContent,
-  panelOpen,
-  onTogglePanel,
+  onReview,
   chatOpen,
   onToggleChat,
 }: ChapterToolbarProps) {
-  const aiDisabled = busy || aiBlocked;
+  const views: { id: ChapterView; label: string }[] = [
+    { id: 'write', label: 'Write' },
+    { id: 'plan', label: 'Plan' },
+    // Nothing to show before the first Review, so the tab stays out of the way.
+    ...(issueCount === null
+      ? []
+      : [{ id: 'issues' as const, label: issueCount ? `Issues (${issueCount})` : 'Issues' }]),
+  ];
+
   return (
     <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-6 py-2">
-      <GeneratePlanButton
-        disabled={aiDisabled}
-        brief={brief}
-        beforeOpen={beforeOpenPlan}
-        onGenerate={onGeneratePlan}
-        onEditNotes={onEditNotes}
-      />
-      <Button size="sm" variant="secondary" disabled={aiDisabled} onClick={onCheck}>
-        Check
-      </Button>
+      {/* Switching views calls no model, so neither busy nor aiBlocked locks it:
+          a writer must be able to leave the Plan view while a plan generates. */}
+      <div
+        role="tablist"
+        aria-label="Chapter view"
+        className="flex items-center gap-0.5 rounded-md bg-gray-100 p-0.5"
+      >
+        {views.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            id={chapterTabId(id)}
+            aria-selected={view === id}
+            aria-controls={chapterPanelId(id)}
+            onClick={() => onViewChange(id)}
+            className={cn(
+              'rounded px-3 py-1 text-xs font-medium transition-colors',
+              view === id
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-800',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="ml-auto flex items-center gap-2">
-        {/* Without this, a plan saved on the server is unreachable after a reload
-            unless you regenerate it. */}
-        <Button size="sm" variant="secondary" disabled={!hasPanelContent} onClick={onTogglePanel}>
-          {panelOpen ? 'Hide plan' : 'Show plan'}
+        <Button size="sm" variant="secondary" disabled={busy || aiBlocked} onClick={onReview}>
+          Review
         </Button>
         {/* Never disabled: the chat is where a running generation is followed. */}
         <Button
