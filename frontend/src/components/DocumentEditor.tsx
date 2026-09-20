@@ -3,6 +3,7 @@ import type { EditorView } from '@codemirror/view';
 import type { DocumentDetail, DocumentKind, ProposalOutcome, UsageSnapshot } from '../api/types';
 import { proposalExtension } from '../editor/proposalExtension';
 import { rewriteExtension, type RewriteHost } from '../editor/rewriteExtension';
+import type { SuggestionHost } from '../editor/suggestionWidget';
 import { ChapterContext } from './ChapterContext';
 import { ProposalLayer, type ProposalView } from './ProposalLayer';
 import { ProseEditor } from './ProseEditor';
@@ -42,7 +43,8 @@ interface DocumentEditorProps {
   onUsage?: (usage: UsageSnapshot | undefined) => void;
   /** A chat proposal streaming in or awaiting review; the body is read-only meanwhile. */
   proposal?: ProposalView | null;
-  onProposalResolve?: (outcome: ProposalOutcome) => void;
+  /** `indexes` names the fixes of a suggestion set; absent for a whole-chapter proposal. */
+  onProposalResolve?: (outcome: ProposalOutcome, indexes?: number[]) => void;
   /**
    * Filled with a function that saves any edit still waiting out the autosave
    * debounce, for callers about to ask the server to read the document.
@@ -55,6 +57,8 @@ interface DocumentEditorProps {
   context?: string;
   onContextChange?: (value: string) => void;
 }
+
+const noop = () => {};
 
 function SaveIndicator({ state }: { state: SaveState }) {
   if (state === 'saving') return <span className="text-xs text-gray-400">Saving…</span>;
@@ -101,9 +105,15 @@ export function DocumentEditor({
       onEscape: () => false,
     },
   }));
+  // The same arrangement for the suggestion cards: the widgets inside CodeMirror
+  // hold this box for the view's whole life, and ProposalLayer fills in its
+  // callbacks on each render.
+  const [suggestionHost] = useState<{ current: SuggestionHost }>(() => ({
+    current: { onAccept: () => {}, onDiscard: () => {} },
+  }));
   const extensions = useMemo(
-    () => (isChapter ? [rewriteExtension(rewriteHost), proposalExtension()] : []),
-    [isChapter, rewriteHost],
+    () => (isChapter ? [rewriteExtension(rewriteHost), proposalExtension(suggestionHost)] : []),
+    [isChapter, rewriteHost, suggestionHost],
   );
   const onBusyChangeRef = useRef(onBusyChange);
   useEffect(() => {
@@ -206,7 +216,8 @@ export function DocumentEditor({
           <ProposalLayer
             view={view}
             proposal={proposal}
-            onResolve={(outcome) => onProposalResolve?.(outcome)}
+            hostRef={suggestionHost}
+            onResolve={onProposalResolve ?? noop}
           />
         )}
       </ProseEditor>

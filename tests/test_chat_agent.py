@@ -12,57 +12,68 @@ from backend.agents.chat import (
     ProposalProgress,
     ProposalReady,
     TextDelta,
-    apply_edits,
+    apply_fixes,
     build_proposal,
     build_turn,
     chat_event_stream,
+    describe_proposal,
+    is_pending,
+    pending_indexes,
     render_history,
 )
 from tests.conftest import MODEL_KEY, stub_usage
 
 # ---------------------------------------------------------------------------
-# apply_edits
+# locating fixes
 # ---------------------------------------------------------------------------
 
 
-def test_edits_apply_against_the_original_positions():
+def _fix(find, replace, explanation="Because.", **extra):
+    return {"find": find, "replace": replace, "explanation": explanation, **extra}
+
+
+def test_fixes_apply_against_the_original_positions():
     body = "The hall was empty. She waited by the door. A clock ticked."
-    out = apply_edits(
+    out = apply_fixes(
         body,
         [
-            {"find": "A clock ticked.", "replace": "Somewhere, a clock."},
-            {"find": "She waited by the door.", "replace": "She froze."},
+            _fix("A clock ticked.", "Somewhere, a clock."),
+            _fix("She waited by the door.", "She froze."),
         ],
     )
     assert out == "The hall was empty. She froze. Somewhere, a clock."
 
 
-def test_an_edit_whose_find_is_missing_names_the_edit():
-    with pytest.raises(ProposalError, match="Edit 2: `find` does not appear"):
-        apply_edits("One. Two.", [{"find": "One.", "replace": "1."}, {"find": "Three.", "replace": "3."}])
+def test_a_fix_whose_find_is_missing_names_the_fix():
+    with pytest.raises(ProposalError, match="Fix 2: `find` does not appear"):
+        apply_fixes("One. Two.", [_fix("One.", "1."), _fix("Three.", "3.")])
 
 
 def test_an_ambiguous_find_is_refused():
     with pytest.raises(ProposalError, match="appears 2 times"):
-        apply_edits("She ran. She ran.", [{"find": "She ran.", "replace": "She fled."}])
+        apply_fixes("She ran. She ran.", [_fix("She ran.", "She fled.")])
 
 
 def test_overlapping_occurrences_count_as_ambiguous():
     with pytest.raises(ProposalError, match="appears 2 times"):
-        apply_edits("aaa", [{"find": "aa", "replace": "b"}])
+        apply_fixes("aaa", [_fix("aa", "b")])
 
 
-def test_overlapping_edits_are_refused():
-    with pytest.raises(ProposalError, match="Edits 1 and 2 overlap"):
-        apply_edits(
-            "The hall was empty.",
-            [{"find": "The hall was", "replace": "A"}, {"find": "was empty", "replace": "b"}],
-        )
+def test_overlapping_fixes_are_refused():
+    with pytest.raises(ProposalError, match="Fixes 1 and 2 overlap"):
+        apply_fixes("The hall was empty.", [_fix("The hall was", "A"), _fix("was empty", "b")])
 
 
 def test_an_empty_find_is_refused():
-    with pytest.raises(ProposalError, match="Edit 1: `find` is empty"):
-        apply_edits("Text.", [{"find": "", "replace": "x"}])
+    with pytest.raises(ProposalError, match="Fix 1: `find` is empty"):
+        apply_fixes("Text.", [_fix("", "x")])
+
+
+def test_every_problem_in_a_set_is_reported_at_once():
+    with pytest.raises(ProposalError) as raised:
+        apply_fixes("One. Two.", [_fix("nowhere", "x"), _fix("", "y")])
+    assert "Fix 1: `find` does not appear" in str(raised.value)
+    assert "Fix 2: `find` is empty" in str(raised.value)
 
 
 # ---------------------------------------------------------------------------
@@ -93,15 +104,109 @@ def test_an_invalid_write_is_refused(tool_input, message):
         build_proposal("Body.", "write_draft", tool_input)
 
 
-def test_an_edit_proposal_carries_the_edits_and_the_result():
-    edits = [{"find": "rain", "replace": "downpour"}]
-    proposal = build_proposal("The rain.", "edit_draft", {"edits": edits})
-    assert proposal == {"kind": "edit", "edits": edits, "proposed_body": "The downpour."}
+def test_a_suggestion_carries_its_offsets_its_reason_and_no_outcome():
+    proposal = build_proposal(
+        "The rain.",
+        "suggest_fixes",
+        {"fixes": [_fix("rain", "downpour", "Too mild.", severity="minor")]},
+    )
+    assert proposal == {
+        "kind": "suggestions",
+        "suggestions": [
+            {
+                "find": "rain",
+                "replace": "downpour",
+                "explanation": "Too mild.",
+                "severity": "minor",
+                "from": 4,
+                "to": 8,
+                "outcome": None,
+            }
+        ],
+    }
 
 
-def test_an_edit_proposal_without_edits_is_refused():
-    with pytest.raises(ProposalError, match="`edits` is empty"):
-        build_proposal("The rain.", "edit_draft", {"edits": []})
+def test_suggestions_come_back_in_document_order():
+    proposal = build_proposal(
+        "First. Second. Third.",
+        "suggest_fixes",
+        {"fixes": [_fix("Third.", "3."), _fix("First.", "1.")]},
+    )
+    assert [s["find"] for s in proposal["suggestions"]] == ["First.", "Third."]
+
+
+def test_a_severity_outside_the_enum_is_dropped():
+    proposal = build_proposal(
+        "The rain.", "suggest_fixes", {"fixes": [_fix("rain", "x", severity="urgent")]}
+    )
+    assert proposal["suggestions"][0]["severity"] is None
+
+
+def test_a_fix_without_an_explanation_is_refused():
+    with pytest.raises(ProposalError, match="Fix 1: `explanation` is empty"):
+        build_proposal("The rain.", "suggest_fixes", {"fixes": [_fix("rain", "x", "  ")]})
+
+
+def test_a_fix_that_changes_nothing_is_refused():
+    """It would draw an empty diff and ask the writer to accept a no-op; a
+    remark about prose the model is not changing belongs in its text reply."""
+    with pytest.raises(ProposalError, match="Fix 1: `replace` is identical to `find`"):
+        build_proposal("The rain.", "suggest_fixes", {"fixes": [_fix("rain", "rain", "Hmm.")]})
+
+
+def test_every_problem_with_a_set_is_reported_together():
+    with pytest.raises(ProposalError) as raised:
+        build_proposal(
+            "The rain fell.",
+            "suggest_fixes",
+            {"fixes": [_fix("rain", "rain", "Hmm."), _fix("fell", "poured", "  ")]},
+        )
+    assert "Fix 1: `replace` is identical" in str(raised.value)
+    assert "Fix 2: `explanation` is empty" in str(raised.value)
+
+
+def test_a_suggestion_proposal_without_fixes_is_refused():
+    with pytest.raises(ProposalError, match="`fixes` is empty"):
+        build_proposal("The rain.", "suggest_fixes", {"fixes": []})
+
+
+# ---------------------------------------------------------------------------
+# what is still pending
+# ---------------------------------------------------------------------------
+
+
+def _set(*outcomes):
+    return {
+        "kind": "suggestions",
+        "suggestions": [
+            {
+                "find": "a",
+                "replace": "b",
+                "explanation": "x",
+                "severity": None,
+                "from": 0,
+                "to": 1,
+                "outcome": outcome,
+            }
+            for outcome in outcomes
+        ],
+    }
+
+
+def test_a_set_is_pending_while_any_fix_is_unreviewed():
+    assert is_pending(_set("accepted", None)) is True
+    assert pending_indexes(_set("accepted", None, None)) == [1, 2]
+
+
+def test_a_fully_reviewed_set_is_not_pending():
+    assert is_pending(_set("accepted", "discarded")) is False
+    assert pending_indexes(_set("accepted")) == []
+
+
+def test_a_write_is_pending_until_it_has_an_outcome():
+    assert is_pending({"kind": "write", "outcome": None}) is True
+    assert is_pending({"kind": "write", "outcome": "accepted"}) is False
+    assert is_pending(None) is False
 
 
 # ---------------------------------------------------------------------------
@@ -126,18 +231,56 @@ def test_a_proposal_is_described_rather_than_replayed():
     assert "one two three" not in rendered[1]["content"]
 
 
-def test_edits_are_listed_in_the_description():
-    edit = {"kind": "edit", "edits": [{"find": "rain", "replace": "downpour"}], "outcome": "discarded"}
-    rendered = render_history([_user("Wetter."), _assistant("", edit)])
+def test_fixes_are_listed_with_their_reasons_in_the_description():
+    proposal = build_proposal(
+        "The rain.", "suggest_fixes", {"fixes": [_fix("rain", "downpour", "Too mild.")]}
+    )
+    rendered = render_history([_user("Wetter."), _assistant("", proposal)])
     assert "«rain»" in rendered[1]["content"] and "«downpour»" in rendered[1]["content"]
+    assert "Too mild." in rendered[1]["content"]
+
+
+def test_a_description_does_not_change_when_the_writer_resolves_it():
+    """The assistant turn is part of the cached prompt prefix; resolving a fix
+    must not rewrite it, or every later turn pays for a cache miss."""
+    proposal = build_proposal("The rain.", "suggest_fixes", {"fixes": [_fix("rain", "downpour")]})
+    before = describe_proposal(proposal)
+    proposal["suggestions"][0]["outcome"] = "accepted"
+    assert describe_proposal(proposal) == before
 
 
 def test_the_outcome_of_a_proposal_opens_the_next_user_message():
-    edit = {"kind": "edit", "edits": [{"find": "a", "replace": "b"}], "outcome": "discarded"}
-    rendered = render_history([_user("One."), _assistant("", edit), _user("Two."), _assistant("Ok.")])
+    write = {"kind": "write", "mode": "replace", "text": "a b", "outcome": "discarded"}
+    rendered = render_history([_user("One."), _assistant("", write), _user("Two."), _assistant("Ok.")])
     assert rendered[2]["content"].startswith("(The writer discarded your last proposal")
     assert rendered[2]["content"].endswith("Two.")
     assert rendered[0]["content"] == "One."
+
+
+def test_a_partly_accepted_set_names_which_fixes_the_writer_took():
+    rendered = render_history(
+        [_user("One."), _assistant("", _set("accepted", "discarded", "accepted")), _user("Two.")]
+    )
+    note = rendered[2]["content"]
+    assert "accepted fixes 1 and 3" in note
+    assert "discarded fix 2" in note
+    assert "The accepted ones are now part of the chapter." in note
+
+
+def test_a_set_the_writer_took_nothing_from_says_the_chapter_did_not_change():
+    rendered = render_history([_user("One."), _assistant("", _set("discarded")), _user("Two.")])
+    assert "discarded fix 1" in rendered[2]["content"]
+    assert "The chapter did not change." in rendered[2]["content"]
+
+
+def test_a_fix_that_could_not_be_applied_says_why():
+    rendered = render_history([_user("One."), _assistant("", _set("stale")), _user("Two.")])
+    assert "could not apply fix 1" in rendered[2]["content"]
+
+
+def test_an_unreviewed_set_adds_no_note():
+    rendered = render_history([_user("One."), _assistant("", _set(None, None)), _user("Two.")])
+    assert rendered[2]["content"] == "Two."
 
 
 def test_the_window_keeps_the_most_recent_messages_and_starts_on_a_user_message():
@@ -170,7 +313,7 @@ def state(base_state, sample_scene_plan):
 def test_the_system_prompt_carries_the_bible_and_is_cached(state):
     system, _ = build_turn(state)
     assert "adverbs ending in -ly" in system[0]["text"]
-    assert "write_draft" in system[0]["text"] and "edit_draft" in system[0]["text"]
+    assert "write_draft" in system[0]["text"] and "suggest_fixes" in system[0]["text"]
     assert system[0]["cache_control"] == {"type": "ephemeral"}
 
 
@@ -204,8 +347,8 @@ def test_a_chapter_without_notes_says_so(state):
 
 
 def test_the_last_outcome_reaches_the_new_message_and_history_is_cached(state):
-    edit = {"kind": "edit", "edits": [{"find": "a", "replace": "b"}], "outcome": "accepted"}
-    state["history"] = [_user("Fix it."), _assistant("Done.", edit)]
+    write = {"kind": "write", "mode": "replace", "text": "a b", "outcome": "accepted"}
+    state["history"] = [_user("Fix it."), _assistant("Done.", write)]
     _, messages = build_turn(state)
     assert len(messages) == 3
     assert "The writer accepted your last proposal" in messages[-1]["content"]
@@ -333,17 +476,30 @@ async def test_a_write_streams_progress_then_a_ready_proposal(monkeypatch, state
 
 
 @pytest.mark.asyncio
-async def test_a_failed_edit_gets_one_correction_in_the_same_turn(monkeypatch, state):
-    bad = _tool_use("edit_draft", {"edits": [{"find": "Elena stood at the gate!", "replace": "x"}]}, id="tu_bad")
-    good = _tool_use("edit_draft", {"edits": [{"find": "stood", "replace": "waited"}]}, id="tu_good")
+async def test_a_failed_fix_gets_one_correction_in_the_same_turn(monkeypatch, state):
+    bad = _tool_use("suggest_fixes", {"fixes": [_fix("Elena stood at the gate!", "x")]}, id="tu_bad")
+    good = _tool_use("suggest_fixes", {"fixes": [_fix("stood", "waited", "Stronger.")]}, id="tu_good")
     events, calls, usage = await _run(
         monkeypatch,
         state,
-        ([_tool_start("edit_draft")], _final("tool_use", bad)),
-        ([_text("Fixed."), _tool_start("edit_draft")], _final("tool_use", good)),
+        ([_tool_start("suggest_fixes")], _final("tool_use", bad)),
+        ([_text("Fixed."), _tool_start("suggest_fixes")], _final("tool_use", good)),
     )
     assert events[-1] == ProposalReady(
-        {"kind": "edit", "edits": [{"find": "stood", "replace": "waited"}], "proposed_body": "Elena waited at the gates."}
+        {
+            "kind": "suggestions",
+            "suggestions": [
+                {
+                    "find": "stood",
+                    "replace": "waited",
+                    "explanation": "Stronger.",
+                    "severity": None,
+                    "from": 6,
+                    "to": 11,
+                    "outcome": None,
+                }
+            ],
+        }
     )
     assert len(usage) == 2
     retry = calls[1]["messages"]
@@ -354,8 +510,8 @@ async def test_a_failed_edit_gets_one_correction_in_the_same_turn(monkeypatch, s
 
 
 @pytest.mark.asyncio
-async def test_a_second_failed_edit_is_an_error(monkeypatch, state):
-    bad = _tool_use("edit_draft", {"edits": [{"find": "nowhere", "replace": "x"}]})
+async def test_a_second_failed_fix_is_an_error(monkeypatch, state):
+    bad = _tool_use("suggest_fixes", {"fixes": [_fix("nowhere", "x")]})
     with pytest.raises(ProposalError):
         await _run(
             monkeypatch,

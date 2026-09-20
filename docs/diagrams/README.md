@@ -7,7 +7,7 @@ GitHub, VS Code, and most IDEs render these files directly — there is no build
 |---|---|
 | [01-system-overview.md](01-system-overview.md) | Containers and the path a request takes, in dev and in production |
 | [02-backend-data-model.md](02-backend-data-model.md) | Database tables, the legacy tables to ignore, and the agent state contract |
-| [03-backend-workflows.md](03-backend-workflows.md) | Plan / Check, the streaming draft and revise, and summary caching |
+| [03-backend-workflows.md](03-backend-workflows.md) | Plan, the streaming chat and its review passes, and summary caching |
 | [04-frontend-architecture.md](04-frontend-architecture.md) | Provider tree, module layers, and who owns which piece of state |
 | [05-frontend-flows.md](05-frontend-flows.md) | Auth and session expiry, the document lifecycle, and generating a draft |
 

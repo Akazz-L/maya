@@ -5,6 +5,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
+from backend.agents.chat import TextDelta
 from backend.db_models import UsageEvent, User
 from backend.llm import Usage
 
@@ -139,33 +140,52 @@ async def test_a_plan_records_what_it_cost(chapter, sample_scene_plan, db, user)
     assert resp.json()["usage"]["blocked"] is True
 
 
-async def _give_issues(client, project_id, doc_id):
-    """Revise needs a draft and the issues Check found in it."""
+async def _with_a_draft(client, project_id, doc_id):
     await client.patch(
         f"/projects/{project_id}/documents/{doc_id}",
-        json={
-            "body": "Elena raised her right hand.",
-            "issues": [
-                {"issue": "hand", "severity": "critical", "location": "p1", "suggested_fix": "left"}
-            ],
-        },
+        json={"body": "Elena raised her right hand."},
     )
 
 
+def _review(on_call=None):
+    """Patch a review pass with one that bills $1 and finds nothing."""
+
+    def fake(reviewer, state, model_key, on_usage):
+        async def events():
+            if on_call:
+                on_call(state)
+            yield TextDelta("Nothing to report.")
+            on_usage(Usage(input_tokens=1_000_000))
+
+        return events()
+
+    return patch("backend.routes.chat.reviewer_event_stream", new=fake)
+
+
 @pytest.mark.asyncio
-async def test_a_completed_revise_stream_reports_usage_in_its_done_frame(chapter):
+async def test_a_completed_review_reports_usage_in_its_done_frame(chapter):
     client, project_id, doc_id = chapter
-    await _give_issues(client, project_id, doc_id)
+    await _with_a_draft(client, project_id, doc_id)
 
-    async def fake_stream(state, model_key, on_usage):
-        yield "Prose."
-        on_usage(Usage(input_tokens=1_000_000))
-
-    with patch("backend.routes.generate.reviser_token_stream", new=fake_stream):
-        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/revise/stream")
+    with _review():
+        resp = await client.post(
+            f"/projects/{project_id}/documents/{doc_id}/chat/stream", json={"agent": "continuity"}
+        )
     done = next(f for f in _parse_sse(resp.text) if f["type"] == "done")
     assert done["usage"]["spent_usd"] == 1.0
     assert done["usage"]["percent"] == 20.0
+
+
+@pytest.mark.asyncio
+async def test_a_review_pass_is_metered_as_review(chapter, db):
+    client, project_id, doc_id = chapter
+    await _with_a_draft(client, project_id, doc_id)
+
+    with _review():
+        await client.post(
+            f"/projects/{project_id}/documents/{doc_id}/chat/stream", json={"agent": "continuity"}
+        )
+    assert await _operations(db) == ["review"]
 
 
 @pytest_asyncio.fixture
@@ -217,7 +237,7 @@ async def test_summarizer_calls_are_metered_too(chapter_after_a_written_one, sam
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("path,agent", [("plan", "planner_node"), ("check", "checker_node")])
+@pytest.mark.parametrize("path,agent", [("plan", "planner_node")])
 async def test_summaries_stay_metered_when_the_generation_after_them_fails(
     chapter_after_a_written_one, db, path, agent
 ):
@@ -236,9 +256,12 @@ async def test_summaries_stay_metered_when_the_generation_after_them_fails(
     assert await _operations(db) == ["summarize"]
 
 
-async def _exploding_stream(state, model_key, on_usage):
-    raise RuntimeError("model exploded")
-    yield  # pragma: no cover — makes this an async generator
+def _exploding_review(reviewer, state, model_key, on_usage):
+    async def events():
+        raise RuntimeError("model exploded")
+        yield  # pragma: no cover — makes this an async generator
+
+    return events()
 
 
 @pytest.mark.asyncio
@@ -246,13 +269,15 @@ async def test_summaries_stay_metered_when_the_stream_after_them_fails(
     chapter_after_a_written_one, db
 ):
     client, project_id, doc_id = chapter_after_a_written_one
-    await _give_issues(client, project_id, doc_id)
+    await _with_a_draft(client, project_id, doc_id)
 
     with (
         _billed_summary(),
-        patch("backend.routes.generate.reviser_token_stream", new=_exploding_stream),
+        patch("backend.routes.chat.reviewer_event_stream", new=_exploding_review),
     ):
-        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/revise/stream")
+        resp = await client.post(
+            f"/projects/{project_id}/documents/{doc_id}/chat/stream", json={"agent": "continuity"}
+        )
 
     assert "model exploded" in next(f for f in _parse_sse(resp.text) if f["type"] == "error")["detail"]
     assert await _operations(db) == ["summarize"]
@@ -267,9 +292,8 @@ async def test_summaries_stay_metered_when_the_stream_after_them_fails(
     "path,body",
     [
         ("plan", None),
-        ("check", None),
-        ("revise/stream", None),
         ("chat/stream", {"content": "Draft it."}),
+        ("chat/stream", {"agent": "continuity"}),
         ("rewrite/stream", {"instruction": "tighten", "selection": "Some prose."}),
     ],
 )
@@ -293,7 +317,9 @@ async def test_a_blocked_stream_fails_as_a_status_not_an_error_frame(chapter, db
     client, project_id, doc_id = chapter
     await _spend(db, user, 5.00)
 
-    resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/revise/stream")
+    resp = await client.post(
+        f"/projects/{project_id}/documents/{doc_id}/chat/stream", json={"agent": "continuity"}
+    )
     assert resp.status_code == 402
     assert "text/event-stream" not in resp.headers.get("content-type", "")
 

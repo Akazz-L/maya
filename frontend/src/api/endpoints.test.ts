@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  checkDocument,
   createDocument,
   createProject,
+  generatePlan,
   listProjects,
   login,
   reorderDocuments,
+  resolveProposal,
   updateDocument,
 } from './endpoints';
 import { clearToken, setToken } from '../auth/token';
@@ -26,12 +27,12 @@ afterEach(() => {
 describe('endpoints', () => {
   it('attaches a Bearer header to authed requests and scopes URLs by project', async () => {
     setToken('jwt123');
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ issues: [] }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ plan: null }));
 
-    await checkDocument('proj-1', 'doc-3');
+    await generatePlan('proj-1', 'doc-3');
 
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe('/projects/proj-1/documents/doc-3/check');
+    expect(url).toBe('/projects/proj-1/documents/doc-3/plan');
     expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer jwt123');
   });
 
@@ -111,5 +112,21 @@ describe('document endpoints', () => {
     expect(url).toBe('/projects/p1/documents/order');
     expect(init?.method).toBe('PUT');
     expect(JSON.parse(init?.body as string)).toEqual({ document_ids: ['b', 'a'] });
+  });
+});
+
+describe('resolveProposal', () => {
+  it('names the fixes it resolves, and omits them to mean "all the rest"', async () => {
+    setToken('jwt123');
+    // A fresh Response per call: a body can only be read once.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse({}));
+
+    await resolveProposal('p1', 'd1', 'm1', 'accepted', [2]);
+    await resolveProposal('p1', 'd1', 'm1', 'discarded');
+
+    const body = (call: number) => JSON.parse(fetchSpy.mock.calls[call][1]?.body as string);
+    expect(fetchSpy.mock.calls[0][0]).toBe('/projects/p1/documents/d1/chat/messages/m1/outcome');
+    expect(body(0)).toEqual({ outcome: 'accepted', indexes: [2] });
+    expect(body(1)).toEqual({ outcome: 'discarded' });
   });
 });

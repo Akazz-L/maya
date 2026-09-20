@@ -23,23 +23,22 @@ _PROJECTS = (
 _CHAPTERS = (
     sa.text(
         "SELECT c.number AS number, c.draft AS draft, c.plan AS plan, "
-        "c.issues AS issues, s.text AS summary "
+        "s.text AS summary "
         "FROM chapters c LEFT JOIN summaries s ON s.chapter_id = c.id "
         "WHERE c.project_id = :pid ORDER BY c.number"
     )
     .bindparams(sa.bindparam("pid", type_=sa.Uuid))
-    .columns(number=sa.Integer, draft=sa.Text, plan=sa.JSON, issues=sa.JSON, summary=sa.Text)
+    .columns(number=sa.Integer, draft=sa.Text, plan=sa.JSON, summary=sa.Text)
 )
 
 _INSERT = sa.text(
     "INSERT INTO documents "
-    "(id, project_id, title, kind, body, brief, plan, issues, summary, summary_hash, position) "
-    "VALUES (:id, :project_id, :title, :kind, :body, :brief, :plan, :issues, :summary, NULL, :position)"
+    "(id, project_id, title, kind, body, brief, plan, summary, summary_hash, position) "
+    "VALUES (:id, :project_id, :title, :kind, :body, :brief, :plan, :summary, NULL, :position)"
 ).bindparams(
     sa.bindparam("id", type_=sa.Uuid),
     sa.bindparam("project_id", type_=sa.Uuid),
     sa.bindparam("plan", type_=sa.JSON),
-    sa.bindparam("issues", type_=sa.JSON),
 )
 
 
@@ -67,7 +66,6 @@ def backfill_documents(connection) -> None:
                 "body": render_bible_markdown(bible) if bible else BIBLE_TEMPLATE,
                 "brief": "",
                 "plan": None,
-                "issues": None,
                 "summary": None,
                 "position": 0,
             }
@@ -89,7 +87,6 @@ def backfill_documents(connection) -> None:
                     "body": (chapter.draft if chapter and chapter.draft else ""),
                     "brief": beats[number - 1] if number <= len(beats) else "",
                     "plan": chapter.plan if chapter else None,
-                    "issues": chapter.issues if chapter else None,
                     # summary_hash stays NULL so the first generation re-summarizes
                     # against the real body.
                     "summary": chapter.summary if chapter else None,

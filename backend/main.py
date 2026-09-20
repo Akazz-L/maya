@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 _logger = logging.getLogger(__name__)
 
+from backend.agents.reviewers import reviewer_options
 from backend.auth import create_access_token, get_current_user, hash_password, verify_password
 from backend.bible_markdown import BIBLE_TEMPLATE
 from backend.db import get_db, init_db
@@ -150,6 +151,24 @@ async def update_me(
     current_user.model_key = body.model_key
     await db.commit()
     return await _me(db, current_user)
+
+
+# ---------------------------------------------------------------------------
+# Specialist agents
+# ---------------------------------------------------------------------------
+
+class AgentOption(BaseModel):
+    key: str
+    label: str
+    hint: str
+
+
+@app.get("/agents", response_model=list[AgentOption])
+def list_agents(current_user: User = Depends(get_current_user)):
+    """The specialist passes the chat's "+" picker offers. Served from the
+    backend so a new reviewer reaches the UI by being registered, and its label
+    lives only in backend/agents/reviewers.py."""
+    return reviewer_options()
 
 
 # ---------------------------------------------------------------------------

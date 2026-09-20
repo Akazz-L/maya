@@ -84,7 +84,6 @@ def base_state(sample_bible):
         "previous_summaries": [],
         "scene_plan": {},
         "draft": "",
-        "continuity_issues": [],
     }
 
 

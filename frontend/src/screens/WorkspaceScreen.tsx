@@ -1,15 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import {
-  checkDocument,
-  generatePlan,
-  getProject,
-  reviseStreamUrl,
-  updateDocument,
-  type DocumentPatch,
-} from '../api/endpoints';
-import type { DocumentDetail, Issue, ProposalOutcome, ScenePlan } from '../api/types';
+import { generatePlan, getProject, updateDocument, type DocumentPatch } from '../api/endpoints';
+import type { DocumentDetail, ProposalOutcome, ScenePlan } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { ChapterToolbar } from '../components/ChapterToolbar';
 import { chapterPanelId, chapterTabId, type ChapterView } from '../components/chapterView';
@@ -18,12 +11,10 @@ import { ModelPicker } from '../components/ModelPicker';
 import { UsageMeter } from '../components/UsageMeter';
 import { AUTOSAVE_MS, DocumentEditor, type SaveState } from '../components/DocumentEditor';
 import { DocumentSidebar } from '../components/DocumentSidebar';
-import { IssuesView } from '../components/IssuesView';
 import { PlanView, type PlanUndo } from '../components/PlanView';
 import type { ProposalView } from '../components/ProposalLayer';
 import { Button } from '../components/ui/button';
 import { useChat } from '../hooks/useChat';
-import { useDraftStream } from '../hooks/useDraftStream';
 import {
   documentKey,
   documentsKey,
@@ -73,9 +64,6 @@ export function WorkspaceScreen() {
   }
   // Whether a chat proposal was on screen last render; see where it is compared.
   const [proposalShown, setProposalShown] = useState(false);
-  // Bumped whenever the server rewrites the body, to remount the editor onto it.
-  const [docVersion, setDocVersion] = useState(0);
-  const [streamBody, setStreamBody] = useState<string | undefined>(undefined);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [rewriteBusy, setRewriteBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +88,6 @@ export function WorkspaceScreen() {
   const createDoc = useCreateDocument(projectId!);
   const deleteDoc = useDeleteDocument(projectId!);
   const reorderDocs = useReorderDocuments(projectId!);
-  const stream = useDraftStream();
   const me = useMe();
   const setModel = useSetModel();
   const applyUsage = useApplyUsage();
@@ -196,21 +183,6 @@ export function WorkspaceScreen() {
     },
   });
 
-  const reviewMut = useMutation({
-    // Review reads Document.body server-side.
-    mutationFn: (id: string) => settle().then(() => checkDocument(projectId!, id)),
-    onMutate: () => setError(null),
-    onSuccess: (res, id) => {
-      patchDocument(id, { issues: res.issues });
-      applyUsage(res.usage);
-      if (id === documentId) setView('issues');
-    },
-    onError: (e: Error) => {
-      setError(e.message);
-      me.refetch();
-    },
-  });
-
   const chat = useChat({
     projectId: projectId!,
     documentId,
@@ -219,33 +191,6 @@ export function WorkspaceScreen() {
     onUsage: applyUsage,
     onFailure: () => void me.refetch(),
   });
-
-  /** Save pending edits, then stream; the server owns `body` for the duration. */
-  const runStream = async (url: string, body: unknown) => {
-    setError(null);
-    await settle();
-    setStreamBody(document.data?.body ?? '');
-    try {
-      await stream.run(url, body, {
-        onDelta: (text) => setStreamBody((prev) => (prev ?? '') + text),
-        onDone: (full, usage) => {
-          patchCache({ body: full });
-          applyUsage(usage);
-          setStreamBody(undefined);
-          setDocVersion((v) => v + 1); // remount the editor onto the server's body
-        },
-      });
-    } catch (e) {
-      setError((e as Error).message);
-      setStreamBody(undefined);
-      me.refetch();
-    }
-  };
-
-  const revise = () => {
-    setView('write');
-    return runStream(reviseStreamUrl(projectId!, documentId!), null);
-  };
 
   /** Generate a plan, keeping the one it replaces so the writer can undo. */
   const generatePlanFor = () => {
@@ -282,6 +227,14 @@ export function WorkspaceScreen() {
     void chat.send(DRAFT_FROM_PLAN);
   };
 
+  /** Run a specialist pass over the chapter. Its fixes are reviewed in the
+   *  prose, so the Write view comes forward with them. */
+  const runAgent = (key: string) => {
+    setView('write');
+    openChat();
+    void chat.run(key);
+  };
+
   if (!projectId) return <Navigate to="/" replace />;
   if (project.isError) return <Navigate to="/" replace />;
 
@@ -308,15 +261,24 @@ export function WorkspaceScreen() {
   // every other generation waits: each would change the text it is drawn against.
   const proposal: ProposalView | null = chat.streaming?.progress
     ? { phase: 'streaming', mode: chat.streaming.progress.mode, text: chat.streaming.progress.text }
-    : pending && pending.proposal.proposed_body !== null
+    : pending?.proposal.kind === 'suggestions'
       ? {
           phase: 'reviewing',
-          proposed: pending.proposal.proposed_body,
+          kind: 'suggestions',
+          suggestions: pending.proposal.suggestions,
           baseHash: pending.proposal.base_hash,
-          // Edits read best as a diff; a new draft against the old one is noise.
-          showDiff: pending.proposal.kind === 'edit',
+          label: chat.agents.find((a) => a.key === pending.agent)?.label,
         }
-      : null;
+      : pending?.proposal.kind === 'write' && pending.proposal.proposed_body !== null
+        ? {
+            phase: 'reviewing',
+            kind: 'write',
+            proposed: pending.proposal.proposed_body,
+            baseHash: pending.proposal.base_hash,
+            // A new draft shown against the old one is noise.
+            showDiff: false,
+          }
+        : null;
   // A proposal is reviewed in the editor, so when one appears the Write view
   // comes forward. Only on its arrival: the writer can still switch away.
   const proposalOnScreen = isChapter && proposal !== null;
@@ -324,32 +286,22 @@ export function WorkspaceScreen() {
     setProposalShown(proposalOnScreen);
     if (proposalOnScreen) setView('write');
   }
-  // Issues exist only once a review has run; until then the tab is not offered
-  // and the view falls back to the prose.
-  const reviewed = doc?.issues != null;
-  const view: ChapterView =
-    isChapter && (chapterView !== 'issues' || reviewed) ? chapterView : 'write';
+  const view: ChapterView = isChapter ? chapterView : 'write';
 
   const chatBusy = chat.streaming !== null || pending !== null;
-  const busy =
-    planMut.isPending ||
-    reviewMut.isPending ||
-    stream.isStreaming ||
-    deleteDoc.isPending ||
-    rewriteBusy ||
-    chatBusy;
+  const busy = planMut.isPending || deleteDoc.isPending || rewriteBusy || chatBusy;
   const planForThisDoc = planMut.variables === documentId;
 
   const chatDisabledReason = aiBlocked
     ? 'AI budget used — chat is paused.'
     : pending
-      ? 'Accept or discard the proposal in the editor first.'
+      ? 'Accept or discard the suggestions in the chapter first.'
       : busy && chat.streaming === null
         ? 'Wait for the current AI action to finish.'
         : null;
 
-  const resolveProposal = (outcome: ProposalOutcome) => {
-    if (pending) void chat.resolve(pending.messageId, outcome);
+  const resolveProposal = (outcome: ProposalOutcome, indexes?: number[]) => {
+    if (pending) void chat.resolve(pending.messageId, outcome, indexes);
   };
 
   // Opening the Plan view calls no model: a chapter without a plan gets an empty
@@ -430,10 +382,6 @@ export function WorkspaceScreen() {
             <ChapterToolbar
               view={view}
               onViewChange={changeView}
-              issueCount={doc?.issues?.length ?? null}
-              busy={busy}
-              aiBlocked={aiBlocked}
-              onReview={() => reviewMut.mutate(documentId!)}
               chatOpen={chatOpen}
               onToggleChat={toggleChat}
             />
@@ -449,13 +397,12 @@ export function WorkspaceScreen() {
                 {...tabPanel('write')}
               >
                 <DocumentEditor
-                  key={`${doc.id}:${docVersion}`}
+                  key={doc.id}
                   document={doc}
                   projectId={projectId}
-                  readOnly={stream.isStreaming}
+                  readOnly={false}
                   onSave={save}
                   saveState={saveState}
-                  bodyOverride={streamBody}
                   onBusyChange={setRewriteBusy}
                   aiBlocked={aiBlocked}
                   onUsage={applyUsage}
@@ -498,21 +445,6 @@ export function WorkspaceScreen() {
                   />
                 </div>
               )}
-
-              {view === 'issues' && (
-                <div className="flex flex-1 flex-col overflow-hidden" {...tabPanel('issues')}>
-                  <IssuesView
-                    issues={doc.issues}
-                    busy={busy}
-                    aiBlocked={aiBlocked}
-                    onChange={(issues: Issue[]) => {
-                      patchCache({ issues });
-                      save({ issues });
-                    }}
-                    onRevise={revise}
-                  />
-                </div>
-              )}
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
@@ -535,6 +467,8 @@ export function WorkspaceScreen() {
             error={chat.error}
             disabledReason={chatDisabledReason}
             onSend={chat.send}
+            agents={chat.agents}
+            onRunAgent={runAgent}
             onClear={() => void chat.clear()}
             onClose={toggleChat}
           />

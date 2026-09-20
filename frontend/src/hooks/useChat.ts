@@ -3,17 +3,22 @@
 // open document changes, so a reply never lands in the wrong chapter.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { chatStreamUrl, clearChat, getChat, resolveProposal } from '../api/endpoints';
+import { chatStreamUrl, clearChat, getChat, listAgents, resolveProposal } from '../api/endpoints';
 import { streamPost } from '../api/stream';
 import type { ChatMessage, ChatProposal, ProposalOutcome, UsageSnapshot } from '../api/types';
 import type { ChatStreaming } from '../components/ChatPane';
+import { isPending } from '../lib/chat';
 
 export const chatKey = (projectId: string, documentId: string) =>
   ['chat', projectId, documentId] as const;
 
+export const agentsKey = ['agents'] as const;
+
 export interface PendingProposal {
   messageId: string;
   proposal: ChatProposal;
+  /** The specialist that proposed it, for the review bar's title. */
+  agent: string | null;
 }
 
 interface UseChatOptions {
@@ -39,6 +44,15 @@ export function useChat({ projectId, documentId, enabled, beforeSend, onUsage, o
     enabled: enabled && Boolean(documentId),
   });
 
+  // The specialist catalogue is the same for every chapter and never changes
+  // within a session, so it is fetched once and shared.
+  const agents = useQuery({
+    queryKey: agentsKey,
+    queryFn: listAgents,
+    enabled,
+    staleTime: Infinity,
+  });
+
   // Scoped to the document they belong to, so switching chapters shows none of
   // the previous one's stream or error without an effect to reset them.
   const [stream, setStream] = useState<{ id: string; state: ChatStreaming } | null>(null);
@@ -58,8 +72,8 @@ export function useChat({ projectId, documentId, enabled, beforeSend, onUsage, o
 
   const pendingProposal = useMemo<PendingProposal | null>(() => {
     const last = messages[messages.length - 1];
-    return last?.proposal && last.proposal.outcome === null
-      ? { messageId: last.id, proposal: last.proposal }
+    return last?.proposal && isPending(last.proposal)
+      ? { messageId: last.id, proposal: last.proposal, agent: last.agent }
       : null;
   }, [messages]);
 
@@ -69,8 +83,8 @@ export function useChat({ projectId, documentId, enabled, beforeSend, onUsage, o
     [qc, projectId, id],
   );
 
-  const send = useCallback(
-    async (content: string): Promise<boolean> => {
+  const post = useCallback(
+    async (body: { content: string } | { agent: string }, shown: string): Promise<boolean> => {
       if (!id) return false;
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -79,13 +93,13 @@ export function useChat({ projectId, documentId, enabled, beforeSend, onUsage, o
         setStream((s) => (s && s.id === id ? { id, state: fn(s.state) } : s));
 
       setError(null);
-      setStream({ id, state: { pendingUser: content, reply: '', progress: null } });
+      setStream({ id, state: { pendingUser: shown, reply: '', progress: null } });
       let delivered = false;
       try {
         await callbacks.current.beforeSend();
         await streamPost(
           chatStreamUrl(projectId, id),
-          { content },
+          body,
           {
             onDelta: (text) => patch((s) => ({ ...s, reply: s.reply + text })),
             onProposalProgress: (progress) => patch((s) => ({ ...s, progress })),
@@ -113,17 +127,34 @@ export function useChat({ projectId, documentId, enabled, beforeSend, onUsage, o
     [projectId, id, update],
   );
 
+  const send = useCallback(
+    (content: string) => post({ content }, content),
+    [post],
+  );
+
+  /** Run a specialist pass. The server supplies the turn's wording. */
+  const run = useCallback(
+    (agent: string) => {
+      const label = agents.data?.find((a) => a.key === agent)?.label ?? 'Specialist';
+      return post({ agent }, `${label}…`);
+    },
+    [post, agents.data],
+  );
+
   const resolve = useCallback(
-    async (messageId: string, outcome: ProposalOutcome) => {
-      if (resolving.current.has(messageId)) return;
-      resolving.current.add(messageId);
+    async (messageId: string, outcome: ProposalOutcome, indexes?: number[]) => {
+      // One in-flight call per message: accepting two fixes in quick succession
+      // must not have the second overwrite the first's outcome.
+      const token = `${messageId}:${indexes?.join(',') ?? 'all'}`;
+      if (resolving.current.has(token)) return;
+      resolving.current.add(token);
       try {
-        const updated = await resolveProposal(projectId, id, messageId, outcome);
+        const updated = await resolveProposal(projectId, id, messageId, outcome, indexes);
         update((old) => old.map((m) => (m.id === updated.id ? updated : m)));
       } catch (e) {
         setError({ id, message: (e as Error).message });
       } finally {
-        resolving.current.delete(messageId);
+        resolving.current.delete(token);
       }
     },
     [projectId, id, update],
@@ -144,7 +175,9 @@ export function useChat({ projectId, documentId, enabled, beforeSend, onUsage, o
     streaming: stream?.id === id ? stream.state : null,
     error: error?.id === id ? error.message : (query.error?.message ?? null),
     pendingProposal,
+    agents: agents.data ?? [],
     send,
+    run,
     resolve,
     clear,
   };

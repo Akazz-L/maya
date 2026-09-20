@@ -28,13 +28,12 @@ graph TD
     WS --> ED["DocumentEditor<br/>title · ProseEditor"]
     ED --> CC["ChapterContext<br/>one text, rendered by both views"]
     ED --> RL["RewriteLayer<br/>chapters only: pill · prompt · review bar"]
-    ED --> PL["ProposalLayer<br/>chapters only: streamed proposal · review bar"]
+    ED --> PL["ProposalLayer<br/>chapters only: streamed draft · per-fix cards · review bar"]
     WS --> PV["PlanView<br/>chapter view: plan"]
     PV --> PF["PlanForm"]
     PV --> CC
-    WS --> IV["IssuesView<br/>chapter view: issues"]
-    IV --> IL["IssuesList → IssueCard"]
     WS --> CP["ChatPane<br/>chapters only, collapsible"]
+    CP --> AP["AgentPicker<br/>the + : specialist passes"]
 
     classDef screen fill:#eef4ff,stroke:#5b7cba
     class LOGIN,PROJ,WS1,WS2,WS screen
@@ -42,15 +41,18 @@ graph TD
 
 `AuthProvider` sits **inside** `BrowserRouter` on purpose: it calls `useNavigate` to redirect on logout, which is only legal beneath a router.
 
-`ChapterToolbar`, `PlanView`, `IssuesView`, and `ChatPane` render only when the open document has `kind === 'chapter'`.
-The toolbar's Write / Plan / Issues switcher decides which view fills the main pane, and the chat stays beside all three; see [05](05-frontend-flows.md#chapter-views).
-The Issues tab appears only once a Review has run on that chapter.
-Bible and note documents get the editor and nothing else — they have no plan, no issues, no chat, and no generation actions.
+`ChapterToolbar`, `PlanView`, and `ChatPane` render only when the open document has `kind === 'chapter'`.
+The toolbar's Write / Plan switcher decides which view fills the main pane, and the chat stays beside both; see [05](05-frontend-flows.md#chapter-views).
+A review pass has no view of its own: its findings are drawn in the prose, so running one brings the Write view forward.
+Bible and note documents get the editor and nothing else — they have no plan, no chat, and no generation actions.
 
 The body is a CodeMirror 6 view (`ProseEditor`), not a textarea, so the chapter rewrite flow can draw over the real document.
 `editor/rewriteExtension.ts` holds the overlay as editor state and renders it as decorations; `RewriteLayer` drives it and only ever changes the document through the single Accept transaction, which is why an accepted rewrite autosaves and undoes like any other edit.
-`editor/proposalExtension.ts` is a second, independent overlay for chat proposals, so neither flow can clear the other's decoration; both draw through `editor/diffWidget.ts`.
-`ProposalLayer` likewise changes the document only through its Accept transaction, and only after the editor's text still hashes to the proposal's `base_hash`.
+`editor/proposalExtension.ts` is a second, independent overlay for chat proposals, so neither flow can clear the other's decoration.
+It holds a *list* of spans: a whole-chapter draft is one, drawn through `editor/diffWidget.ts`, while a review pass draws each of its fixes through `editor/suggestionWidget.ts` — the diff inline, and under it a card with the severity, the one-line reason, and that fix's own Accept and Discard.
+Those buttons are plain DOM inside the widget; they reach React through a host box the extension is built with, the same arrangement `rewriteExtension` uses.
+`ProposalLayer` changes the document only through its Accept transactions, and only after the editor's text still hashes to the proposal's `base_hash`.
+Accepting one fix re-dispatches the rest in the same transaction, shifted by what the splice added or removed (`shiftFixes` in `lib/chat.ts`), so the overlay never points at stale offsets — and each splice is refused unless the span still reads as that fix's `find`.
 
 ## Module layers
 
@@ -63,14 +65,14 @@ graph TD
     end
 
     subgraph components["components/ — presentational"]
-        CMP["DocumentSidebar · DocumentEditor · ChapterContext · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChatPane · ProposalLayer · ProposalReviewBar<br/>ChapterToolbar · PlanView · IssuesView<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
+        CMP["DocumentSidebar · DocumentEditor · ChapterContext · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChatPane · AgentPicker · ProposalLayer · ProposalReviewBar<br/>ChapterToolbar · PlanView · PlanForm<br/>ui/ — button, card, input, select, textarea"]
     end
 
     subgraph hooks["hooks/ — server state"]
         Q["queries.ts<br/>useDocuments · useDocument<br/>useCreateDocument · useDeleteDocument<br/>useReorderDocuments"]
         DS["useDraftStream.ts<br/>isStreaming · error · run()"]
         SR["useSelectionRewrite.ts<br/>idle → prompting → streaming → reviewing"]
-        CH["useChat.ts<br/>messages · streaming reply · pending proposal"]
+        CH["useChat.ts<br/>messages · streaming reply · pending proposal<br/>specialist catalogue · per-fix outcomes"]
     end
 
     subgraph api["api/ — transport"]
@@ -135,8 +137,7 @@ graph LR
     subgraph local["WorkspaceScreen — ephemeral UI"]
         L1["collapsed"]
         L2["chapterView · undoState · contextEdit<br/>the last two tagged with their document"]
-        L3["streamBody · saveState · error"]
-        L4["docVersion — editor remount key"]
+        L3["saveState · error"]
         L5["pendingSave — ref to the in-flight save"]
         L6["chatOpen"]
         L7["editorFlush — ref filled by the editor"]
@@ -161,12 +162,12 @@ graph LR
 Two conventions are worth internalizing:
 
 **`patchCache` writes to the query cache, `save` writes to the server.**
-Generation results (`plan`, `issues`) are pushed into the cache with `qc.setQueryData` and separately persisted — no refetch round-trip, so the Plan and Issues views update the instant the response lands.
+A generated `plan` is pushed into the cache with `qc.setQueryData` and separately persisted — no refetch round-trip, so the Plan view updates the instant the response lands.
 
 **The chapter context is the one text the editor does not own.**
 Both the Write and Plan views edit it, so `WorkspaceScreen` holds it in `contextEdit` and saves it; `ChapterContext` itself only reports edits, and remembers whether it is expanded in `maya.context.open`.
 
 **The editor's local state is seeded from props once and never re-synced.**
 An effect that copied props into state would fight the user's in-flight typing.
-Instead, when the server authoritatively rewrites a document — a different document, or a finished generation — `WorkspaceScreen` remounts the editor by changing its `key` (`${doc.id}:${docVersion}`).
-The `bodyOverride` prop is the one bypass: during a stream it displays the server's text directly without touching local state.
+Instead, when the open document changes, `WorkspaceScreen` remounts the editor by changing its `key` (`doc.id`).
+Nothing else rewrites the body behind the editor any more: every AI change to a chapter now arrives as a proposal the writer applies from inside the editor.

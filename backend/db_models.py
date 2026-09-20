@@ -92,7 +92,6 @@ class Document(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False, default="")
     brief: Mapped[str] = mapped_column(Text, nullable=False, default="")
     plan: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    issues: Mapped[list | None] = mapped_column(JSON, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     position: Mapped[int] = mapped_column(nullable=False, default=0)
@@ -108,8 +107,10 @@ class ChatMessage(Base):
     """One message in a chapter's chat, in conversation order.
 
     An assistant message may carry a proposal: a change to the chapter body the
-    writer has yet to accept or discard. `proposal` is a JSON column, which does
-    not track in-place mutation, so a change must assign a new dict.
+    writer has yet to accept or discard. A suggestion-set proposal holds one
+    outcome per fix, so resolving one fix leaves the rest pending. `proposal` is
+    a JSON column, which does not track in-place mutation, so a change must
+    assign a new dict.
     """
 
     __tablename__ = "chat_messages"
@@ -123,6 +124,9 @@ class ChatMessage(Base):
     #: user | assistant
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: The specialist reviewer this turn was addressed to (backend.agents.reviewers),
+    #: or NULL for an ordinary message the writer typed.
+    agent: Mapped[str | None] = mapped_column(String(32), nullable=True)
     proposal: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, server_default=func.now())
 
@@ -166,8 +170,8 @@ class UsageEvent(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, server_default=func.now())
     model_key: Mapped[str] = mapped_column(String(16), nullable=False)
-    #: plan | chat | revise | check | rewrite | summarize (draft on rows written
-    #: before chat replaced the draft route)
+    #: plan | chat | review | rewrite | summarize (draft, check and revise on
+    #: rows written before chat and inline review replaced those routes)
     operation: Mapped[str] = mapped_column(String(16), nullable=False)
     input_tokens: Mapped[int] = mapped_column(default=0)
     output_tokens: Mapped[int] = mapped_column(default=0)

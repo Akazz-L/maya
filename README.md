@@ -1,22 +1,26 @@
 # Maya
 
 An iterative, chapter-by-chapter novel-writing assistant.
-Instead of generating a book in one shot, Maya keeps a project as a list of documents — a story bible plus chapters and notes — and works on each chapter with agents that each have a narrow job: an optional planner, a chat assistant that drafts and edits, and a continuity checker.
+Instead of generating a book in one shot, Maya keeps a project as a list of documents — a story bible plus chapters and notes — and works on each chapter with agents that each have a narrow job: an optional planner, a chat assistant that drafts and edits, and specialist review passes the chat can call on.
 
 Documents are plain text with a name, added and reordered freely from a sidebar.
 Every project has one pinned Story Bible.
-Chapter documents carry optional chapter context — an outline, a line of intent, or nothing at all — and a Write / Plan / Issues switcher.
-The context is editable from both the Write and Plan views, and every AI call reads it.
+Chapter documents carry optional chapter context — an outline, a line of intent, or nothing at all — and a Write / Plan switcher.
+The context is editable from both views, and every AI call reads it.
 Plan opens the scene plan: empty and ready to type on a chapter without one, or generated on request, with no notes needed.
 Edit the plan, regenerate or remove it (with undo), or draft from it.
-Review reports continuity issues, and its Issues view appears once it has run.
 Prior chapters are summarized automatically and fed back in as context.
 
 Beside each chapter is a chat that does the drafting.
 Ask it for a first draft, a draft from the saved scene plan (the Plan view's Draft from plan → sends exactly that), a continuation, or changes to what is already written.
 Planning is optional: a chapter can go straight from a prompt to a draft.
 Every change the chat makes arrives as a proposal in the editor, streamed in place and shown as a diff you accept or discard.
-The conversation is kept per chapter, and the assistant is told what became of each proposal.
+Targeted changes arrive as a set of separate fixes, each drawn where it applies with one line on what is wrong, each taken or left on its own.
+The conversation is kept per chapter, and the assistant is told which fixes you took.
+
+The `+` beside the chat box runs a specialist pass over the chapter.
+**Continuity check** reads the chapter against the story bible, the scene plan, and the previous chapters' summaries, and answers with localized fixes rather than a list of findings to act on yourself: the contradiction is marked in the prose, the correction is shown as a diff, and a card beside it says what contradicts what.
+Adding another specialist is a prompt and a registry entry in `backend/agents/reviewers.py`; the picker is served from that registry.
 
 Inside a chapter, select any passage and press ⌘K (or click the Rewrite pill) to ask
 for a targeted rewrite; the suggestion streams in place and shows as a diff you can
@@ -80,7 +84,7 @@ every toolbar action has something to act on:
 | Document | State | What it exercises |
 |---|---|---|
 | Story Bible | Filled in, not the empty template | Context for every agent |
-| Chapter 1 | Prose plus a pre-cached summary | **Review**, and prior-chapter context |
+| Chapter 1 | Prose plus a pre-cached summary | **Continuity check** from the chat's `+`, and prior-chapter context |
 | Chapter 2 | Scene plan saved, body empty | **Draft from plan →** in the Plan view, which drafts through the chat |
 | Chapter 3 | Context only | **Plan**, written by hand or generated, or a draft straight from a chat prompt |
 | Research note | Scratch notes | Notes are excluded from all agent context |
@@ -136,7 +140,7 @@ They render directly on GitHub and in most editors.
 
 ## Model choice and the AI budget
 
-The model is per user, chosen from the picker in the editor header and applied to every AI call — plan, chat, revise, check, rewrite, and the chapter summaries that run implicitly before each of those.
+The model is per user, chosen from the picker in the editor header and applied to every AI call — plan, chat, review, rewrite, and the chapter summaries that run implicitly before each of those.
 A change takes effect on the next call; anything already streaming keeps the model
 it started on.
 

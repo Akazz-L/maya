@@ -24,7 +24,6 @@ const CHAPTER = {
   body: 'The rain.',
   brief: 'Mara waits.',
   plan: null as ScenePlan | null,
-  issues: null as unknown,
 };
 
 const BIBLE = {
@@ -39,8 +38,8 @@ const BIBLE = {
 const SAVED_PLAN: ScenePlan = { ...EMPTY_PLAN, goal: 'Reach the gate' };
 const NEW_PLAN: ScenePlan = { ...EMPTY_PLAN, goal: 'Burn the map' };
 
-const ISSUES = [
-  { issue: 'Wrong hand', severity: 'critical', location: 'p1', suggested_fix: 'left' },
+const AGENTS = [
+  { key: 'continuity', label: 'Continuity check', hint: 'Contradictions against the bible' },
 ];
 
 const ME = {
@@ -66,15 +65,42 @@ const USER_MESSAGE: ChatMessage = {
   id: 'u1',
   role: 'user',
   content: 'Draft it.',
+  agent: null,
   proposal: null,
   created_at: null,
 };
 
-function assistant(proposal: ChatProposal): ChatMessage {
-  return { id: 'a1', role: 'assistant', content: 'Here is a draft.', proposal, created_at: null };
+function assistant(proposal: ChatProposal, agent: string | null = null): ChatMessage {
+  return {
+    id: 'a1',
+    role: 'assistant',
+    content: 'Here is a draft.',
+    agent,
+    proposal,
+    created_at: null,
+  };
 }
 
-function draftProposal(baseHash: string): ChatProposal {
+/** One continuity fix against CHAPTER.body: "rain" → "storm". */
+function fixesProposal(baseHash: string): ChatProposal {
+  return {
+    kind: 'suggestions',
+    base_hash: baseHash,
+    suggestions: [
+      {
+        find: 'rain',
+        replace: 'storm',
+        explanation: 'The bible calls it a storm.',
+        severity: 'critical',
+        from: 4,
+        to: 8,
+        outcome: null,
+      },
+    ],
+  };
+}
+
+function draftProposal(baseHash: string): Extract<ChatProposal, { kind: 'write' }> {
   return {
     kind: 'write',
     mode: 'replace',
@@ -111,7 +137,7 @@ interface MockOptions {
   handle?: (url: string, init: RequestInit | undefined) => Response | undefined;
 }
 
-/** A fake backend whose chapter c1 remembers patches, plans, and reviews like the real one. */
+/** A fake backend whose chapter c1 remembers patches and plans like the real one. */
 function mockApi({ me = ME, chapter = CHAPTER, chat = [], handle }: MockOptions = {}) {
   let current = { ...(chapter as object) };
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -121,16 +147,13 @@ function mockApi({ me = ME, chapter = CHAPTER, chat = [], handle }: MockOptions 
     const custom = handle?.(url, request);
     if (custom) return custom;
     if (url.endsWith('/me')) return json(me);
+    if (url.endsWith('/agents')) return json(AGENTS);
     if (url.endsWith('/documents')) return json(DOCS);
     if (url.endsWith('/chat') && method === 'GET') return json({ messages: chat });
     if (url.endsWith('/rewrite/stream')) return sse([{ type: 'done', body: 'The downpour.' }]);
     if (url.endsWith('/plan') && method === 'POST') {
       current = { ...current, plan: NEW_PLAN };
       return json({ plan: NEW_PLAN, usage: ME.usage });
-    }
-    if (url.endsWith('/check') && method === 'POST') {
-      current = { ...current, issues: ISSUES };
-      return json({ issues: ISSUES, usage: ME.usage });
     }
     if (url.includes('/documents/c1')) {
       if (method === 'PATCH') current = { ...current, ...JSON.parse(String(request?.body)) };
@@ -420,18 +443,64 @@ describe('WorkspaceScreen', () => {
     expect(screen.getByRole('tab', { name: 'Write' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('adds the Issues view only once a review has run', async () => {
+  it('has no Issues view and no Review button: a pass is run from the chat', async () => {
     mockApi();
     renderAt('/p/p1/d/c1');
     await screen.findByLabelText('Document body');
     expect(screen.queryByRole('tab', { name: /issues/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^review$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /run a specialist/i })).toBeInTheDocument();
+  });
 
-    await userEvent.click(screen.getByRole('button', { name: /^review$/i }));
+  it('runs a continuity pass from the picker and takes its fix in the prose', async () => {
+    const baseHash = await sha256Hex('The rain.');
+    const fetchMock = mockApi({
+      handle: (url) => {
+        if (url.endsWith('/chat/stream'))
+          return sse([
+            { type: 'delta', text: 'One problem.' },
+            {
+              type: 'done',
+              messages: [
+                { ...USER_MESSAGE, content: 'Check this chapter.', agent: 'continuity' },
+                assistant(fixesProposal(baseHash), 'continuity'),
+              ],
+              usage: ME.usage,
+            },
+          ]);
+        if (url.includes('/outcome')) return json(assistant(fixesProposal(baseHash), 'continuity'));
+        return undefined;
+      },
+    });
+    renderAt('/p/p1/d/c1');
+    await editorReady();
 
-    expect(await screen.findByDisplayValue('Wrong hand')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Issues (1)' })).toHaveAttribute(
-      'aria-selected',
-      'true',
+    await userEvent.click(screen.getByRole('button', { name: /run a specialist/i }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: /continuity check/i }));
+
+    // Asked for by key, not as a message the writer typed.
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/projects/p1/documents/c1/chat/stream',
+        expect.objectContaining({ body: JSON.stringify({ agent: 'continuity' }) }),
+      ),
+    );
+
+    // The finding is drawn in the chapter, explanation and all.
+    const accept = await screen.findByRole('button', { name: 'Accept fix 1' });
+    expect(screen.getByLabelText('Document body').textContent).toContain(
+      'The bible calls it a storm.',
+    );
+    expect(screen.getByRole('toolbar')).toHaveTextContent('Continuity check');
+
+    await userEvent.click(accept);
+
+    expect(viewFor('Document body').state.doc.toString()).toBe('The storm.');
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/outcome'),
+        expect.objectContaining({ body: JSON.stringify({ outcome: 'accepted', indexes: [0] }) }),
+      ),
     );
   });
 
@@ -518,14 +587,12 @@ describe('WorkspaceScreen', () => {
     await userEvent.type(screen.getByLabelText('Rewrite instruction'), 'wetter{Enter}');
     await screen.findByRole('toolbar', { name: /review rewrite/i });
 
-    expect(screen.getByRole('button', { name: /^review$/i })).toBeDisabled();
     expect(screen.getByLabelText('Message')).toBeDisabled();
     screen.getAllByRole('tab').forEach((t) => expect(t).toBeEnabled());
 
     await userEvent.click(screen.getByRole('button', { name: /discard/i }));
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /^review$/i })).toBeEnabled());
-    expect(screen.getByLabelText('Message')).toBeEnabled();
+    await waitFor(() => expect(screen.getByLabelText('Message')).toBeEnabled());
   });
 
   it('shows the model picker and the meter on every document, not just chapters', async () => {
@@ -556,9 +623,12 @@ describe('WorkspaceScreen', () => {
     renderAt('/p/p1/d/c1');
 
     expect(await screen.findByText(/budget used — ai paused/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^review$/i })).toBeDisabled();
     expect(screen.getByLabelText('Message')).toBeDisabled();
     expect(screen.getByText(/budget used — chat is paused/i)).toBeInTheDocument();
+
+    // And no pass can be run either, with the reason in place of the list.
+    await userEvent.click(screen.getByRole('button', { name: /run a specialist/i }));
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument();
   });
 
   it('says why rewrite is unavailable rather than doing nothing on ⌘K', async () => {
@@ -617,16 +687,17 @@ describe('WorkspaceScreen', () => {
     expect(await screen.findByLabelText('Goal')).toBeEnabled();
   });
 
-  it('saves an edit made inside the autosave window before Review reads the body', async () => {
+  it('saves an edit made inside the autosave window before a pass reads the body', async () => {
     // Regression: only an in-flight save was awaited, so keystrokes still
-    // waiting out the debounce were invisible to the server-side review.
+    // waiting out the debounce were invisible to the server-side read. A
+    // continuity pass on a stale body reports contradictions already fixed.
     const calls: string[] = [];
     mockApi({
       handle: (url, init) => {
         if (init?.method === 'PATCH') calls.push(`PATCH ${String(init.body)}`);
-        if (url.endsWith('/check')) {
+        if (url.endsWith('/chat/stream')) {
           calls.push('review');
-          return json({ issues: [], usage: ME.usage });
+          return sse([{ type: 'delta', text: 'Nothing to report.' }, { type: 'done', messages: [] }]);
         }
         return undefined;
       },
@@ -635,7 +706,8 @@ describe('WorkspaceScreen', () => {
     await editorReady();
 
     typeAtEnd('Document body', '!');
-    await userEvent.click(screen.getByRole('button', { name: /^review$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /run a specialist/i }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: /continuity check/i }));
 
     await waitFor(() => expect(calls).toContain('review'));
     expect(calls[0]).toBe('PATCH {"body":"The rain.!"}');
@@ -669,7 +741,6 @@ describe('WorkspaceScreen', () => {
     expect(screen.getByText('Here is a draft.')).toBeInTheDocument();
     expect(screen.getByText('$2.00 / $5.00 · 40%')).toBeInTheDocument();
     expect(screen.getByLabelText('Message')).toBeDisabled();
-    expect(screen.getByRole('button', { name: /^review$/i })).toBeDisabled();
 
     await userEvent.click(screen.getByRole('button', { name: /accept/i }));
 
@@ -701,7 +772,7 @@ describe('WorkspaceScreen', () => {
 
     expect(await screen.findByRole('toolbar', { name: /review proposal/i })).toBeInTheDocument();
     expect(screen.getByLabelText('Message')).toBeDisabled();
-    expect(screen.getByText(/accept or discard the proposal/i)).toBeInTheDocument();
+    expect(screen.getByText(/accept or discard the suggestions/i)).toBeInTheDocument();
   });
 
   it('records a proposal as stale when the chapter no longer matches it', async () => {

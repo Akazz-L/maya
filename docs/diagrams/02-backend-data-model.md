@@ -35,7 +35,6 @@ erDiagram
         text body "the prose"
         text brief "chapter only — the writer's optional notes"
         json plan "ScenePlan or null"
-        json issues "Issue[] or null"
         text summary "cached continuity summary"
         string summary_hash "sha256(body) when summary was made"
         int position "0-based, contiguous"
@@ -49,6 +48,7 @@ erDiagram
         int position "0-based, unique per document"
         string role "user | assistant"
         text content
+        string agent "the specialist this turn ran, or null"
         json proposal "assistant only, or null"
         datetime created_at
     }
@@ -71,8 +71,10 @@ Any write to `body` sets it to `NULL`, invalidating the cached summary.
 See [03](03-backend-workflows.md#summary-caching).
 
 One more rule belongs to `chat_messages`: **the server never applies a proposal.**
-`proposal` records what the assistant proposed (`kind`, then `mode` and `text` or `edits`), the `sha256` of the body it was computed against (`base_hash`), the whole body it would produce (`proposed_body`, cleared once resolved), and what the writer did with it (`outcome`: `accepted`, `discarded`, `stale`, or null while under review).
-The editor applies it only while its own text still hashes to `base_hash`.
+`proposal` records what the assistant proposed and the `sha256` of the body it was computed against (`base_hash`), in one of two kinds.
+A `write` carries `mode` and `text`, the whole body it would produce (`proposed_body`, cleared once resolved), and one `outcome` (`accepted`, `discarded`, `stale`, or null while under review).
+A `suggestions` set carries a list of localized fixes — `find`, `replace`, a one-line `explanation`, an optional `severity`, the offsets into the base body, and **an `outcome` per fix**, so taking one leaves the rest awaiting review.
+The editor applies a fix only while the span still reads as its `find`, and it refuses the set outright unless the chapter still hashes to `base_hash`.
 `delete_document` removes a chapter's messages explicitly, because SQLite enforces the foreign key's cascade only under a pragma the app does not set.
 See [03](03-backend-workflows.md#chapter-chat).
 
@@ -126,8 +128,7 @@ It is not a class — this diagram describes the keys, not a type that exists in
 | `story_bible` | the body of the project's one `bible` document |
 | `previous_summaries` | earlier chapters, oldest first (see [03](03-backend-workflows.md#summary-caching)) |
 | `scene_plan` | `document.plan`, or `{}` when there is none |
-| `draft` | the chapter body: what Check reads, Revise fixes, and the chat proposes changes to |
-| `continuity_issues` | `document.issues`; `severity` is one of `critical`, `minor`, `style` |
+| `draft` | the chapter body: what a review pass reads and what the chat proposes changes to |
 | `history` | chat only: the chapter's earlier messages, from `chat_storage.history` |
 | `message` | chat only: the writer's new message |
 
@@ -140,7 +141,6 @@ classDiagram
         list~str~ previous_summaries
         dict scene_plan
         str draft
-        list~Issue~ continuity_issues
     }
 
     class ScenePlan {
@@ -154,12 +154,12 @@ classDiagram
         str closing_image
     }
 
-    class Issue {
-        <<tool schema - checker.py>>
-        str issue
+    class Suggestion {
+        <<tool schema - suggest_fixes, chat.py>>
+        str find
+        str replace
+        str explanation
         str severity
-        str location
-        str suggested_fix
     }
 
     class planner_node {
@@ -174,17 +174,11 @@ classDiagram
         reads every key, plus history and message
         yields text deltas, proposal progress, one proposal
     }
-    class reviser_token_stream {
+    class reviewer_event_stream {
         <<async generator>>
-        +reviser_token_stream(state) AsyncIterator~str~
-        reads story_bible, scene_plan, draft, continuity_issues
-        yields the revised chapter
-    }
-    class checker_node {
-        <<async>>
-        +checker_node(state) dict
+        +reviewer_event_stream(reviewer, state) AsyncIterator~ChatEvent~
         reads draft, scene_plan, story_bible, previous_summaries
-        returns continuity_issues
+        yields a text reply and one set of localized fixes
     }
     class summarize_node {
         <<async>>
@@ -193,16 +187,17 @@ classDiagram
     }
 
     AgentState ..> ScenePlan : scene_plan holds
-    AgentState ..> Issue : continuity_issues holds
+    chat_event_stream ..> Suggestion : suggest_fixes returns
+    reviewer_event_stream ..> Suggestion : suggest_fixes returns
     planner_node ..> AgentState
     chat_event_stream ..> AgentState
-    reviser_token_stream ..> AgentState
-    checker_node ..> AgentState
+    reviewer_event_stream ..> AgentState
 ```
 
-`ScenePlan` and `Issue` are not Python classes either — they are JSON Schemas passed to the Anthropic API as forced tools (`tool_choice` pins the tool), so the model returns structured data rather than prose to parse.
-Both raise `RuntimeError` if the response carries no `tool_use` block.
-The frontend mirrors both shapes as TypeScript interfaces in `frontend/src/api/types.ts`; those two files must be changed together.
+`ScenePlan` and `Suggestion` are not Python classes either — they are JSON Schemas passed to the Anthropic API as tools, so the model returns structured data rather than prose to parse.
+The planner's tool is forced (`tool_choice` pins it) and raises `RuntimeError` if the response carries no `tool_use` block.
+The frontend mirrors both shapes as TypeScript interfaces in `frontend/src/api/types.ts`; those files must be changed together.
 
-`chat_event_stream` is the only agent whose model chooses between tools: `write_draft` (replace or append) and `edit_draft` (exact find/replace).
-`build_proposal` turns the call into a proposal and computes the body it would produce; a call that cannot become one gets a single correction inside the turn.
+`chat_event_stream` picks between two tools: `write_draft` (replace or append) and `suggest_fixes` (a set of exact find/replace fixes, each with its reason).
+A reviewer is offered `suggest_fixes` alone, and is *not* forced to call it — a chapter with nothing wrong must be able to come back as a sentence rather than an invented fix — with `severity` required on its copy of the schema.
+`build_proposal` validates the call against the chapter and turns it into a proposal: each `find` must occur exactly once, fixes may not overlap, and a `replace` identical to its `find` is refused. Every problem in a set is reported at once, and a call that cannot become a proposal gets a single correction inside the turn.
