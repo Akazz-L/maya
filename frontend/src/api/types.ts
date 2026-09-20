@@ -1,7 +1,8 @@
 // TypeScript mirror of the backend response shapes. The backend types
-// plan / issues loosely as `dict` / `list`, but the UI works with these
+// plan and proposals loosely as `dict` / `list`, but the UI works with these
 // concrete shapes.
 
+/** How serious a reviewer thinks a problem is. Null on an ordinary chat fix. */
 export type Severity = 'critical' | 'minor' | 'style';
 
 export const SEVERITIES: Severity[] = ['critical', 'minor', 'style'];
@@ -14,13 +15,6 @@ export interface ScenePlan {
   opening_image: string;
   closing_image: string;
   beats: string[];
-}
-
-export interface Issue {
-  issue: string;
-  severity: Severity;
-  location: string;
-  suggested_fix: string;
 }
 
 export type DocumentKind = 'bible' | 'chapter' | 'note';
@@ -40,7 +34,6 @@ export interface DocumentDetail extends DocumentSummary {
   /** Chapter only — the writer's optional chapter notes, read by the planner and the chat. Empty on bible and note documents. */
   brief: string;
   plan: ScenePlan | null;
-  issues: Issue[] | null;
 }
 
 /** A project in the list, from GET /projects. */
@@ -102,29 +95,54 @@ export interface Me {
 /** What the writer did with a proposal. `stale`: the chapter no longer matched it. */
 export type ProposalOutcome = 'accepted' | 'discarded' | 'stale';
 
-export interface ChatEdit {
+/**
+ * One localized fix inside a suggestion set. `from`/`to` are offsets into the
+ * body named by the proposal's `base_hash`; the editor re-measures them as the
+ * writer accepts earlier fixes. Each fix carries its own outcome, so taking one
+ * leaves the rest awaiting review.
+ */
+export interface Suggestion {
   find: string;
   replace: string;
+  /** One line on what is wrong, shown on the card beside the fix. */
+  explanation: string;
+  severity: Severity | null;
+  from: number;
+  to: number;
+  outcome: ProposalOutcome | null;
 }
 
 interface ProposalBase {
   /** sha256 of the chapter body the proposal was computed against. */
   base_hash: string;
-  /** The whole body after applying it; null once resolved. */
-  proposed_body: string | null;
-  outcome: ProposalOutcome | null;
 }
 
 export type ChatProposal =
-  | (ProposalBase & { kind: 'write'; mode: 'replace' | 'append'; text: string })
-  | (ProposalBase & { kind: 'edit'; edits: ChatEdit[] });
+  | (ProposalBase & {
+      kind: 'write';
+      mode: 'replace' | 'append';
+      text: string;
+      /** The whole body after applying it; null once resolved. */
+      proposed_body: string | null;
+      outcome: ProposalOutcome | null;
+    })
+  | (ProposalBase & { kind: 'suggestions'; suggestions: Suggestion[] });
 
 /** One message in a chapter's chat, from GET …/chat. */
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /** The specialist this turn was addressed to, or null for a typed message. */
+  agent: string | null;
   /** Assistant only: a change to the chapter, reviewed in the editor. */
   proposal: ChatProposal | null;
   created_at: string | null;
+}
+
+/** One entry in the chat's "+" picker, from GET /agents. */
+export interface AgentOption {
+  key: string;
+  label: string;
+  hint: string;
 }

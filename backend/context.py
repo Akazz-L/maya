@@ -35,7 +35,6 @@ async def build_chapter_state(
         ),
         "scene_plan": document.plan or {},
         "draft": "",
-        "continuity_issues": [],
     }
 
 

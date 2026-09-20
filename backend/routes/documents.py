@@ -29,7 +29,6 @@ class DocumentUpdateRequest(BaseModel):
     body: str | None = None
     brief: str | None = None
     plan: dict | None = None
-    issues: list | None = None
     kind: str | None = None
 
 
@@ -53,7 +52,6 @@ def _detail(document: Document) -> dict:
         "body": document.body,
         "brief": document.brief,
         "plan": document.plan,
-        "issues": document.issues,
     }
 
 

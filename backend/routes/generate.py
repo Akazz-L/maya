@@ -1,14 +1,12 @@
 import uuid
 from functools import partial
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.agents.checker import checker_node
 from backend.agents.planner import planner_node
-from backend.agents.reviser import reviser_token_stream
 from backend.agents.rewriter import rewriter_token_stream
 from backend.context import build_chapter_state
 from backend.db import get_db
@@ -46,75 +44,6 @@ async def generate_plan(
     document.plan = result["scene_plan"]
     await meter.flush()
     return {"plan": result["scene_plan"], "usage": (await meter.snapshot()).as_dict()}
-
-
-@router.post("/check")
-async def generate_check(
-    document_id: uuid.UUID,
-    project: Project = Depends(require_project),
-    user: User = Depends(require_ai_budget),
-    db: AsyncSession = Depends(get_db),
-):
-    document = await require_chapter(db, project.id, document_id)
-    meter = Meter(db, user, user.model_key)
-    async with meter.flushed_on_error():
-        state = await build_chapter_state(
-            db, document, user.model_key, partial(meter.add, "summarize")
-        )
-        state["draft"] = document.body
-        result = await checker_node(state, user.model_key)
-    meter.add("check", result["usage"])
-    document.issues = result["continuity_issues"]
-    await meter.flush()
-    return {"issues": result["continuity_issues"], "usage": (await meter.snapshot()).as_dict()}
-
-
-@router.post("/revise/stream")
-async def revise_stream(
-    document_id: uuid.UUID,
-    project: Project = Depends(require_project),
-    user: User = Depends(require_ai_budget),
-    db: AsyncSession = Depends(get_db),
-):
-    document = await require_chapter(db, project.id, document_id)
-    if not document.body.strip() or not document.issues:
-        raise HTTPException(
-            status_code=400, detail="There is nothing to revise: run Check on a draft first."
-        )
-    meter = Meter(db, user, user.model_key)
-    async with meter.flushed_on_error():
-        state = await build_chapter_state(
-            db, document, user.model_key, partial(meter.add, "summarize")
-        )
-    state["draft"] = document.body
-    state["continuity_issues"] = document.issues
-
-    async def gen():
-        buf = []
-        try:
-            async for text in reviser_token_stream(
-                state, user.model_key, partial(meter.add, "revise")
-            ):
-                buf.append(text)
-                yield sse({"type": "delta", "text": text})
-            # A revision replaces the text wholesale rather than appending.
-            document.body = "".join(buf)
-            document.summary_hash = None  # body changed; the cached summary is stale
-            await meter.flush()
-            yield sse(
-                {
-                    "type": "done",
-                    "body": document.body,
-                    "usage": (await meter.snapshot()).as_dict(),
-                }
-            )
-        except Exception as e:
-            # The summaries refreshed before the stream, and whatever the call
-            # billed before failing, are written before the error goes out.
-            await meter.flush()
-            yield sse({"type": "error", "detail": str(e)})
-
-    return StreamingResponse(gen(), media_type="text/event-stream", headers=SSE_HEADERS)
 
 
 @router.post("/rewrite/stream")

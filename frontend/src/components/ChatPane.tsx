@@ -3,9 +3,10 @@
 // the next message.
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { ProposalProgress } from '../api/stream';
-import type { ChatMessage, ChatProposal } from '../api/types';
-import { describeProposal, outcomeLabel, wordCount } from '../lib/chat';
+import type { AgentOption, ChatMessage, ChatProposal } from '../api/types';
+import { describeProposal, outcomeLabel, outcomeSummary, wordCount } from '../lib/chat';
 import { cn } from '../lib/utils';
+import { AgentPicker } from './AgentPicker';
 import { Button } from './ui/button';
 
 export interface ChatStreaming {
@@ -24,6 +25,9 @@ export interface ChatPaneProps {
   disabledReason: string | null;
   /** Resolves false when the message did not go through, so its text can be restored. */
   onSend: (content: string) => Promise<boolean>;
+  /** The specialist passes the "+" offers, and running one. */
+  agents: AgentOption[];
+  onRunAgent: (key: string) => void;
   onClear: () => void;
   onClose: () => void;
 }
@@ -31,7 +35,16 @@ export interface ChatPaneProps {
 const ghost =
   'rounded px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-40 disabled:hover:bg-transparent';
 
-function UserBubble({ text }: { text: string }) {
+function UserBubble({ text, agent }: { text: string; agent?: string | null }) {
+  // A pass the writer ran reads as an action, not as something they typed.
+  if (agent) {
+    return (
+      <div className="ml-8 flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50/70 px-3 py-1.5 text-xs font-medium text-violet-800">
+        <span aria-hidden>▸</span>
+        {text}
+      </div>
+    );
+  }
   return (
     <div className="ml-8 whitespace-pre-wrap rounded-lg bg-white px-3 py-2 text-sm text-gray-800 shadow-sm ring-1 ring-gray-200">
       {text}
@@ -40,17 +53,25 @@ function UserBubble({ text }: { text: string }) {
 }
 
 function ProposalCard({ proposal }: { proposal: ChatProposal }) {
+  // A set is pending while any one fix is; the detail is on the cards in the prose.
+  const pending =
+    proposal.kind === 'suggestions'
+      ? proposal.suggestions.some((s) => s.outcome === null)
+      : proposal.outcome === null;
+  const status =
+    proposal.kind === 'suggestions'
+      ? outcomeSummary(proposal.suggestions)
+      : outcomeLabel(proposal.outcome);
+
   return (
     <div
       className={cn(
         'mt-1.5 flex flex-col gap-0.5 rounded-md border px-2.5 py-1.5 text-xs',
-        proposal.outcome === null ? 'border-violet-200 bg-violet-50' : 'border-gray-200 bg-white',
+        pending ? 'border-violet-200 bg-violet-50' : 'border-gray-200 bg-white',
       )}
     >
       <span className="font-medium text-gray-700">{describeProposal(proposal)}</span>
-      <span className={proposal.outcome === null ? 'text-violet-700' : 'text-gray-500'}>
-        {outcomeLabel(proposal.outcome)}
-      </span>
+      <span className={pending ? 'text-violet-700' : 'text-gray-500'}>{status}</span>
     </div>
   );
 }
@@ -71,6 +92,8 @@ export function ChatPane({
   error,
   disabledReason,
   onSend,
+  agents,
+  onRunAgent,
   onClear,
   onClose,
 }: ChatPaneProps) {
@@ -136,15 +159,17 @@ export function ChatPane({
           !messages.length &&
           !streaming && (
             <p className="text-sm text-gray-400">
-              Ask for a first draft, a continuation, or changes to the chapter. Every change is
-              proposed in the editor for you to accept or discard.
+              Ask for a first draft, a continuation, or changes to the chapter — or use
+              <span className="mx-1 rounded border border-gray-300 px-1 text-[11px]">+</span>
+              to run a specialist over it. Every change is proposed in the chapter itself, one fix
+              at a time, for you to accept or discard.
             </p>
           )
         )}
 
         {messages.map((m) =>
           m.role === 'user' ? (
-            <UserBubble key={m.id} text={m.content} />
+            <UserBubble key={m.id} text={m.content} agent={m.agent} />
           ) : (
             <AssistantMessage key={m.id} message={m} />
           ),
@@ -185,7 +210,12 @@ export function ChatPane({
           className="w-full resize-none rounded-md border border-gray-200 px-2.5 py-2 text-sm text-gray-800 outline-none focus:border-violet-300 disabled:bg-gray-50 disabled:text-gray-400"
         />
         <div className="mt-1.5 flex items-center justify-between gap-2">
-          <span className="text-[11px] text-gray-400">{disabledReason ?? '↵ send · ⇧↵ new line'}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <AgentPicker agents={agents} disabledReason={disabledReason} onRun={onRunAgent} />
+            <span className="truncate text-[11px] text-gray-400">
+              {disabledReason ?? '↵ send · ⇧↵ new line'}
+            </span>
+          </div>
           <Button type="submit" size="sm" disabled={inputDisabled || !input.trim()}>
             Send
           </Button>

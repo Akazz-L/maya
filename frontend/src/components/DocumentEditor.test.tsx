@@ -14,7 +14,6 @@ const DOC: DocumentDetail = {
   body: 'The rain.',
   brief: 'Mara waits.',
   plan: null,
-  issues: null,
 };
 
 beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));

@@ -1,14 +1,14 @@
 // Thin, typed wrappers around the backend REST routes. Every data route is
-// scoped to a project and requires auth; the streaming routes (revise, rewrite,
-// chat) are read by stream.ts.
+// scoped to a project and requires auth; the streaming routes (rewrite, chat)
+// are read by stream.ts.
 
 import { request } from './client';
 import type {
+  AgentOption,
   ChatMessage,
   DocumentDetail,
   DocumentKind,
   DocumentSummary,
-  Issue,
   Me,
   ModelKey,
   ProjectDetail,
@@ -35,6 +35,9 @@ export const register = (email: string, password: string) =>
 
 // ── account: model choice and AI budget ──────────────────────────────────────
 export const getMe = () => request<Me>('/me');
+
+/** The specialist review passes the chat's "+" picker offers. */
+export const listAgents = () => request<AgentOption[]>('/agents');
 
 /** Takes effect on the next generation; anything already streaming keeps the
  *  model it started on. */
@@ -72,7 +75,7 @@ export const createDocument = (
   });
 
 export type DocumentPatch = Partial<
-  Pick<DocumentDetail, 'title' | 'body' | 'brief' | 'plan' | 'issues' | 'kind'>
+  Pick<DocumentDetail, 'title' | 'body' | 'brief' | 'plan' | 'kind'>
 >;
 
 export const updateDocument = (
@@ -103,15 +106,7 @@ export const generatePlan = (projectId: string, documentId: string) =>
     },
   );
 
-export const checkDocument = (projectId: string, documentId: string) =>
-  request<{ issues: Issue[]; usage: UsageSnapshot }>(
-    `/projects/${projectId}/documents/${documentId}/check`,
-    { method: 'POST' },
-  );
-
 /** SSE stream URLs, read by stream.ts. */
-export const reviseStreamUrl = (projectId: string, documentId: string) =>
-  `/projects/${projectId}/documents/${documentId}/revise/stream`;
 export const rewriteStreamUrl = (projectId: string, documentId: string) =>
   `/projects/${projectId}/documents/${documentId}/rewrite/stream`;
 
@@ -122,16 +117,21 @@ export const getChat = (projectId: string, documentId: string) =>
 export const clearChat = (projectId: string, documentId: string) =>
   request<null>(`/projects/${projectId}/documents/${documentId}/chat`, { method: 'DELETE' });
 
-/** Record what the writer did with a proposal; the next message tells the model. */
+/**
+ * Record what the writer did with a proposal; the next message tells the model.
+ * `indexes` names the fixes in a suggestion set; omitting it resolves every fix
+ * still unreviewed, which is what Accept all and Discard all send.
+ */
 export const resolveProposal = (
   projectId: string,
   documentId: string,
   messageId: string,
   outcome: ProposalOutcome,
+  indexes?: number[],
 ) =>
   request<ChatMessage>(
     `/projects/${projectId}/documents/${documentId}/chat/messages/${messageId}/outcome`,
-    { method: 'POST', body: { outcome } },
+    { method: 'POST', body: indexes ? { outcome, indexes } : { outcome } },
   );
 
 export const chatStreamUrl = (projectId: string, documentId: string) =>

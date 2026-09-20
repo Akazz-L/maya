@@ -1,9 +1,8 @@
 import os
 from decimal import Decimal
 
-from dotenv import load_dotenv
-
-load_dotenv()
+# `.env` is loaded by the package itself (see backend/__init__.py), so every
+# getter below reads an environment that is already populated.
 
 _DEFAULT_MONTHLY_BUDGET_USD = "5.00"
 

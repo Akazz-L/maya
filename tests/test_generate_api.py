@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import pytest_asyncio
 
-from backend.agents.reviser import RevisionTruncatedError
 from backend.agents.rewriter import RewriteTruncatedError
 from backend.llm import Usage
 
@@ -103,98 +102,13 @@ async def test_the_draft_route_is_gone(chapter, sample_scene_plan):
 
 
 @pytest.mark.asyncio
-async def test_check_reads_the_body_and_persists_issues(chapter, sample_scene_plan):
+@pytest.mark.parametrize("path", ["check", "revise/stream"])
+async def test_the_check_and_revise_routes_are_gone(chapter, path):
+    """Continuity findings are chat proposals reviewed fix by fix in the prose;
+    nothing rewrites a whole chapter from a list of issues any more."""
     client, project_id, doc_id = chapter
-    await client.patch(
-        f"/projects/{project_id}/documents/{doc_id}",
-        json={"body": "Elena raised her right hand.", "plan": sample_scene_plan},
-    )
-    issues = [
-        {
-            "issue": "Elena is left-handed",
-            "severity": "critical",
-            "location": "para 1",
-            "suggested_fix": "left hand",
-        }
-    ]
-    mock = AsyncMock(return_value={"continuity_issues": issues, "usage": Usage()})
-    with patch("backend.routes.generate.checker_node", new=mock):
-        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/check")
-
-    assert resp.json()["issues"] == issues
-    assert mock.call_args.args[0]["draft"] == "Elena raised her right hand."
-    doc = (await client.get(f"/projects/{project_id}/documents/{doc_id}")).json()
-    assert doc["issues"] == issues
-
-
-@pytest.mark.asyncio
-async def test_revise_stream_replaces_the_body(chapter, sample_scene_plan):
-    client, project_id, doc_id = chapter
-    await client.patch(
-        f"/projects/{project_id}/documents/{doc_id}",
-        json={
-            "body": "Elena raised her right hand.",
-            "plan": sample_scene_plan,
-            "issues": [
-                {
-                    "issue": "handedness",
-                    "severity": "critical",
-                    "location": "p1",
-                    "suggested_fix": "left",
-                }
-            ],
-        },
-    )
-
-    async def fake_stream(state, model_key, on_usage):
-        yield "Elena raised her left hand."
-
-    with patch("backend.routes.generate.reviser_token_stream", new=fake_stream):
-        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/revise/stream")
-    done = next(f for f in _parse_sse(resp.text) if f["type"] == "done")
-    assert done["body"] == "Elena raised her left hand."
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "fields",
-    [
-        {"body": "", "issues": [{"issue": "x", "severity": "minor", "location": "p1", "suggested_fix": "y"}]},
-        {"body": "Some prose.", "issues": None},
-        {"body": "Some prose.", "issues": []},
-    ],
-)
-async def test_revise_refuses_without_a_draft_and_its_issues(chapter, fields):
-    client, project_id, doc_id = chapter
-    await client.patch(f"/projects/{project_id}/documents/{doc_id}", json=fields)
-    resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/revise/stream")
-    assert resp.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_a_truncated_revision_leaves_the_body_untouched(chapter):
-    client, project_id, doc_id = chapter
-    body = "Elena raised her right hand. The gate stood open."
-    await client.patch(
-        f"/projects/{project_id}/documents/{doc_id}",
-        json={
-            "body": body,
-            "issues": [{"issue": "hand", "severity": "critical", "location": "p1", "suggested_fix": "left"}],
-        },
-    )
-
-    async def truncated(state, model_key, on_usage):
-        yield "Elena raised her left hand."
-        raise RevisionTruncatedError("cut off")
-
-    with patch("backend.routes.generate.reviser_token_stream", new=truncated):
-        resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/revise/stream")
-
-    frames = _parse_sse(resp.text)
-    assert "cut off" in next(f for f in frames if f["type"] == "error")["detail"]
-    assert not [f for f in frames if f["type"] == "done"]
-    doc = (await client.get(f"/projects/{project_id}/documents/{doc_id}")).json()
-    assert doc["body"] == body
+    resp = await client.post(f"/projects/{project_id}/documents/{doc_id}/{path}")
+    assert resp.status_code in (404, 405)
 
 
 @pytest.mark.asyncio

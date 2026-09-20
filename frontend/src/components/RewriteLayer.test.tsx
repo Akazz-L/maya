@@ -15,7 +15,6 @@ const DOC: DocumentDetail = {
   body: BODY,
   brief: '',
   plan: null,
-  issues: null,
 };
 
 function sse(frames: object[]): Response {

@@ -10,15 +10,15 @@ graph TB
     end
 
     subgraph server["FastAPI process — backend/"]
-        MAIN["main.py<br/>/auth/* · /projects · /health<br/>SPA catch-all"]
+        MAIN["main.py<br/>/auth/* · /me · /agents · /projects<br/>/health · SPA catch-all"]
         DOCS["routes/documents.py<br/>/projects/{pid}/documents/*"]
-        GEN["routes/generate.py<br/>/plan · /check<br/>/revise/stream · /rewrite/stream"]
+        GEN["routes/generate.py<br/>/plan · /rewrite/stream"]
         CHAT["routes/chat.py<br/>/chat · /chat/stream<br/>/chat/messages/{id}/outcome"]
         DEPS["routes/deps.py + auth.py<br/>JWT bearer → require_project"]
         STORE["doc_storage.py<br/>document CRUD, ordering"]
         CSTORE["chat_storage.py<br/>chat messages, proposals"]
         CTX["context.py<br/>prior-chapter summaries"]
-        AGENTS["agents/<br/>planner · chat · reviser · rewriter<br/>checker · summarizer"]
+        AGENTS["agents/<br/>planner · chat · rewriter<br/>reviewers · summarizer"]
         DB["db.py<br/>async engine + session"]
     end
 
@@ -85,7 +85,8 @@ graph LR
     end
 ```
 
-In dev, `:5173` is the URL you want — `frontend/vite.config.ts` proxies `/auth`, `/projects`, and `/static` to the backend, and `:8000` serves the API but not the dev UI.
+In dev, `:5173` is the URL you want — `frontend/vite.config.ts` proxies `/auth`, `/me`, `/agents`, `/projects`, and `/static` to the backend, and `:8000` serves the API but not the dev UI.
+Set `BACKEND_PORT` to point the proxy somewhere other than `:8000`, which is how a second checkout runs alongside the first.
 
 In production the SPA catch-all in `main.py` is registered last, so it only handles GET paths that no API route or static mount claimed.
 That is what makes a hard reload on `/p/{id}/d/{id}` resolve to the app instead of a 404, while unknown API paths still 404 normally.
