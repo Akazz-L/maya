@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import type { ScenePlan } from '../api/types';
 import { FieldLabel } from './ui/card';
 import { Input } from './ui/input';
@@ -6,6 +7,52 @@ import { Textarea } from './ui/textarea';
 interface Props {
   plan: ScenePlan;
   onChange: (plan: ScenePlan) => void;
+}
+
+interface BeatFieldProps {
+  index: number;
+  value: string;
+  onChange: (value: string) => void;
+  onRemove: () => void;
+}
+
+/**
+ * A beat is a sentence or two, not a word: it wraps and grows with its text
+ * rather than scrolling sideways out of sight.
+ */
+function BeatField({ index, value, onChange, onRemove }: BeatFieldProps) {
+  const textarea = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const el = textarea.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <div className="flex items-start gap-1.5">
+      <span className="mt-2 w-[18px] flex-shrink-0 text-right text-xs text-gray-400">
+        {index + 1}.
+      </span>
+      <Textarea
+        ref={textarea}
+        value={value}
+        rows={1}
+        aria-label={`Beat ${index + 1}`}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 resize-none overflow-hidden leading-relaxed"
+      />
+      <button
+        type="button"
+        onClick={onRemove}
+        title="Remove"
+        className="mt-0.5 flex-shrink-0 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm leading-none text-gray-400 hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+      >
+        ×
+      </button>
+    </div>
+  );
 }
 
 export function PlanForm({ plan, onChange }: Props) {
@@ -28,50 +75,60 @@ export function PlanForm({ plan, onChange }: Props) {
 
   return (
     <div>
-      <div className="mb-3.5 grid grid-cols-2 gap-3.5">
+      <div className="mb-3.5 flex flex-col gap-1">
+        <FieldLabel>Goal</FieldLabel>
+        <Textarea
+          value={plan.goal}
+          aria-label="Goal"
+          onChange={(e) => set('goal', e.target.value)}
+          className="min-h-14 resize-y leading-relaxed"
+        />
+      </div>
+
+      <div className="mb-3.5 grid gap-3.5 sm:grid-cols-3">
         <div className="flex flex-col gap-1">
-          <FieldLabel>Goal</FieldLabel>
-          <Textarea
-            value={plan.goal}
-            onChange={(e) => set('goal', e.target.value)}
-            className="min-h-14 resize-y"
+          <FieldLabel>POV Character</FieldLabel>
+          <Input
+            value={plan.pov_character}
+            aria-label="POV Character"
+            onChange={(e) => set('pov_character', e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <FieldLabel>POV Character</FieldLabel>
-          <Input value={plan.pov_character} onChange={(e) => set('pov_character', e.target.value)} />
-        </div>
-      </div>
-
-      <div className="mb-3.5 grid grid-cols-2 gap-3.5">
-        <div className="flex flex-col gap-1">
           <FieldLabel>Location</FieldLabel>
-          <Input value={plan.location} onChange={(e) => set('location', e.target.value)} />
+          <Input
+            value={plan.location}
+            aria-label="Location"
+            onChange={(e) => set('location', e.target.value)}
+          />
         </div>
         <div className="flex flex-col gap-1">
           <FieldLabel>Sensory Anchor</FieldLabel>
           <Input
             value={plan.sensory_anchor}
+            aria-label="Sensory Anchor"
             onChange={(e) => set('sensory_anchor', e.target.value)}
           />
         </div>
       </div>
 
-      <div className="mb-3.5 grid grid-cols-2 gap-3.5">
+      <div className="mb-3.5 grid gap-3.5 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
           <FieldLabel>Opening Image</FieldLabel>
           <Textarea
             value={plan.opening_image}
+            aria-label="Opening Image"
             onChange={(e) => set('opening_image', e.target.value)}
-            className="min-h-14 resize-y"
+            className="min-h-14 resize-y leading-relaxed"
           />
         </div>
         <div className="flex flex-col gap-1">
           <FieldLabel>Closing Image</FieldLabel>
           <Textarea
             value={plan.closing_image}
+            aria-label="Closing Image"
             onChange={(e) => set('closing_image', e.target.value)}
-            className="min-h-14 resize-y"
+            className="min-h-14 resize-y leading-relaxed"
           />
         </div>
       </div>
@@ -80,20 +137,13 @@ export function PlanForm({ plan, onChange }: Props) {
         <FieldLabel>Beats</FieldLabel>
         <div className="flex flex-col gap-1.5">
           {plan.beats.map((beat, i) => (
-            <div key={i} className="flex items-center gap-1.5">
-              <span className="w-[18px] flex-shrink-0 text-right text-xs text-gray-400">
-                {i + 1}.
-              </span>
-              <Input value={beat} onChange={(e) => setBeat(i, e.target.value)} className="flex-1" />
-              <button
-                type="button"
-                onClick={() => removeBeat(i)}
-                title="Remove"
-                className="flex-shrink-0 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm leading-none text-gray-400 hover:border-red-300 hover:bg-red-50 hover:text-red-700"
-              >
-                ×
-              </button>
-            </div>
+            <BeatField
+              key={i}
+              index={i}
+              value={beat}
+              onChange={(value) => setBeat(i, value)}
+              onRemove={() => removeBeat(i)}
+            />
           ))}
         </div>
         <button

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { flushSync } from 'react-dom';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
   checkDocument,
@@ -10,20 +9,14 @@ import {
   updateDocument,
   type DocumentPatch,
 } from '../api/endpoints';
-import {
-  EMPTY_PLAN,
-  type DocumentDetail,
-  type Issue,
-  type ProposalOutcome,
-  type ScenePlan,
-} from '../api/types';
+import type { DocumentDetail, Issue, ProposalOutcome, ScenePlan } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { ChapterToolbar } from '../components/ChapterToolbar';
 import { chapterPanelId, chapterTabId, type ChapterView } from '../components/chapterView';
 import { ChatPane } from '../components/ChatPane';
 import { ModelPicker } from '../components/ModelPicker';
 import { UsageMeter } from '../components/UsageMeter';
-import { DocumentEditor, type SaveState } from '../components/DocumentEditor';
+import { AUTOSAVE_MS, DocumentEditor, type SaveState } from '../components/DocumentEditor';
 import { DocumentSidebar } from '../components/DocumentSidebar';
 import { IssuesView } from '../components/IssuesView';
 import { PlanView, type PlanUndo } from '../components/PlanView';
@@ -65,6 +58,10 @@ export function WorkspaceScreen() {
     plan: ScenePlan;
     reason: PlanUndo;
   } | null>(null);
+  // The chapter context as the writer is typing it. It lives here rather than in
+  // the editor because the Plan view edits the same text; tagged with its
+  // document, so switching documents falls back to what the server sent.
+  const [contextEdit, setContextEdit] = useState<{ id: string; value: string } | null>(null);
   // Opening a document, or coming back to one, starts on the prose with no undo
   // pending. Reset during render rather than in an effect, so the previous
   // document's view never paints over the new one.
@@ -83,14 +80,15 @@ export function WorkspaceScreen() {
   const [rewriteBusy, setRewriteBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Holds the in-flight autosave so a request that reads the document server-side
-  // can wait for it to land. Without this the server works from a stale body
-  // and the writer's last keystrokes vanish.
+  // Holds the in-flight autosaves so a request that reads the document
+  // server-side can wait for them to land. Without this the server works from a
+  // stale body and the writer's last keystrokes vanish.
   const pendingSave = useRef<Promise<unknown>>(Promise.resolve());
-  // Filled by the editor: saves an edit still waiting out the autosave debounce.
+  // Filled by the editor: saves a title or body edit still inside the debounce.
   const editorFlush = useRef<(() => void) | null>(null);
-  // Filled by the editor: expands the chapter notes and focuses them.
-  const notesFocus = useRef<(() => void) | null>(null);
+  // The chapter context edit waiting out its own debounce, with the document it belongs to.
+  const contextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contextPending = useRef<{ id: string; value: string } | null>(null);
 
   const project = useQuery({
     queryKey: ['project', projectId],
@@ -128,41 +126,64 @@ export function WorkspaceScreen() {
     [patchDocument, documentId],
   );
 
-  const save = useCallback(
-    (patch: DocumentPatch) => {
-      if (!documentId) return Promise.resolve();
+  /** Saves to one named document, so a late flush lands where it was typed. */
+  const saveTo = useCallback(
+    (id: string, patch: DocumentPatch) => {
       setSaveState('saving');
-      const promise = updateDocument(projectId!, documentId, patch)
-        .then((doc) => {
-          qc.setQueryData(documentKey(projectId!, documentId), doc);
+      const promise = updateDocument(projectId!, id, patch)
+        .then((saved) => {
+          qc.setQueryData(documentKey(projectId!, id), saved);
           if (patch.title !== undefined) {
             qc.invalidateQueries({ queryKey: documentsKey(projectId!) });
           }
           setSaveState('saved');
         })
         .catch(() => setSaveState('error'));
-      pendingSave.current = promise;
+      // Chained rather than replaced: a context save and a body save can be in
+      // flight at once, and a request that reads the document must await both.
+      pendingSave.current = Promise.all([pendingSave.current, promise]);
       return promise;
     },
-    [documentId, projectId, qc],
+    [projectId, qc],
   );
+
+  const save = useCallback(
+    (patch: DocumentPatch) => (documentId ? saveTo(documentId, patch) : Promise.resolve()),
+    [documentId, saveTo],
+  );
+
+  const flushContext = useCallback(() => {
+    const patch = contextPending.current;
+    contextPending.current = null;
+    if (contextTimer.current) {
+      clearTimeout(contextTimer.current);
+      contextTimer.current = null;
+    }
+    if (patch) saveTo(patch.id, { brief: patch.value });
+  }, [saveTo]);
+
+  // Switching documents mid-debounce must save rather than drop the edit; the
+  // pending record carries its own document id, so it still lands correctly.
+  useEffect(() => () => flushContext(), [documentId, flushContext]);
 
   /**
    * Put everything the writer has typed on the server before a request reads it
-   * there. Awaiting only the in-flight save is not enough: an edit still inside
-   * the autosave debounce has not been sent at all.
+   * there. Awaiting only the in-flight saves is not enough: an edit still inside
+   * a debounce has not been sent at all.
    */
   const settle = useCallback(async () => {
     editorFlush.current?.();
+    flushContext();
     await pendingSave.current;
-  }, []);
+  }, [flushContext]);
 
-  // Plan and check take the document id as their variable rather than reading
+  // Plan and review take the document id as their variable rather than reading
   // the route: a result that lands after the writer has switched documents
   // belongs to the document it was asked for, not the one now open.
   const planMut = useMutation({
-    // The planner reads the saved brief. Plan edits save immediately too, and a
-    // late one could otherwise land after the new plan and restore the old one.
+    // The planner reads the saved chapter context. Plan edits save immediately
+    // too, and a late one could otherwise land after the new plan and restore
+    // the old one.
     mutationFn: (id: string) => settle().then(() => generatePlan(projectId!, id)),
     onMutate: () => setError(null),
     onSuccess: (res, id) => {
@@ -175,8 +196,8 @@ export function WorkspaceScreen() {
     },
   });
 
-  const checkMut = useMutation({
-    // Check reads Document.body server-side.
+  const reviewMut = useMutation({
+    // Review reads Document.body server-side.
     mutationFn: (id: string) => settle().then(() => checkDocument(projectId!, id)),
     onMutate: () => setError(null),
     onSuccess: (res, id) => {
@@ -227,7 +248,7 @@ export function WorkspaceScreen() {
   };
 
   /** Generate a plan, keeping the one it replaces so the writer can undo. */
-  const regeneratePlan = () => {
+  const generatePlanFor = () => {
     const id = documentId!;
     const previous = document.data?.plan ?? null;
     setUndoState(null);
@@ -266,6 +287,17 @@ export function WorkspaceScreen() {
 
   const doc = document.data;
   const isChapter = doc?.kind === 'chapter';
+  const context =
+    contextEdit && contextEdit.id === documentId ? contextEdit.value : (doc?.brief ?? '');
+
+  const changeContext = (value: string) => {
+    const id = documentId!;
+    setContextEdit({ id, value });
+    contextPending.current = { id, value };
+    if (contextTimer.current) clearTimeout(contextTimer.current);
+    contextTimer.current = setTimeout(flushContext, AUTOSAVE_MS);
+  };
+
   // The server refuses generation once the budget is spent (402). Kept apart
   // from `busy`, which is transient in-flight state: being out of budget
   // disables only the affordances that would call the model.
@@ -292,12 +324,16 @@ export function WorkspaceScreen() {
     setProposalShown(proposalOnScreen);
     if (proposalOnScreen) setView('write');
   }
-  const view: ChapterView = isChapter ? chapterView : 'write';
+  // Issues exist only once a review has run; until then the tab is not offered
+  // and the view falls back to the prose.
+  const reviewed = doc?.issues != null;
+  const view: ChapterView =
+    isChapter && (chapterView !== 'issues' || reviewed) ? chapterView : 'write';
 
   const chatBusy = chat.streaming !== null || pending !== null;
   const busy =
     planMut.isPending ||
-    checkMut.isPending ||
+    reviewMut.isPending ||
     stream.isStreaming ||
     deleteDoc.isPending ||
     rewriteBusy ||
@@ -316,22 +352,11 @@ export function WorkspaceScreen() {
     if (pending) void chat.resolve(pending.messageId, outcome);
   };
 
+  // Opening the Plan view calls no model: a chapter without a plan gets an empty
+  // form, to fill in by hand or to generate on request.
   const changeView = (next: ChapterView) => {
     setView(next);
     if (next !== 'plan') setUndoState(null);
-    if (next !== 'plan') return;
-    // Opening an empty plan generates one; opening a saved plan never calls the model.
-    if (!doc?.plan && !busy && !aiBlocked) regeneratePlan();
-    // Generating saves pending edits first; otherwise save them now, so the notes
-    // the Plan view shows include anything typed a moment ago.
-    else void settle();
-  };
-
-  /** The chapter notes live in the Write view: switch there, then focus them. */
-  const editNotes = () => {
-    // Committed synchronously: the notes cannot take focus while the editor is hidden.
-    flushSync(() => changeView('write'));
-    notesFocus.current?.();
   };
 
   const tabPanel = (panel: ChapterView) =>
@@ -408,7 +433,7 @@ export function WorkspaceScreen() {
               issueCount={doc?.issues?.length ?? null}
               busy={busy}
               aiBlocked={aiBlocked}
-              onCheck={() => checkMut.mutate(documentId!)}
+              onReview={() => reviewMut.mutate(documentId!)}
               chatOpen={chatOpen}
               onToggleChat={toggleChat}
             />
@@ -437,7 +462,8 @@ export function WorkspaceScreen() {
                   proposal={isChapter ? proposal : null}
                   onProposalResolve={resolveProposal}
                   flushRef={editorFlush}
-                  notesFocusRef={notesFocus}
+                  context={context}
+                  onContextChange={changeContext}
                 />
               </div>
 
@@ -445,8 +471,9 @@ export function WorkspaceScreen() {
                 <div className="flex flex-1 flex-col overflow-hidden" {...tabPanel('plan')}>
                   <PlanView
                     plan={doc.plan}
+                    context={context}
+                    onContextChange={changeContext}
                     generating={planMut.isPending && planForThisDoc}
-                    failed={planMut.isError && planForThisDoc}
                     undo={undoState && undoState.id === documentId ? undoState.reason : null}
                     busy={busy}
                     aiBlocked={aiBlocked}
@@ -454,10 +481,10 @@ export function WorkspaceScreen() {
                       setUndoState(null);
                       setPlan(plan);
                     }}
-                    onGenerate={regeneratePlan}
+                    onGenerate={generatePlanFor}
                     onRemove={() => {
                       // Planning is optional: a stale or empty plan would otherwise
-                      // keep steering every chat draft and check.
+                      // keep steering every chat draft and review.
                       if (!doc.plan) return;
                       setUndoState({ id: documentId!, plan: doc.plan, reason: 'removed' });
                       setPlan(null);
@@ -467,10 +494,7 @@ export function WorkspaceScreen() {
                       setUndoState(null);
                       setPlan(undoState.plan);
                     }}
-                    onStartBlank={() => setPlan(EMPTY_PLAN)}
                     onGenerateDraft={draftFromPlan}
-                    notes={doc.brief}
-                    onEditNotes={editNotes}
                   />
                 </div>
               )}

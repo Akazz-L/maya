@@ -24,7 +24,7 @@ const CHAPTER = {
   body: 'The rain.',
   brief: 'Mara waits.',
   plan: null as ScenePlan | null,
-  issues: null,
+  issues: null as unknown,
 };
 
 const BIBLE = {
@@ -111,7 +111,7 @@ interface MockOptions {
   handle?: (url: string, init: RequestInit | undefined) => Response | undefined;
 }
 
-/** A fake backend whose chapter c1 remembers patches, plans, and checks like the real one. */
+/** A fake backend whose chapter c1 remembers patches, plans, and reviews like the real one. */
 function mockApi({ me = ME, chapter = CHAPTER, chat = [], handle }: MockOptions = {}) {
   let current = { ...(chapter as object) };
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -170,9 +170,11 @@ async function editorReady() {
   await act(async () => {});
 }
 
+const contextToggle = () => screen.getAllByRole('button', { name: /chapter context/i })[0];
+
 afterEach(() => {
   clearToken();
-  // The chat and chapter notes remember whether they are open; no test inherits that.
+  // The chat and chapter context remember whether they are open; no test inherits that.
   localStorage.clear();
   vi.restoreAllMocks();
 });
@@ -189,7 +191,7 @@ describe('WorkspaceScreen', () => {
     mockApi();
     renderAt('/p/p1/d/c1');
     expect(await screen.findByLabelText('Document body')).toHaveTextContent('The rain.');
-    expect(screen.getByRole('button', { name: /chapter notes/i })).toHaveTextContent('Mara waits.');
+    expect(contextToggle()).toHaveTextContent('Mara waits.');
   });
 
   it('opens a chapter on the Write view, with the chat beside it', async () => {
@@ -200,7 +202,7 @@ describe('WorkspaceScreen', () => {
       'true',
     );
     expect(screen.getByLabelText('Document body')).toBeVisible();
-    expect(screen.queryByRole('button', { name: /generate/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /issues/i })).not.toBeInTheDocument();
     expect(await screen.findByLabelText('Message')).toBeEnabled();
   });
 
@@ -220,20 +222,32 @@ describe('WorkspaceScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: /^chat$/i }));
     expect(screen.queryByLabelText('Message')).not.toBeInTheDocument();
     expect(localStorage.getItem('maya.chat.open')).toBe('0');
-    localStorage.removeItem('maya.chat.open');
   });
 
-  it('generates a plan the first time the Plan view opens on a chapter without one', async () => {
+  it('opens Plan on an empty chapter without calling the model', async () => {
+    // The writer decides: type the plan, or press Generate plan.
     const fetchMock = mockApi();
     renderAt('/p/p1/d/c1');
     await userEvent.click(await screen.findByRole('tab', { name: 'Plan' }));
 
-    expect(await screen.findByDisplayValue('Burn the map')).toBeInTheDocument();
-    expect(screen.getByLabelText('Document body')).not.toBeVisible();
-    expect(planRequests(fetchMock)).toBe(1);
+    expect(await screen.findByLabelText('Goal')).toHaveValue('');
+    expect(planRequests(fetchMock)).toBe(0);
+
+    await userEvent.type(screen.getByLabelText('Goal'), 'Reach the gate');
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/projects/p1/documents/c1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ plan: { ...EMPTY_PLAN, goal: 'Reach the gate' } }),
+        }),
+      ),
+    );
+    expect(planRequests(fetchMock)).toBe(0);
   });
 
-  it('saves notes typed moments ago before planning from them, and shows them', async () => {
+  it('generates a plan on request, saving context typed moments ago first', async () => {
     const calls: string[] = [];
     mockApi({
       handle: (url, init) => {
@@ -245,54 +259,15 @@ describe('WorkspaceScreen', () => {
     renderAt('/p/p1/d/c1');
     await editorReady();
 
-    await userEvent.click(screen.getByRole('button', { name: /chapter notes/i }));
-    await userEvent.type(screen.getByLabelText('Chapter notes'), ' The bell rings.');
+    await userEvent.click(contextToggle());
+    await userEvent.type(screen.getByLabelText('Chapter context'), ' The bell rings.');
     await userEvent.click(screen.getByRole('tab', { name: 'Plan' }));
-
-    await waitFor(() => expect(calls).toContain('plan'));
-    expect(calls[0]).toBe('PATCH {"brief":"Mara waits. The bell rings."}');
-    expect(
-      await screen.findByRole('region', { name: /what the plan is built from/i }),
-    ).toHaveTextContent('Mara waits. The bell rings.');
-  });
-
-  it('plans a chapter without notes, saying the AI proposes what comes next', async () => {
-    const fetchMock = mockApi({ chapter: { ...CHAPTER, brief: '' } });
-    renderAt('/p/p1/d/c1');
-    await userEvent.click(await screen.findByRole('tab', { name: 'Plan' }));
+    await userEvent.click(await screen.findByRole('button', { name: /generate plan/i }));
 
     expect(await screen.findByDisplayValue('Burn the map')).toBeInTheDocument();
-    expect(screen.getByText(/no chapter notes yet/i)).toBeInTheDocument();
-    expect(planRequests(fetchMock)).toBe(1);
-  });
-
-  it('jumps from the Plan view to the chapter notes, focused and ready to edit', async () => {
-    // Open notes are already mounted, hidden with the editor: the focus must
-    // wait for the Write view to be committed, or it silently goes nowhere.
-    localStorage.setItem('maya.notes.open', '1');
-    mockApi({ chapter: { ...CHAPTER, plan: SAVED_PLAN } });
-    renderAt('/p/p1/d/c1');
-    await editorReady();
-    await userEvent.click(screen.getByRole('tab', { name: 'Plan' }));
-    await screen.findByDisplayValue('Reach the gate');
-
-    // jsdom focuses an element inside [hidden] anyway; a browser ignores the call.
-    // Record where each focus lands so the test fails the way a browser would.
-    const focusedInsideHidden: boolean[] = [];
-    const realFocus = HTMLElement.prototype.focus;
-    vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (
-      this: HTMLElement,
-      options?: FocusOptions,
-    ) {
-      focusedInsideHidden.push(this.closest('[hidden]') !== null);
-      realFocus.call(this, options);
-    });
-
-    await userEvent.click(screen.getByRole('button', { name: /edit notes/i }));
-
-    expect(screen.getByRole('tab', { name: 'Write' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByLabelText('Chapter notes')).toHaveFocus();
-    expect(focusedInsideHidden).not.toContain(true);
+    await waitFor(() => expect(calls).toContain('plan'));
+    // The planner reads the saved context, so the edit must land before the call.
+    expect(calls[0]).toBe('PATCH {"brief":"Mara waits. The bell rings."}');
   });
 
   it('shows a saved plan without calling the model', async () => {
@@ -323,16 +298,28 @@ describe('WorkspaceScreen', () => {
     );
   });
 
+  it('forgets the undo once the regenerated plan is edited by hand', async () => {
+    mockApi({ chapter: { ...CHAPTER, plan: SAVED_PLAN } });
+    renderAt('/p/p1/d/c1');
+    await userEvent.click(await screen.findByRole('tab', { name: 'Plan' }));
+    await userEvent.click(await screen.findByRole('button', { name: /regenerate/i }));
+    await screen.findByRole('button', { name: /undo/i });
+
+    await userEvent.type(screen.getByDisplayValue('Burn the map'), '!');
+
+    expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
+  });
+
   it('removes a plan without generating another, and undo brings it back', async () => {
-    // Planning is optional: every chat draft and check is sent the saved plan,
+    // Planning is optional: every chat draft and review is sent the saved plan,
     // so a writer must be able to go back to having none.
     const fetchMock = mockApi({ chapter: { ...CHAPTER, plan: SAVED_PLAN } });
     renderAt('/p/p1/d/c1');
     await userEvent.click(await screen.findByRole('tab', { name: 'Plan' }));
     await userEvent.click(await screen.findByRole('button', { name: /remove plan/i }));
 
-    expect(await screen.findByText(/no plan yet/i)).toBeInTheDocument();
     expect(screen.getByText(/plan removed/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText('Goal')).toHaveValue('');
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         '/projects/p1/documents/c1',
@@ -344,24 +331,47 @@ describe('WorkspaceScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: /undo/i }));
 
     expect(await screen.findByDisplayValue('Reach the gate')).toBeInTheDocument();
+  });
+
+  it('writes a plan by hand once the budget is spent', async () => {
+    const fetchMock = mockApi({ me: BLOCKED });
+    renderAt('/p/p1/d/c1');
+    await screen.findByText(/budget used — ai paused/i);
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Plan' }));
+    expect(await screen.findByRole('button', { name: /generate plan/i })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('Goal'), 'R');
+
     await waitFor(() =>
       expect(fetchMock).toHaveBeenLastCalledWith(
         '/projects/p1/documents/c1',
-        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ plan: SAVED_PLAN }) }),
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ plan: { ...EMPTY_PLAN, goal: 'R' } }),
+        }),
       ),
     );
+    expect(planRequests(fetchMock)).toBe(0);
   });
 
-  it('forgets the undo once the regenerated plan is edited by hand', async () => {
+  it('shares one chapter context between the Write and Plan views', async () => {
     mockApi({ chapter: { ...CHAPTER, plan: SAVED_PLAN } });
     renderAt('/p/p1/d/c1');
-    await userEvent.click(await screen.findByRole('tab', { name: 'Plan' }));
-    await userEvent.click(await screen.findByRole('button', { name: /regenerate/i }));
-    await screen.findByRole('button', { name: /undo/i });
+    await editorReady();
 
-    await userEvent.type(screen.getByDisplayValue('Burn the map'), '!');
+    await userEvent.click(contextToggle());
+    await userEvent.type(screen.getByLabelText('Chapter context'), ' Now.');
+    await userEvent.click(screen.getByRole('tab', { name: 'Plan' }));
 
-    expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
+    // Both views render the field against the same text, so neither goes stale.
+    const fields = screen.getAllByLabelText('Chapter context');
+    expect(fields).toHaveLength(2);
+    fields.forEach((field) => expect(field).toHaveValue('Mara waits. Now.'));
+
+    await userEvent.type(screen.getAllByLabelText('Chapter context')[1], '!');
+    screen
+      .getAllByLabelText('Chapter context')
+      .forEach((field) => expect(field).toHaveValue('Mara waits. Now.!'));
   });
 
   it('drafts from the plan by asking the chat, back in the Write view', async () => {
@@ -410,10 +420,13 @@ describe('WorkspaceScreen', () => {
     expect(screen.getByRole('tab', { name: 'Write' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('opens the Issues view when a check comes back', async () => {
+  it('adds the Issues view only once a review has run', async () => {
     mockApi();
     renderAt('/p/p1/d/c1');
-    await userEvent.click(await screen.findByRole('button', { name: /^check$/i }));
+    await screen.findByLabelText('Document body');
+    expect(screen.queryByRole('tab', { name: /issues/i })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^review$/i }));
 
     expect(await screen.findByDisplayValue('Wrong hand')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Issues (1)' })).toHaveAttribute(
@@ -474,7 +487,8 @@ describe('WorkspaceScreen', () => {
     renderAt('/p/p1/d/c1', qc);
 
     await userEvent.click(await screen.findByRole('tab', { name: 'Plan' }));
-    await screen.findByText(/planning from your chapter notes/i);
+    await userEvent.click(await screen.findByRole('button', { name: /generate plan/i }));
+    await screen.findByText(/planning from your chapter context/i);
     await userEvent.click(screen.getByText('Story Bible'));
     await waitFor(() =>
       expect(screen.getByLabelText('Document body')).toHaveTextContent('## Characters'),
@@ -504,13 +518,13 @@ describe('WorkspaceScreen', () => {
     await userEvent.type(screen.getByLabelText('Rewrite instruction'), 'wetter{Enter}');
     await screen.findByRole('toolbar', { name: /review rewrite/i });
 
-    expect(screen.getByRole('button', { name: /^check$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^review$/i })).toBeDisabled();
     expect(screen.getByLabelText('Message')).toBeDisabled();
     screen.getAllByRole('tab').forEach((t) => expect(t).toBeEnabled());
 
     await userEvent.click(screen.getByRole('button', { name: /discard/i }));
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /^check$/i })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^review$/i })).toBeEnabled());
     expect(screen.getByLabelText('Message')).toBeEnabled();
   });
 
@@ -542,24 +556,9 @@ describe('WorkspaceScreen', () => {
     renderAt('/p/p1/d/c1');
 
     expect(await screen.findByText(/budget used — ai paused/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^check$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^review$/i })).toBeDisabled();
     expect(screen.getByLabelText('Message')).toBeDisabled();
     expect(screen.getByText(/budget used — chat is paused/i)).toBeInTheDocument();
-  });
-
-  it('offers a blank plan instead of generating once the budget is spent', async () => {
-    // Writing a plan by hand calls no model, so running out of budget must not lock it.
-    const fetchMock = mockApi({ me: BLOCKED });
-    renderAt('/p/p1/d/c1');
-    await screen.findByText(/budget used — ai paused/i);
-
-    await userEvent.click(screen.getByRole('tab', { name: 'Plan' }));
-    await userEvent.click(screen.getByRole('button', { name: /start a blank plan/i }));
-
-    expect(await screen.findByRole('button', { name: /regenerate/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /draft from plan/i })).toBeDisabled();
-    expect(screen.getByText('Goal')).toBeInTheDocument();
-    expect(planRequests(fetchMock)).toBe(0);
   });
 
   it('says why rewrite is unavailable rather than doing nothing on ⌘K', async () => {
@@ -584,6 +583,7 @@ describe('WorkspaceScreen', () => {
     renderAt('/p/p1/d/c1');
     await screen.findByText('$1.25 / $5.00 · 25%');
     await userEvent.click(await screen.findByRole('tab', { name: 'Plan' }));
+    await userEvent.click(screen.getByRole('button', { name: /generate plan/i }));
 
     expect(await screen.findByText('$4.50 / $5.00 · 90%')).toBeInTheDocument();
   });
@@ -609,23 +609,23 @@ describe('WorkspaceScreen', () => {
     renderAt('/p/p1/d/c1');
     await screen.findByText('$1.25 / $5.00 · 25%');
     await userEvent.click(await screen.findByRole('tab', { name: 'Plan' }));
+    await userEvent.click(screen.getByRole('button', { name: /generate plan/i }));
 
     expect(await screen.findByText(/budget for this month is used up/i)).toBeInTheDocument();
     expect(await screen.findByText(/budget used — ai paused/i)).toBeInTheDocument();
-    // The Plan view follows the refetched meter: no retry, only writing by hand.
-    expect(await screen.findByRole('button', { name: /start a blank plan/i })).toBeEnabled();
-    expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
+    // The form stays, so the writer can still fill the plan in by hand.
+    expect(await screen.findByLabelText('Goal')).toBeEnabled();
   });
 
-  it('saves an edit made inside the autosave window before Check reads the body', async () => {
+  it('saves an edit made inside the autosave window before Review reads the body', async () => {
     // Regression: only an in-flight save was awaited, so keystrokes still
-    // waiting out the debounce were invisible to the server-side check.
+    // waiting out the debounce were invisible to the server-side review.
     const calls: string[] = [];
     mockApi({
       handle: (url, init) => {
         if (init?.method === 'PATCH') calls.push(`PATCH ${String(init.body)}`);
         if (url.endsWith('/check')) {
-          calls.push('check');
+          calls.push('review');
           return json({ issues: [], usage: ME.usage });
         }
         return undefined;
@@ -635,9 +635,9 @@ describe('WorkspaceScreen', () => {
     await editorReady();
 
     typeAtEnd('Document body', '!');
-    await userEvent.click(screen.getByRole('button', { name: /^check$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^review$/i }));
 
-    await waitFor(() => expect(calls).toContain('check'));
+    await waitFor(() => expect(calls).toContain('review'));
     expect(calls[0]).toBe('PATCH {"body":"The rain.!"}');
   });
 
@@ -669,7 +669,7 @@ describe('WorkspaceScreen', () => {
     expect(screen.getByText('Here is a draft.')).toBeInTheDocument();
     expect(screen.getByText('$2.00 / $5.00 · 40%')).toBeInTheDocument();
     expect(screen.getByLabelText('Message')).toBeDisabled();
-    expect(screen.getByRole('button', { name: /^check$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^review$/i })).toBeDisabled();
 
     await userEvent.click(screen.getByRole('button', { name: /accept/i }));
 

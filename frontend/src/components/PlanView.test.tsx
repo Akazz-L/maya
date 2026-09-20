@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PlanView, type PlanUndo } from './PlanView';
@@ -7,10 +7,9 @@ import { EMPTY_PLAN, type ScenePlan } from '../api/types';
 function props(overrides: Partial<React.ComponentProps<typeof PlanView>> = {}) {
   return {
     plan: { ...EMPTY_PLAN, goal: 'Escape' } as ScenePlan | null,
-    notes: 'Mara waits.\nThe bell rings.',
-    onEditNotes: vi.fn(),
+    context: 'Mara waits.',
+    onContextChange: vi.fn(),
     generating: false,
-    failed: false,
     undo: null as PlanUndo | null,
     busy: false,
     aiBlocked: false,
@@ -18,11 +17,12 @@ function props(overrides: Partial<React.ComponentProps<typeof PlanView>> = {}) {
     onGenerate: vi.fn(),
     onRemove: vi.fn(),
     onUndo: vi.fn(),
-    onStartBlank: vi.fn(),
     onGenerateDraft: vi.fn(),
     ...overrides,
   };
 }
+
+afterEach(() => localStorage.clear());
 
 describe('PlanView', () => {
   it('shows the plan fields', () => {
@@ -44,29 +44,47 @@ describe('PlanView', () => {
     expect(p.onGenerateDraft).toHaveBeenCalled();
   });
 
+  it('offers an empty, editable plan rather than generating one on sight', async () => {
+    // Opening Plan on a chapter without one must not spend a model call: the
+    // writer decides, by typing or by pressing Generate plan.
+    const p = props({ plan: null });
+    render(<PlanView {...p} />);
+
+    expect(screen.getByLabelText('Goal')).toHaveValue('');
+    expect(screen.getByRole('button', { name: /generate plan/i })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /draft from plan/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /remove plan/i })).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Goal'), 'E');
+    expect(p.onChange).toHaveBeenLastCalledWith(expect.objectContaining({ goal: 'E' }));
+  });
+
+  it('writes a plan by hand even once the budget is spent', async () => {
+    const p = props({ plan: null, aiBlocked: true });
+    render(<PlanView {...p} />);
+
+    expect(screen.getByRole('button', { name: /generate plan/i })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('Goal'), 'E');
+    expect(p.onChange).toHaveBeenLastCalledWith(expect.objectContaining({ goal: 'E' }));
+  });
+
   it('shows progress rather than an empty form while the first plan generates', () => {
     render(<PlanView {...props({ plan: null, generating: true })} />);
-    expect(screen.getByText(/planning from your chapter notes/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /blank plan/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/planning from your chapter context/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Goal')).not.toBeInTheDocument();
   });
 
-  it('shows the chapter notes the plan is built from, one click from editing them', async () => {
+  it('says a plan without context is proposed from the story so far', () => {
+    render(<PlanView {...props({ plan: null, context: '  \n', generating: true })} />);
+    expect(screen.getByText(/proposing a plan from the story so far/i)).toBeInTheDocument();
+  });
+
+  it('edits the chapter context in place, without leaving for the Write view', async () => {
     const p = props();
     render(<PlanView {...p} />);
-    expect(screen.getByRole('region', { name: /what the plan is built from/i })).toHaveTextContent(
-      'Mara waits. The bell rings.',
-    );
-    await userEvent.click(screen.getByRole('button', { name: /edit notes/i }));
-    expect(p.onEditNotes).toHaveBeenCalled();
-  });
-
-  it('says a plan without notes is proposed from the story so far, and offers to add some', async () => {
-    const p = props({ plan: null, notes: '  \n', generating: true });
-    render(<PlanView {...p} />);
-    expect(screen.getByText(/no chapter notes yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/proposing a plan from the story so far/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /add notes/i }));
-    expect(p.onEditNotes).toHaveBeenCalled();
+    await userEvent.click(screen.getAllByRole('button', { name: /chapter context/i })[0]);
+    await userEvent.type(screen.getByLabelText('Chapter context'), '!');
+    expect(p.onContextChange).toHaveBeenLastCalledWith('Mara waits.!');
   });
 
   it('locks the fields while a regenerate is in flight', () => {
@@ -100,38 +118,12 @@ describe('PlanView', () => {
     expect(screen.getByRole('button', { name: /remove plan/i })).toBeDisabled();
   });
 
-  it('offers to undo a removal from the empty state', async () => {
+  it('offers to undo a removal from the empty form', async () => {
     const p = props({ plan: null, undo: 'removed' });
     render(<PlanView {...p} />);
     expect(screen.getByText(/plan removed/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /undo/i }));
     expect(p.onUndo).toHaveBeenCalled();
-  });
-
-  it('offers to generate or start blank when there is no plan', async () => {
-    const p = props({ plan: null });
-    render(<PlanView {...p} />);
-    await userEvent.click(screen.getByRole('button', { name: /generate plan/i }));
-    await userEvent.click(screen.getByRole('button', { name: /start a blank plan/i }));
-    expect(p.onGenerate).toHaveBeenCalled();
-    expect(p.onStartBlank).toHaveBeenCalled();
-  });
-
-  it('offers a retry when generation failed', async () => {
-    const p = props({ plan: null, failed: true });
-    render(<PlanView {...p} />);
-    expect(screen.getByText(/could not generate a plan/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /retry/i }));
-    expect(p.onGenerate).toHaveBeenCalled();
-  });
-
-  it('offers only a blank plan once the budget is spent', async () => {
-    const p = props({ plan: null, aiBlocked: true });
-    render(<PlanView {...p} />);
-    expect(screen.getByText(/ai budget used/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /generate plan|retry/i })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /start a blank plan/i }));
-    expect(p.onStartBlank).toHaveBeenCalled();
   });
 
   it('keeps a plan editable once the budget is spent, but will not call the model', () => {

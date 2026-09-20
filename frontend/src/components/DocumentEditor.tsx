@@ -3,7 +3,7 @@ import type { EditorView } from '@codemirror/view';
 import type { DocumentDetail, DocumentKind, ProposalOutcome, UsageSnapshot } from '../api/types';
 import { proposalExtension } from '../editor/proposalExtension';
 import { rewriteExtension, type RewriteHost } from '../editor/rewriteExtension';
-import { ChapterNotes } from './ChapterNotes';
+import { ChapterContext } from './ChapterContext';
 import { ProposalLayer, type ProposalView } from './ProposalLayer';
 import { ProseEditor } from './ProseEditor';
 import { RewriteLayer } from './RewriteLayer';
@@ -15,7 +15,8 @@ export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 // Shown only while the body is empty, so they guide a blank document and then
 // get out of the way. Each says what the AI does with that kind of document.
 const BODY_PLACEHOLDER: Record<DocumentKind, string> = {
-  bible: 'Characters, world, voice, and timeline. The AI reads this before every draft and rewrite.',
+  bible:
+    'Characters, world, voice, and timeline. The AI reads this before every draft and rewrite.',
   chapter: 'Write the chapter, or ask the chat for a draft…',
   note: 'Research, ideas, reminders. Notes are not included in the AI context.',
 };
@@ -23,7 +24,6 @@ const BODY_PLACEHOLDER: Record<DocumentKind, string> = {
 export interface EditorPatch {
   title?: string;
   body?: string;
-  brief?: string;
 }
 
 interface DocumentEditorProps {
@@ -48,8 +48,12 @@ interface DocumentEditorProps {
    * debounce, for callers about to ask the server to read the document.
    */
   flushRef?: { current: (() => void) | null };
-  /** Chapters only: filled with a function that expands and focuses the chapter notes. */
-  notesFocusRef?: { current: (() => void) | null };
+  /**
+   * Chapters only: the chapter context, owned by the workspace because the Plan
+   * view edits the same text. Saving it is the owner's job, not this component's.
+   */
+  context?: string;
+  onContextChange?: (value: string) => void;
 }
 
 function SaveIndicator({ state }: { state: SaveState }) {
@@ -78,10 +82,10 @@ export function DocumentEditor({
   proposal = null,
   onProposalResolve,
   flushRef,
-  notesFocusRef,
+  context = '',
+  onContextChange,
 }: DocumentEditorProps) {
   const [title, setTitle] = useState(document.title);
-  const [brief, setBrief] = useState(document.brief);
   const [body, setBody] = useState(document.body);
 
   const isChapter = document.kind === 'chapter';
@@ -171,14 +175,7 @@ export function DocumentEditor({
       </div>
 
       {isChapter && (
-        <ChapterNotes
-          value={brief}
-          focusRef={notesFocusRef}
-          onChange={(value) => {
-            setBrief(value);
-            queueSave({ brief: value });
-          }}
-        />
+        <ChapterContext value={context} onChange={(value) => onContextChange?.(value)} />
       )}
 
       <ProseEditor

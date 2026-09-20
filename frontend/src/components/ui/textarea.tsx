@@ -1,7 +1,12 @@
-import type { TextareaHTMLAttributes } from 'react';
+import type { Ref, TextareaHTMLAttributes } from 'react';
 import { cn } from '../../lib/utils';
 
-export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+/** `ref` is a plain prop here: React 19 passes it through without forwardRef. */
+interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  ref?: Ref<HTMLTextAreaElement>;
+}
+
+export function Textarea({ className, ...props }: TextareaProps) {
   return (
     <textarea
       className={cn(

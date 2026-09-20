@@ -25,11 +25,13 @@ graph TD
     WS2 --- WS
     WS --> SIDE["DocumentSidebar<br/>select · create · rename<br/>delete · drag to reorder"]
     WS --> TB["ChapterToolbar<br/>chapter documents only"]
-    WS --> ED["DocumentEditor<br/>title · ChapterNotes · ProseEditor"]
+    WS --> ED["DocumentEditor<br/>title · ProseEditor"]
+    ED --> CC["ChapterContext<br/>one text, rendered by both views"]
     ED --> RL["RewriteLayer<br/>chapters only: pill · prompt · review bar"]
     ED --> PL["ProposalLayer<br/>chapters only: streamed proposal · review bar"]
     WS --> PV["PlanView<br/>chapter view: plan"]
     PV --> PF["PlanForm"]
+    PV --> CC
     WS --> IV["IssuesView<br/>chapter view: issues"]
     IV --> IL["IssuesList → IssueCard"]
     WS --> CP["ChatPane<br/>chapters only, collapsible"]
@@ -42,6 +44,7 @@ graph TD
 
 `ChapterToolbar`, `PlanView`, `IssuesView`, and `ChatPane` render only when the open document has `kind === 'chapter'`.
 The toolbar's Write / Plan / Issues switcher decides which view fills the main pane, and the chat stays beside all three; see [05](05-frontend-flows.md#chapter-views).
+The Issues tab appears only once a Review has run on that chapter.
 Bible and note documents get the editor and nothing else — they have no plan, no issues, no chat, and no generation actions.
 
 The body is a CodeMirror 6 view (`ProseEditor`), not a textarea, so the chapter rewrite flow can draw over the real document.
@@ -60,7 +63,7 @@ graph TD
     end
 
     subgraph components["components/ — presentational"]
-        CMP["DocumentSidebar · DocumentEditor · ChapterNotes · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChatPane · ProposalLayer · ProposalReviewBar<br/>ChapterToolbar · PlanView · IssuesView<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
+        CMP["DocumentSidebar · DocumentEditor · ChapterContext · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChatPane · ProposalLayer · ProposalReviewBar<br/>ChapterToolbar · PlanView · IssuesView<br/>PlanForm · IssuesList · IssueCard<br/>ui/ — button, card, input, select, textarea"]
     end
 
     subgraph hooks["hooks/ — server state"]
@@ -131,22 +134,23 @@ graph LR
 
     subgraph local["WorkspaceScreen — ephemeral UI"]
         L1["collapsed"]
-        L2["chapterView · undoState — { id, plan }"]
+        L2["chapterView · undoState · contextEdit<br/>the last two tagged with their document"]
         L3["streamBody · saveState · error"]
         L4["docVersion — editor remount key"]
         L5["pendingSave — ref to the in-flight save"]
         L6["chatOpen"]
-        L7["editorFlush · notesFocus — refs filled by the editor"]
+        L7["editorFlush — ref filled by the editor"]
     end
 
     subgraph ed["DocumentEditor — draft text"]
-        E1["title · brief (chapter notes) · body<br/>seeded once, never re-synced"]
+        E1["title · body<br/>seeded once, never re-synced"]
     end
 
     subgraph ls["localStorage"]
         S1["maya.token"]
         S2["maya.sidebar.collapsed"]
         S4["maya.chat.open"]
+        S5["maya.context.open"]
     end
 
     T -.->|mirrored| S1
@@ -158,6 +162,9 @@ Two conventions are worth internalizing:
 
 **`patchCache` writes to the query cache, `save` writes to the server.**
 Generation results (`plan`, `issues`) are pushed into the cache with `qc.setQueryData` and separately persisted — no refetch round-trip, so the Plan and Issues views update the instant the response lands.
+
+**The chapter context is the one text the editor does not own.**
+Both the Write and Plan views edit it, so `WorkspaceScreen` holds it in `contextEdit` and saves it; `ChapterContext` itself only reports edits, and remembers whether it is expanded in `maya.context.open`.
 
 **The editor's local state is seeded from props once and never re-synced.**
 An effect that copied props into state would fight the user's in-flight typing.

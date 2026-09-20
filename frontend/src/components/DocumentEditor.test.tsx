@@ -21,16 +21,35 @@ beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
 afterEach(() => vi.useRealTimers());
 
 describe('DocumentEditor', () => {
-  it('renders the title, chapter notes, and body', () => {
-    render(<DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={vi.fn()} saveState="idle" />);
+  it('renders the title, chapter context, and body', () => {
+    render(
+      <DocumentEditor
+        document={DOC}
+        projectId="p1"
+        readOnly={false}
+        onSave={vi.fn()}
+        saveState="idle"
+        context="Mara waits."
+      />,
+    );
     expect(screen.getByDisplayValue('Chapter 1')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /chapter notes/i })).toHaveTextContent('Mara waits.');
+    expect(screen.getByRole('button', { name: /chapter context/i })).toHaveTextContent(
+      'Mara waits.',
+    );
     expect(screen.getByLabelText('Document body')).toHaveTextContent('The rain.');
   });
 
   it('debounces the body save', () => {
     const onSave = vi.fn();
-    render(<DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={onSave} saveState="idle" />);
+    render(
+      <DocumentEditor
+        document={DOC}
+        projectId="p1"
+        readOnly={false}
+        onSave={onSave}
+        saveState="idle"
+      />,
+    );
 
     typeAtEnd('Document body', '!');
     onSave.mockClear();
@@ -41,14 +60,22 @@ describe('DocumentEditor', () => {
 
   it('does not save before the debounce elapses', () => {
     const onSave = vi.fn();
-    render(<DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={onSave} saveState="idle" />);
+    render(
+      <DocumentEditor
+        document={DOC}
+        projectId="p1"
+        readOnly={false}
+        onSave={onSave}
+        saveState="idle"
+      />,
+    );
 
     typeAtEnd('Document body', '!');
     act(() => void vi.advanceTimersByTime(400));
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it('hides the chapter notes on non-chapter documents', () => {
+  it('hides the chapter context on non-chapter documents', () => {
     render(
       <DocumentEditor
         document={{ ...DOC, kind: 'bible', brief: '' }}
@@ -58,7 +85,7 @@ describe('DocumentEditor', () => {
         saveState="idle"
       />,
     );
-    expect(screen.queryByRole('button', { name: /chapter notes/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /chapter context/i })).not.toBeInTheDocument();
   });
 
   it.each([
@@ -92,22 +119,35 @@ describe('DocumentEditor', () => {
     expect(screen.getByLabelText('Document body')).not.toHaveTextContent(/AI context/);
   });
 
-  it('saves chapter notes, newlines included, as the brief', async () => {
+  it('reports chapter context edits to its owner rather than saving them itself', async () => {
+    // The Plan view edits the same text, so the workspace owns it and its save.
     const onSave = vi.fn();
+    const onContextChange = vi.fn();
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(
-      <DocumentEditor document={{ ...DOC, brief: '' }} projectId="p1" readOnly={false} onSave={onSave} saveState="idle" />,
+      <DocumentEditor
+        document={DOC}
+        projectId="p1"
+        readOnly={false}
+        onSave={onSave}
+        saveState="idle"
+        context=""
+        onContextChange={onContextChange}
+      />,
     );
 
-    await user.click(screen.getByRole('button', { name: /chapter notes/i }));
-    await user.type(screen.getByLabelText('Chapter notes'), 'Mara waits.{Enter}The bell rings.');
+    await user.click(screen.getByRole('button', { name: /chapter context/i }));
+    await user.type(screen.getByLabelText('Chapter context'), 'M');
     act(() => void vi.advanceTimersByTime(800));
 
-    expect(onSave).toHaveBeenLastCalledWith({ brief: 'Mara waits.\nThe bell rings.' });
+    expect(onContextChange).toHaveBeenLastCalledWith('M');
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it('disables the body while read-only', () => {
-    render(<DocumentEditor document={DOC} projectId="p1" readOnly onSave={vi.fn()} saveState="idle" />);
+    render(
+      <DocumentEditor document={DOC} projectId="p1" readOnly onSave={vi.fn()} saveState="idle" />,
+    );
     expect(screen.getByLabelText('Document body')).toHaveAttribute('contenteditable', 'false');
   });
 
@@ -128,7 +168,15 @@ describe('DocumentEditor', () => {
   it('merges edits made inside one debounce window', async () => {
     const onSave = vi.fn();
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={onSave} saveState="idle" />);
+    render(
+      <DocumentEditor
+        document={DOC}
+        projectId="p1"
+        readOnly={false}
+        onSave={onSave}
+        saveState="idle"
+      />,
+    );
 
     await user.type(screen.getByLabelText('Document title'), '!');
     typeAtEnd('Document body', '?');
@@ -142,7 +190,13 @@ describe('DocumentEditor', () => {
   it('flushes a pending edit on unmount instead of losing it', () => {
     const onSave = vi.fn();
     const { unmount } = render(
-      <DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={onSave} saveState="idle" />,
+      <DocumentEditor
+        document={DOC}
+        projectId="p1"
+        readOnly={false}
+        onSave={onSave}
+        saveState="idle"
+      />,
     );
 
     typeAtEnd('Document body', '!');
@@ -153,17 +207,39 @@ describe('DocumentEditor', () => {
   });
 
   it('reports the save state', () => {
-    render(<DocumentEditor document={DOC} projectId="p1" readOnly={false} onSave={vi.fn()} saveState="saving" />);
+    render(
+      <DocumentEditor
+        document={DOC}
+        projectId="p1"
+        readOnly={false}
+        onSave={vi.fn()}
+        saveState="saving"
+      />,
+    );
     expect(screen.getByText(/saving/i)).toBeInTheDocument();
   });
 
   it('does not autosave the streaming override', () => {
     const onSave = vi.fn();
     const { rerender } = render(
-      <DocumentEditor document={DOC} projectId="p1" readOnly onSave={onSave} saveState="idle" bodyOverride="The rain. S" />,
+      <DocumentEditor
+        document={DOC}
+        projectId="p1"
+        readOnly
+        onSave={onSave}
+        saveState="idle"
+        bodyOverride="The rain. S"
+      />,
     );
     rerender(
-      <DocumentEditor document={DOC} projectId="p1" readOnly onSave={onSave} saveState="idle" bodyOverride="The rain. St" />,
+      <DocumentEditor
+        document={DOC}
+        projectId="p1"
+        readOnly
+        onSave={onSave}
+        saveState="idle"
+        bodyOverride="The rain. St"
+      />,
     );
     act(() => void vi.advanceTimersByTime(800));
     expect(onSave).not.toHaveBeenCalled();

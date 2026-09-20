@@ -82,7 +82,7 @@ sequenceDiagram
     RQ-->>ED: mounted with key `${doc.id}:${docVersion}`
 
     loop while typing
-        U->>ED: keystroke in title / chapter notes / body
+        U->>ED: keystroke in title / chapter context / body
         ED->>ED: queueSave() — merge into the pending patch,<br/>restart the 800 ms timer
     end
     ED->>WS: onSave(patch) after the debounce
@@ -108,8 +108,9 @@ Switching documents unmounts the editor mid-debounce; without the flush, the las
 
 ## Saving before the server reads
 
-Plan, Check, Revise, and the chat all read the chapter from the database, not from the request.
-Whatever the writer has typed must be there first, and typed text can be in one of two places: still waiting out the editor's 800 ms debounce, or in a save already on the wire.
+Generate plan, Review, Revise, and the chat all read the chapter from the database, not from the request.
+Whatever the writer has typed must be there first, and typed text can be in one of two places: still waiting out an 800 ms debounce, or in a save already on the wire.
+There are two debounces, because two components own text: the editor's, for the title and body, and the workspace's own, for the chapter context the Write and Plan views share.
 
 ```mermaid
 sequenceDiagram
@@ -121,7 +122,7 @@ sequenceDiagram
 
     U->>ED: types "!"
     ED->>ED: queueSave() — the 800 ms timer starts
-    U->>WS: clicks Check (or Plan, Revise, Send)
+    U->>WS: clicks Review (or Generate plan, Revise, Send)
     rect rgb(255, 244, 229)
         Note over WS,ED: settle()
         WS->>ED: editorFlush.current() — cancel the timer, save now
@@ -134,7 +135,8 @@ sequenceDiagram
 
 **`settle()` is the point of the diagram.**
 Awaiting only `pendingSave` covers a save already in flight, but not an edit still inside the debounce window, which has not been sent at all.
-The editor fills `editorFlush` with a function that cancels its timer and saves immediately; `settle()` calls it, then awaits the save.
+The editor fills `editorFlush` with a function that cancels its timer and saves immediately; `settle()` calls it, flushes its own chapter-context timer, then awaits every save in flight.
+A pending context edit carries the document it was typed in, so switching documents mid-debounce saves it to that chapter rather than dropping it.
 This is also why saving bypasses React Query's mutation machinery: the workspace has to hold the in-flight promise.
 
 **Revise streams into the editor.**
@@ -171,7 +173,7 @@ sequenceDiagram
     BE-->>CH: done {messages, usage}
     CH->>CH: append both messages to the chat cache
     WS->>PL: proposal = {phase: reviewing, proposed, baseHash}
-    Note over WS: busy — the editor is read-only, and Plan, Check,<br/>Revise and the chat input wait for the writer
+    Note over WS: busy — the editor is read-only, and Plan, Review,<br/>Revise and the chat input wait for the writer
 
     alt Accept (⌘↵)
         PL->>PL: sha256(editor text) matches baseHash
@@ -200,7 +202,7 @@ A failed message is removed from the pane and its text goes back into the input.
 
 **The Plan view's Draft from plan → is a chat message.**
 It switches to the Write view, opens the chat, and sends "Draft this chapter from the scene plan."; the agent reads the saved plan along with the rest of the chapter's context.
-Nothing plans on its own when drafting: a chapter without a plan is drafted from its chapter notes, if any, and the writer's message.
+Nothing plans on its own when drafting: a chapter without a plan is drafted from its chapter context, if any, and the writer's message.
 
 **A proposal brings the Write view forward.**
 It is reviewed in the editor, so when one starts streaming (or a saved one loads) while Plan or Issues is open, the view switches to Write.
@@ -216,17 +218,23 @@ The reset happens during render rather than in an effect, so the previous docume
 flowchart TD
     OPEN(["Writer opens the Plan view"]) --> A{"Does the chapter have a plan?"}
     A -->|yes| SHOW(["Show it — no model call"])
-    A -->|no| B{"Busy, or out of AI budget?"}
-    B -->|no| GEN["settle(), then POST …/plan<br/>'Planning from your chapter notes…'"]
-    B -->|yes| EMPTY(["Empty state — Start a blank plan<br/>(and Generate plan when in budget)"])
+    A -->|no| FORM(["An empty, editable form — still no model call"])
+    FORM --> TYPE["Type any field<br/>→ the plan is saved as it is written"]
+    FORM --> PRESS["Press Generate plan"]
+    SHOW --> REGEN["Press ↻ Regenerate"]
+    PRESS --> GEN["settle(), then POST …/plan"]
+    REGEN --> GEN
     GEN -->|ok| SHOW
-    GEN -->|error| FAIL(["Retry, or Start a blank plan"])
+    GEN -->|error| KEEP(["The form stays; the reason is in the error bar"])
 ```
 
-**The Plan view shows what a plan is built from.**
-A plan is generated the moment the view opens, with no confirmation, so the chapter notes it reads stay in sight above it — or a note that there are none and the AI proposes the next chapter from the story so far.
-Opening the view always settles first, so notes typed a moment earlier are saved and shown rather than the stale cached ones.
-Edit notes switches to Write inside `flushSync` before calling `notesFocus`, because the notes cannot take focus while the editor is still hidden.
+**Opening the Plan view calls no model.**
+A chapter without a plan gets the empty form, to fill in by hand or to generate on request; nothing is spent until the writer asks.
+Generating settles first, so context typed a moment earlier is what the planner reads.
+
+**The chapter context is shared, not copied.**
+`WorkspaceScreen` owns the text and its debounce, and the Write and Plan views each render `ChapterContext` against it, so an edit in one is already in the other.
+The component keeps its own open/closed flag and broadcasts it, so both copies expand together.
 
 **The editor is hidden, not unmounted.**
 It stays mounted behind the Plan and Issues views, so it keeps its undo history, scroll position, and selection.
@@ -237,8 +245,9 @@ Removing matters because planning is optional: the chat, checker, and reviser ar
 Removal does not generate a replacement; only opening the Plan view on a chapter without a plan does.
 Editing the plan by hand, leaving the Plan view, or switching documents forgets it.
 
-**Plan and Check pass the document id as the mutation variable.**
+**Plan and Review pass the document id as the mutation variable.**
 A result that lands after the writer has switched documents is written to the document it was asked for, not the one on screen.
 
-Revise switches back to Write so the stream is in sight, and Check switches to Issues when its result arrives.
+Revise switches back to Write so the stream is in sight, and Review switches to Issues when its result arrives.
+The Issues tab is offered only once a review has run — `issues` is no longer null, even when it found nothing — so a chapter starts with just Write and Plan.
 The switcher itself is never disabled: changing views calls no model, and a writer must be able to leave the Plan view while a plan generates.

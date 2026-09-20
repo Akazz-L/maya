@@ -5,11 +5,11 @@ Instead of generating a book in one shot, Maya keeps a project as a list of docu
 
 Documents are plain text with a name, added and reordered freely from a sidebar.
 Every project has one pinned Story Bible.
-Chapter documents carry optional chapter notes — an outline, a line of intent, or nothing at all — and a Write / Plan / Issues switcher.
-Opening Plan on a chapter without one generates a scene plan from the notes; with no notes, the planner proposes the chapter that comes next.
-The Plan view keeps the notes it plans from in sight, one click from editing them.
+Chapter documents carry optional chapter context — an outline, a line of intent, or nothing at all — and a Write / Plan / Issues switcher.
+The context is editable from both the Write and Plan views, and every AI call reads it.
+Plan opens the scene plan: empty and ready to type on a chapter without one, or generated on request, with no notes needed.
 Edit the plan, regenerate or remove it (with undo), or draft from it.
-Check reports continuity issues in the Issues view.
+Review reports continuity issues, and its Issues view appears once it has run.
 Prior chapters are summarized automatically and fed back in as context.
 
 Beside each chapter is a chat that does the drafting.
@@ -80,9 +80,9 @@ every toolbar action has something to act on:
 | Document | State | What it exercises |
 |---|---|---|
 | Story Bible | Filled in, not the empty template | Context for every agent |
-| Chapter 1 | Prose plus a pre-cached summary | **Check**, and prior-chapter context |
+| Chapter 1 | Prose plus a pre-cached summary | **Review**, and prior-chapter context |
 | Chapter 2 | Scene plan saved, body empty | **Draft from plan →** in the Plan view, which drafts through the chat |
-| Chapter 3 | Notes only | Opening **Plan** generates one, or a draft straight from a chat prompt |
+| Chapter 3 | Context only | **Plan**, written by hand or generated, or a draft straight from a chat prompt |
 | Research note | Scratch notes | Notes are excluded from all agent context |
 
 Chapter 1's summary is seeded already hashed, so drafting a later chapter costs
