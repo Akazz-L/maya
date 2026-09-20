@@ -241,8 +241,22 @@ def _tool_start(name):
     return SimpleNamespace(type="content_block_start", content_block=SimpleNamespace(type="tool_use", name=name))
 
 
-def _input(snapshot):
-    return SimpleNamespace(type="input_json", partial_json="", snapshot=snapshot)
+def _input_chunks(*chunks):
+    """The input_json events the SDK really emits while a tool call streams.
+
+    Each carries the raw `partial_json` fragment and a snapshot parsed the way
+    the SDK parses it: jiter with `partial_mode=True`, which drops a trailing
+    incomplete string. The prose is therefore absent from every snapshot until
+    the whole call has arrived, which is why the raw fragments are what count.
+    """
+    from jiter import from_json
+
+    buf = b""
+    for chunk in chunks:
+        buf += chunk.encode()
+        yield SimpleNamespace(
+            type="input_json", partial_json=chunk, snapshot=from_json(buf, partial_mode=True)
+        )
 
 
 def _final(stop_reason, *blocks):
@@ -303,17 +317,14 @@ async def test_a_write_streams_progress_then_a_ready_proposal(monkeypatch, state
             [
                 _text("Darker:"),
                 _tool_start("write_draft"),
-                _input({"mode": "replace"}),
-                _input({"mode": "replace", "text": "Night fell"}),
-                _input({"mode": "replace", "text": "Night fell"}),
-                _input(tool_input),
+                *_input_chunks('{"mode": "rep', 'lace", "text": "Night ', 'fell on the gates."}'),
             ],
             _final("tool_use", _tool_use("write_draft", tool_input)),
         ),
     )
     assert events == [
         TextDelta("Darker:"),
-        ProposalProgress("replace", "Night fell"),
+        ProposalProgress("replace", "Night "),
         ProposalProgress("replace", "Night fell on the gates."),
         ProposalReady(
             {"kind": "write", "mode": "replace", "text": "Night fell on the gates.", "proposed_body": "Night fell on the gates."}

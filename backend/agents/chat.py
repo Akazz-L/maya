@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 
 import anthropic
+from jiter import from_json
 
 from backend.llm import Usage, request_params, usage_from
 
@@ -337,6 +338,29 @@ def build_turn(state: dict) -> tuple[list[dict], list[dict]]:
 # ---------------------------------------------------------------------------
 
 
+def _progress_from(partial_json: str) -> ProposalProgress | None:
+    """The prose written so far, read from the raw tool-call JSON.
+
+    Not from the SDK's own snapshot: it parses with jiter's `partial_mode=True`,
+    which drops a trailing incomplete string, so `text` appears only once the
+    whole tool call has arrived — the writer would get the finished draft in one
+    lump instead of watching it arrive. `trailing-strings` keeps the prose as it
+    is written.
+    """
+    try:
+        value = from_json(partial_json.encode(), partial_mode="trailing-strings")
+    except ValueError:
+        return None  # not yet parseable; the next fragment usually is
+    if not isinstance(value, dict):
+        return None
+    text = value.get("text")
+    if not isinstance(text, str) or not text:
+        return None
+    mode = value.get("mode")
+    # The mode can itself be half-written ("rep"); only a whole one is meaningful.
+    return ProposalProgress(mode if mode in ("replace", "append") else None, text)
+
+
 async def chat_event_stream(
     state: dict, model_key: str, on_usage: Callable[[Usage], None]
 ) -> AsyncIterator[ChatEvent]:
@@ -362,6 +386,7 @@ async def chat_event_stream(
             messages=messages,
         ) as stream:
             tool_name: str | None = None
+            json_buf = ""
             last_progress: ProposalProgress | None = None
             async for event in stream:
                 if event.type == "text":
@@ -370,10 +395,11 @@ async def chat_event_stream(
                 elif event.type == "content_block_start":
                     block = event.content_block
                     tool_name = block.name if block.type == "tool_use" else None
+                    json_buf = ""
                 elif event.type == "input_json" and tool_name == "write_draft":
-                    snapshot = event.snapshot if isinstance(event.snapshot, dict) else {}
-                    progress = ProposalProgress(snapshot.get("mode"), snapshot.get("text") or "")
-                    if progress.text and progress != last_progress:
+                    json_buf += event.partial_json
+                    progress = _progress_from(json_buf)
+                    if progress and progress != last_progress:
                         last_progress = progress
                         yield progress
 
