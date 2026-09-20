@@ -6,6 +6,7 @@ import type { DocumentDetail, ProposalOutcome, Suggestion } from '../api/types';
 import { sha256Hex } from '../lib/chat';
 import { viewFor } from '../test/editor';
 import type { ProposalView } from './ProposalLayer';
+import { revealPos } from '../editor/proposalExtension';
 
 const DOC: DocumentDetail = {
   id: 'c1',
@@ -278,5 +279,43 @@ describe('ProposalLayer, suggestion sets', () => {
     expect(body()).toBe(DOC.body);
     // The sound fix is still there to take.
     expect(screen.getByRole('button', { name: 'Accept fix 2' })).toBeInTheDocument();
+  });
+});
+
+describe('revealPos', () => {
+  const fix = (from: number) => ({
+    index: 0,
+    from,
+    to: from + 4,
+    original: 'rain',
+    replacement: 'storm',
+    explanation: '',
+    severity: null,
+  });
+
+  it('points at the next fix to review, not at the top of the chapter', () => {
+    // The bug this exists for: a pass finds a contradiction 3,000 characters
+    // down, the review bar says so from the top of the editor, and the writer
+    // sees no change anywhere.
+    expect(revealPos({ kind: 'suggestions', total: 2, fixes: [fix(2769), fix(3100)] })).toBe(2769);
+  });
+
+  it('follows the set as fixes are resolved', () => {
+    expect(revealPos({ kind: 'suggestions', total: 2, fixes: [fix(3100)] })).toBe(3100);
+    expect(revealPos({ kind: 'suggestions', total: 2, fixes: [] })).toBeNull();
+  });
+
+  it('points at the changed span of a whole-chapter proposal', () => {
+    expect(
+      revealPos({
+        kind: 'write',
+        from: 1200,
+        to: 1200,
+        original: '',
+        replacement: 'More prose.',
+        phase: 'reviewing',
+        showDiff: false,
+      }),
+    ).toBe(1200);
   });
 });

@@ -7,9 +7,10 @@
 // changes through the transactions dispatched here, which reach the editor's
 // autosave and undo history like any other edit.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { EditorView } from '@codemirror/view';
+import { EditorView } from '@codemirror/view';
 import type { ProposalOutcome, Suggestion } from '../api/types';
 import {
+  revealPos,
   setProposalOverlay,
   type ProposalOverlay,
   type SuggestionsOverlay,
@@ -159,7 +160,21 @@ export function ProposalLayer({ view, proposal, hostRef, onResolve }: ProposalLa
         };
       }
     }
-    view.dispatch({ effects: setProposalOverlay.of(overlay) });
+    // A review pass finds things anywhere in the chapter, and the review bar is
+    // pinned to the top of the editor: without this the writer is told there are
+    // fixes to review and shown none of them, because the first one is a
+    // thousand words below the fold. Runs again whenever the live set changes,
+    // so resolving one fix brings the next into view.
+    // Not while a draft streams: the text grows on every frame, and the editor
+    // would chase it instead of letting the writer read.
+    const streaming = overlay?.kind === 'write' && overlay.phase === 'streaming';
+    const reveal = overlay && !streaming ? revealPos(overlay) : null;
+    view.dispatch({
+      effects:
+        reveal === null
+          ? setProposalOverlay.of(overlay)
+          : [setProposalOverlay.of(overlay), EditorView.scrollIntoView(reveal, { y: 'center' })],
+    });
   }, [view, phase, mode, text, proposed, showDiff, live, total]);
 
   // ── resolving a whole-chapter proposal ────────────────────────────────────

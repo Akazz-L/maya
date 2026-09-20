@@ -45,6 +45,19 @@ export type ProposalOverlay = WriteOverlay | SuggestionsOverlay;
 
 export const setProposalOverlay = StateEffect.define<ProposalOverlay | null>();
 
+/**
+ * Where the writer should be looking: the next fix to review, or the one span a
+ * whole-chapter proposal changes.
+ *
+ * A review pass finds things anywhere in the chapter while the review bar sits
+ * at the top of the editor, so without scrolling here the writer is told there
+ * are fixes and shown none of them.
+ */
+export function revealPos(overlay: ProposalOverlay): number | null {
+  if (overlay.kind === 'write') return overlay.from;
+  return overlay.fixes.length ? overlay.fixes[0].from : null;
+}
+
 export const proposalOverlayField = StateField.define<ProposalOverlay | null>({
   create: () => null,
   update(value, tr) {
