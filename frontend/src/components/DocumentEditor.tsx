@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { EditorView } from '@codemirror/view';
+import { AlertCircle, Check } from 'lucide-react';
 import type { DocumentDetail, DocumentKind, ProposalOutcome, UsageSnapshot } from '../api/types';
 import { proposalExtension } from '../editor/proposalExtension';
 import { rewriteExtension, type RewriteHost } from '../editor/rewriteExtension';
 import type { SuggestionHost } from '../editor/suggestionWidget';
+import { cn } from '../lib/utils';
 import { ChapterContext } from './ChapterContext';
-import { ProposalLayer, type ProposalView } from './ProposalLayer';
+import { AUTOSAVE_MS, type SaveState } from '../hooks/useDocumentSaving';
+import type { ProposalView } from '../lib/proposalView';
+import { ProposalLayer } from './ProposalLayer';
 import { ProseEditor } from './ProseEditor';
 import { RewriteLayer } from './RewriteLayer';
-
-export const AUTOSAVE_MS = 800;
-
-export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+import { Spinner } from './ui/feedback';
 
 // Shown only while the body is empty, so they guide a blank document and then
 // get out of the way. Each says what the AI does with that kind of document.
@@ -30,11 +31,8 @@ export interface EditorPatch {
 interface DocumentEditorProps {
   document: DocumentDetail;
   projectId: string;
-  readOnly: boolean;
   onSave: (patch: EditorPatch) => void;
   saveState: SaveState;
-  /** Live text during a stream. Bypasses local state so the server stays authoritative. */
-  bodyOverride?: string;
   /** True while a selection rewrite is streaming or under review. */
   onBusyChange?: (busy: boolean) => void;
   /** True once the month's AI budget is spent. */
@@ -60,11 +58,31 @@ interface DocumentEditorProps {
 
 const noop = () => {};
 
+const SAVE_STATUS: Record<
+  Exclude<SaveState, 'idle'>,
+  { icon: ReactNode; text: string; tone: string }
+> = {
+  saving: { icon: <Spinner className="size-3" />, text: 'Saving…', tone: 'text-ink-subtle' },
+  saved: { icon: <Check aria-hidden className="size-3" />, text: 'Saved', tone: 'text-ink-subtle' },
+  error: {
+    icon: <AlertCircle aria-hidden className="size-3" />,
+    text: "Couldn't save. Your next edit retries.",
+    tone: 'text-danger',
+  },
+};
+
+/** Always mounted, so a screen reader hears each change of state. */
 function SaveIndicator({ state }: { state: SaveState }) {
-  if (state === 'saving') return <span className="text-xs text-gray-400">Saving…</span>;
-  if (state === 'saved') return <span className="text-xs text-green-600">Saved.</span>;
-  if (state === 'error') return <span className="text-xs text-red-600">Error saving.</span>;
-  return null;
+  const status = state === 'idle' ? null : SAVE_STATUS[state];
+  return (
+    <span
+      role="status"
+      className={cn('flex h-6 shrink-0 items-center gap-1 text-xs', status?.tone)}
+    >
+      {status?.icon}
+      {status?.text}
+    </span>
+  );
 }
 
 /**
@@ -76,10 +94,8 @@ function SaveIndicator({ state }: { state: SaveState }) {
 export function DocumentEditor({
   document,
   projectId,
-  readOnly,
   onSave,
   saveState,
-  bodyOverride,
   onBusyChange,
   aiBlocked = false,
   onUsage,
@@ -170,16 +186,18 @@ export function DocumentEditor({
   }, []);
 
   return (
-    <main className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-4 border-b border-gray-200 bg-white px-6 py-2">
+    <div className="flex min-h-0 flex-1 flex-col bg-surface">
+      {/* The title sits on the same column as the prose beneath it: one page. */}
+      <div className="mx-auto flex w-full max-w-page items-center gap-4 px-6 pt-6 pb-2 sm:pt-8">
         <input
           value={title}
           aria-label="Document title"
+          placeholder="Untitled"
           onChange={(e) => {
             setTitle(e.target.value);
             queueSave({ title: e.target.value });
           }}
-          className="min-w-0 flex-1 border-none bg-transparent text-base font-semibold text-gray-800 outline-none"
+          className="min-w-0 flex-1 border-none bg-transparent font-serif text-2xl font-semibold tracking-[-0.01em] text-ink outline-none placeholder:text-ink-faint sm:text-[28px]"
         />
         <SaveIndicator state={saveState} />
       </div>
@@ -189,8 +207,8 @@ export function DocumentEditor({
       )}
 
       <ProseEditor
-        value={bodyOverride ?? body}
-        readOnly={readOnly || rewriteBusy || proposal !== null}
+        value={body}
+        readOnly={rewriteBusy || proposal !== null}
         ariaLabel="Document body"
         placeholder={BODY_PLACEHOLDER[document.kind]}
         extensions={extensions}
@@ -206,7 +224,7 @@ export function DocumentEditor({
             hostRef={rewriteHost}
             projectId={projectId}
             documentId={document.id}
-            enabled={!readOnly && proposal === null}
+            enabled={proposal === null}
             aiBlocked={aiBlocked}
             onBusyChange={handleBusy}
             onUsage={onUsage}
@@ -221,6 +239,6 @@ export function DocumentEditor({
           />
         )}
       </ProseEditor>
-    </main>
+    </div>
   );
 }

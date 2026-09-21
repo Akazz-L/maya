@@ -3,12 +3,18 @@
 // the document except through the single Accept transaction.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
+import { Sparkles } from 'lucide-react';
 import type { UsageSnapshot } from '../api/types';
 import { acceptTx, setRewriteOverlay, type RewriteHost } from '../editor/rewriteExtension';
 import { useSelectionRewrite } from '../hooks/useSelectionRewrite';
 import { contextWindows, type TextRange } from '../lib/rewrite';
+import { cn } from '../lib/utils';
 import { RewritePrompt } from './RewritePrompt';
 import { RewriteReviewBar } from './RewriteReviewBar';
+import { ProgressChip } from './ReviewBar';
+import { Button } from './ui/button';
+import { Kbd } from './ui/feedback';
+import { floatingPanel, pencilPanel } from './ui/floating';
 
 export interface RewriteLayerProps {
   view: EditorView;
@@ -207,22 +213,34 @@ export function RewriteLayer({
   if (phase === 'idle' && (!enabled || !selection)) return null;
 
   return (
-    <div ref={card} className="absolute z-20" style={{ top: FALLBACK.top, left: FALLBACK.left }}>
+    <div
+      ref={card}
+      className="absolute z-overlay"
+      style={{ top: FALLBACK.top, left: FALLBACK.left }}
+    >
       {phase === 'idle' &&
         // Still shown when the budget is spent, so ⌘K on a selection explains
         // itself instead of doing nothing.
         (aiBlocked ? (
-          <span className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white py-1 px-2.5 text-xs font-medium text-gray-400 shadow-md shadow-gray-900/10">
-            <span aria-hidden>✦</span> Rewrite paused — AI budget used
+          <span
+            className={cn(
+              floatingPanel,
+              'flex h-7 items-center gap-1.5 px-2.5 text-xs text-ink-subtle',
+            )}
+          >
+            <Sparkles aria-hidden className="size-3.5" /> Rewrite paused — AI budget used
           </span>
         ) : (
           <button
             type="button"
             onClick={open}
-            className="flex items-center gap-1.5 rounded-full border border-violet-200 bg-white py-1 pl-2.5 pr-2 text-xs font-medium text-violet-700 shadow-md shadow-violet-900/10 hover:bg-violet-50"
+            className={cn(
+              pencilPanel,
+              'flex h-7 items-center gap-1.5 pr-1.5 pl-2.5 text-xs font-medium text-pencil-strong animate-pop hover:bg-pencil-faint',
+            )}
           >
-            <span aria-hidden>✦</span> Rewrite
-            <kbd className="rounded bg-violet-50 px-1 font-sans text-[10px] text-violet-500">⌘K</kbd>
+            <Sparkles aria-hidden className="size-3.5" /> Rewrite
+            <Kbd className="border-pencil-line bg-pencil-faint text-pencil">⌘K</Kbd>
           </button>
         ))}
 
@@ -236,13 +254,15 @@ export function RewriteLayer({
       )}
 
       {phase === 'streaming' && (
-        <div className="flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-1.5 text-xs text-violet-700 shadow-lg shadow-violet-900/10">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" aria-hidden />
+        <ProgressChip
+          action={
+            <Button variant="ghost" size="sm" onClick={discard} className="h-6 px-2">
+              Cancel
+            </Button>
+          }
+        >
           Rewriting…
-          <button type="button" onClick={discard} className="ml-1 text-gray-500 hover:text-gray-800">
-            ✕ Cancel
-          </button>
-        </div>
+        </ProgressChip>
       )}
 
       {phase === 'reviewing' && (

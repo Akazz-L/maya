@@ -1,15 +1,11 @@
-import type { InputHTMLAttributes } from 'react';
+import type { InputHTMLAttributes, Ref } from 'react';
 import { cn } from '../../lib/utils';
+import { controlClass } from './control';
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      className={cn(
-        'w-full rounded-md border border-gray-300 bg-gray-50 px-2.5 py-1.5 text-sm',
-        'focus:border-blue-300 focus:bg-white focus:outline-none',
-        className,
-      )}
-      {...props}
-    />
-  );
+interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+  ref?: Ref<HTMLInputElement>;
+}
+
+export function Input({ className, ...props }: InputProps) {
+  return <input className={cn(controlClass, 'h-9', className)} {...props} />;
 }

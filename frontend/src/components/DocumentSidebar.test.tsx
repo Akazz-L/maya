@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DocumentSidebar } from './DocumentSidebar';
 import type { DocumentSummary } from '../api/types';
@@ -94,18 +94,38 @@ describe('DocumentSidebar', () => {
     expect(props.onRename).not.toHaveBeenCalled();
   });
 
-  it('deletes behind a confirm', async () => {
+  it('deletes once the dialog is confirmed', async () => {
     const props = setup();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     await userEvent.click(screen.getByTitle('Delete Chapter 1'));
+    const dialog = screen.getByRole('dialog', { name: /delete “chapter 1”/i });
+    expect(props.onDelete).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
     expect(props.onDelete).toHaveBeenCalledWith('c1');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('does not delete when the confirm is declined', async () => {
+  it('does not delete when the dialog is cancelled', async () => {
     const props = setup();
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
     await userEvent.click(screen.getByTitle('Delete Chapter 1'));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(props.onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('renames from its button, for a writer without a mouse', async () => {
+    const props = setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Rename Research' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Rename Research' }), ' notes{Enter}');
+    expect(props.onRename).toHaveBeenCalledWith('n1', 'Research notes');
+  });
+
+  it('moves through the kind menu with the arrow keys', async () => {
+    const props = setup();
+    screen.getByRole('button', { name: 'Choose document type' }).focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menuitem', { name: /new chapter/i })).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}{Enter}');
+    expect(props.onCreate).toHaveBeenCalledWith('note');
   });
 
   it('offers no delete control for the story bible', () => {
@@ -116,6 +136,20 @@ describe('DocumentSidebar', () => {
   it('collapses to icons only', () => {
     setup({ collapsed: true });
     expect(screen.queryByText('Chapter 1')).not.toBeInTheDocument();
+  });
+
+  it('still opens documents from the collapsed rail', async () => {
+    const props = setup({ collapsed: true });
+    await userEvent.click(screen.getByRole('button', { name: 'Research' }));
+    expect(props.onSelect).toHaveBeenCalledWith('n1');
+  });
+
+  it('marks the open document for assistive tech', () => {
+    setup();
+    expect(screen.getByRole('button', { name: 'Chapter 1' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 
   describe('sections', () => {

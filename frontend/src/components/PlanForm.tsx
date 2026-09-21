@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
+import { Plus, X } from 'lucide-react';
 import type { ScenePlan } from '../api/types';
-import { FieldLabel } from './ui/card';
+import { Field } from './ui/field';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 
@@ -31,9 +32,12 @@ function BeatField({ index, value, onChange, onRemove }: BeatFieldProps) {
   }, [value]);
 
   return (
-    <div className="flex items-start gap-1.5">
-      <span className="mt-2 w-[18px] flex-shrink-0 text-right text-xs text-gray-400">
-        {index + 1}.
+    <li className="group flex items-start gap-2">
+      <span
+        aria-hidden
+        className="mt-2 w-5 shrink-0 text-right font-serif text-sm text-ink-subtle tabular-nums"
+      >
+        {index + 1}
       </span>
       <Textarea
         ref={textarea}
@@ -41,17 +45,18 @@ function BeatField({ index, value, onChange, onRemove }: BeatFieldProps) {
         rows={1}
         aria-label={`Beat ${index + 1}`}
         onChange={(e) => onChange(e.target.value)}
-        className="flex-1 resize-none overflow-hidden leading-relaxed"
+        className="flex-1 resize-none overflow-hidden"
       />
       <button
         type="button"
         onClick={onRemove}
-        title="Remove"
-        className="mt-0.5 flex-shrink-0 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm leading-none text-gray-400 hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+        title={`Remove beat ${index + 1}`}
+        aria-label={`Remove beat ${index + 1}`}
+        className="mt-1.5 flex size-7 shrink-0 items-center justify-center rounded-control text-ink-faint transition-colors hover:bg-danger-soft hover:text-danger"
       >
-        ×
+        <X aria-hidden className="size-4" />
       </button>
-    </div>
+    </li>
   );
 }
 
@@ -73,87 +78,66 @@ export function PlanForm({ plan, onChange }: Props) {
 
   const addBeat = () => set('beats', [...plan.beats, '']);
 
-  return (
-    <div>
-      <div className="mb-3.5 flex flex-col gap-1">
-        <FieldLabel>Goal</FieldLabel>
+  const text = (key: 'pov_character' | 'location' | 'sensory_anchor', label: string) => (
+    <Field label={label}>
+      {(control) => (
+        <Input {...control} value={plan[key]} onChange={(e) => set(key, e.target.value)} />
+      )}
+    </Field>
+  );
+
+  const passage = (key: 'goal' | 'opening_image' | 'closing_image', label: string) => (
+    <Field label={label}>
+      {(control) => (
         <Textarea
-          value={plan.goal}
-          aria-label="Goal"
-          onChange={(e) => set('goal', e.target.value)}
-          className="min-h-14 resize-y leading-relaxed"
+          {...control}
+          value={plan[key]}
+          onChange={(e) => set(key, e.target.value)}
+          className="min-h-16 resize-y"
         />
+      )}
+    </Field>
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      {passage('goal', 'Goal')}
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        {text('pov_character', 'POV character')}
+        {text('location', 'Location')}
+        {text('sensory_anchor', 'Sensory anchor')}
       </div>
 
-      <div className="mb-3.5 grid gap-3.5 sm:grid-cols-3">
-        <div className="flex flex-col gap-1">
-          <FieldLabel>POV Character</FieldLabel>
-          <Input
-            value={plan.pov_character}
-            aria-label="POV Character"
-            onChange={(e) => set('pov_character', e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <FieldLabel>Location</FieldLabel>
-          <Input
-            value={plan.location}
-            aria-label="Location"
-            onChange={(e) => set('location', e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <FieldLabel>Sensory Anchor</FieldLabel>
-          <Input
-            value={plan.sensory_anchor}
-            aria-label="Sensory Anchor"
-            onChange={(e) => set('sensory_anchor', e.target.value)}
-          />
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {passage('opening_image', 'Opening image')}
+        {passage('closing_image', 'Closing image')}
       </div>
 
-      <div className="mb-3.5 grid gap-3.5 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <FieldLabel>Opening Image</FieldLabel>
-          <Textarea
-            value={plan.opening_image}
-            aria-label="Opening Image"
-            onChange={(e) => set('opening_image', e.target.value)}
-            className="min-h-14 resize-y leading-relaxed"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <FieldLabel>Closing Image</FieldLabel>
-          <Textarea
-            value={plan.closing_image}
-            aria-label="Closing Image"
-            onChange={(e) => set('closing_image', e.target.value)}
-            className="min-h-14 resize-y leading-relaxed"
-          />
-        </div>
-      </div>
-
-      <div className="mb-3.5">
-        <FieldLabel>Beats</FieldLabel>
-        <div className="flex flex-col gap-1.5">
-          {plan.beats.map((beat, i) => (
-            <BeatField
-              key={i}
-              index={i}
-              value={beat}
-              onChange={(value) => setBeat(i, value)}
-              onRemove={() => removeBeat(i)}
-            />
-          ))}
-        </div>
+      <fieldset className="min-w-0">
+        <legend className="mb-1.5 text-xs font-medium text-ink-muted">Beats</legend>
+        {plan.beats.length > 0 && (
+          <ol className="mb-2 flex flex-col gap-2">
+            {plan.beats.map((beat, i) => (
+              <BeatField
+                key={i}
+                index={i}
+                value={beat}
+                onChange={(value) => setBeat(i, value)}
+                onRemove={() => removeBeat(i)}
+              />
+            ))}
+          </ol>
+        )}
         <button
           type="button"
           onClick={addBeat}
-          className="mt-1.5 w-full rounded-md border border-dashed border-gray-300 bg-gray-50 py-1.5 text-[13px] text-gray-400 hover:bg-gray-100"
+          className="flex h-9 w-full items-center justify-center gap-1.5 rounded-control border border-dashed border-line-strong text-sm text-ink-subtle transition-colors hover:border-ink-faint hover:bg-surface-muted hover:text-ink"
         >
-          + Add beat
+          <Plus aria-hidden className="size-4" />
+          Add beat
         </button>
-      </div>
+      </fieldset>
     </div>
   );
 }

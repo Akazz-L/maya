@@ -5,7 +5,7 @@ import { DocumentEditor } from './DocumentEditor';
 import type { DocumentDetail, ProposalOutcome, Suggestion } from '../api/types';
 import { sha256Hex } from '../lib/chat';
 import { viewFor } from '../test/editor';
-import type { ProposalView } from './ProposalLayer';
+import type { ProposalView } from '../lib/proposalView';
 import { revealPos } from '../editor/proposalExtension';
 
 const DOC: DocumentDetail = {
@@ -29,7 +29,6 @@ async function renderWith(proposal: ProposalView) {
     <DocumentEditor
       document={DOC}
       projectId="p1"
-      readOnly={false}
       onSave={onSave}
       saveState="idle"
       proposal={proposal}
@@ -42,7 +41,9 @@ async function renderWith(proposal: ProposalView) {
   // for that to land — either as fixes on screen, or as the set going stale.
   if (proposal.phase === 'reviewing' && proposal.kind === 'suggestions') {
     await waitFor(() =>
-      expect(screen.queryAllByRole('toolbar').length + onResolve.mock.calls.length).toBeGreaterThan(0),
+      expect(screen.queryAllByRole('toolbar').length + onResolve.mock.calls.length).toBeGreaterThan(
+        0,
+      ),
     );
   }
   return { onSave, onResolve };

@@ -8,7 +8,7 @@
 // autosave and undo history like any other edit.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
-import type { ProposalOutcome, Suggestion } from '../api/types';
+import type { ProposalOutcome } from '../api/types';
 import {
   revealPos,
   setProposalOverlay,
@@ -16,31 +16,17 @@ import {
   type SuggestionsOverlay,
 } from '../editor/proposalExtension';
 import type { SuggestionHost } from '../editor/suggestionWidget';
-import { changedSpan, liveFixes, shiftFixes, sha256Hex, streamingBody, type LiveFix } from '../lib/chat';
+import {
+  changedSpan,
+  liveFixes,
+  shiftFixes,
+  sha256Hex,
+  streamingBody,
+  type LiveFix,
+} from '../lib/chat';
+import type { ProposalView } from '../lib/proposalView';
 import { ProposalReviewBar } from './ProposalReviewBar';
-
-export type ProposalView =
-  | { phase: 'streaming'; mode: 'replace' | 'append' | null; text: string }
-  | {
-      phase: 'reviewing';
-      kind: 'write';
-      /** The whole chapter as the proposal would leave it. */
-      proposed: string;
-      /** sha256 of the body the proposal was computed against. */
-      baseHash: string;
-      /** Where the review starts: a diff suits edits, the clean text a new draft. */
-      showDiff: boolean;
-    }
-  | {
-      phase: 'reviewing';
-      kind: 'suggestions';
-      /** Every fix the pass proposed, resolved ones included, so a card can
-       *  number itself the way the chat message counts them. */
-      suggestions: Suggestion[];
-      baseHash: string;
-      /** What the pass is called, for the review bar: "Continuity check". */
-      label?: string;
-    };
+import { ProgressChip } from './ReviewBar';
 
 export interface ProposalLayerProps {
   view: EditorView;
@@ -81,7 +67,8 @@ export function ProposalLayer({ view, proposal, hostRef, onResolve }: ProposalLa
 
   // A toggle belongs to the proposal it was made on; a new one starts from its default.
   const [toggle, setToggle] = useState<{ proposed: string; showDiff: boolean } | null>(null);
-  const showDiff = write && toggle?.proposed === write.proposed ? toggle.showDiff : (write?.showDiff ?? true);
+  const showDiff =
+    write && toggle?.proposed === write.proposed ? toggle.showDiff : (write?.showDiff ?? true);
   const applying = useRef(false);
 
   // The fixes as the editor holds them: identified by the proposal they came
@@ -323,20 +310,16 @@ export function ProposalLayer({ view, proposal, hostRef, onResolve }: ProposalLa
   if (set && !live?.length) return null; // every fix reviewed; the bar goes with them
 
   return (
-    <div className="absolute right-4 top-3 z-20">
+    <div className="absolute top-3 right-3 z-overlay sm:right-4">
       {proposal.phase === 'streaming' ? (
-        <div className="flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-1.5 text-xs text-violet-700 shadow-lg shadow-violet-900/10">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" aria-hidden />
-          Writing…
-        </div>
+        <ProgressChip>Writing…</ProgressChip>
       ) : set ? (
         <ProposalReviewBar
           title={`${set.label ?? 'Suggested fixes'} · ${live!.length} of ${total} left`}
           onAccept={acceptAll}
           onDiscard={discardAll}
-          acceptLabel="✓ Accept all"
-          discardLabel="✕ Discard all"
-          hint="⌘↵ accept all · esc discard all"
+          acceptLabel="Accept all"
+          discardLabel="Discard all"
         />
       ) : (
         <ProposalReviewBar
@@ -345,7 +328,6 @@ export function ProposalLayer({ view, proposal, hostRef, onResolve }: ProposalLa
           onDiscard={() => onResolve('discarded')}
           showDiff={showDiff}
           onToggleDiff={() => setToggle({ proposed: write!.proposed, showDiff: !showDiff })}
-          hint="⌘↵ accept · esc discard"
         />
       )}
     </div>

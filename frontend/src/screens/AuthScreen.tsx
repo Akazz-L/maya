@@ -1,11 +1,31 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { Wordmark } from '../components/Wordmark';
 import { Button } from '../components/ui/button';
-import { FieldLabel } from '../components/ui/card';
+import { InlineAlert, Spinner } from '../components/ui/feedback';
+import { Field } from '../components/ui/field';
 import { Input } from '../components/ui/input';
 
 type Mode = 'login' | 'register';
+
+const COPY: Record<
+  Mode,
+  { title: string; submit: string; switchPrompt: string; switchTo: string }
+> = {
+  login: {
+    title: 'Sign in to your manuscripts',
+    submit: 'Sign in',
+    switchPrompt: 'New to Maya?',
+    switchTo: 'Create an account',
+  },
+  register: {
+    title: 'Create your account',
+    submit: 'Create account',
+    switchPrompt: 'Already have an account?',
+    switchTo: 'Sign in',
+  },
+};
 
 export function AuthScreen() {
   const { login, register } = useAuth();
@@ -15,6 +35,7 @@ export function AuthScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const copy = COPY[mode];
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -37,55 +58,69 @@ export function AuthScreen() {
   };
 
   return (
-    <div className="flex h-screen items-center justify-center bg-[#f5f5f0]">
-      <form
-        onSubmit={submit}
-        className="flex w-80 flex-col gap-3 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
-      >
-        <h1 className="text-lg font-semibold text-gray-800">
-          {mode === 'login' ? 'Sign in' : 'Create account'}
-        </h1>
-
-        <div className="flex flex-col gap-1">
-          <FieldLabel>Email</FieldLabel>
-          <Input
-            type="email"
-            aria-label="Email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+    <main className="flex min-h-full flex-col items-center justify-center px-4 py-12">
+      <div className="w-full max-w-[22rem]">
+        <div className="mb-8 text-center">
+          <Wordmark className="text-4xl" />
+          <p className="mt-2 font-serif text-[15px] text-ink-muted italic">
+            A novel, one chapter at a time.
+          </p>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <FieldLabel>Password</FieldLabel>
-          <Input
-            type="password"
-            aria-label="Password"
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-
-        {error && <p className="text-xs text-red-700">{error}</p>}
-
-        <Button type="submit" size="full" disabled={busy}>
-          {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
-        </Button>
-
-        <button
-          type="button"
-          onClick={toggle}
-          className="text-xs text-gray-500 underline-offset-2 hover:underline"
+        <form
+          onSubmit={submit}
+          aria-labelledby="auth-title"
+          className="flex flex-col gap-4 rounded-panel border border-line bg-surface p-6 shadow-float"
         >
-          {mode === 'login'
-            ? "Don't have an account? Create one"
-            : 'Already have an account? Sign in'}
-        </button>
-      </form>
-    </div>
+          <h1 id="auth-title" className="text-base font-semibold">
+            {copy.title}
+          </h1>
+
+          <Field label="Email">
+            {(control) => (
+              <Input
+                {...control}
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            )}
+          </Field>
+
+          <Field label="Password">
+            {(control) => (
+              <Input
+                {...control}
+                type="password"
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            )}
+          </Field>
+
+          {error && <InlineAlert className="rounded-control border">{error}</InlineAlert>}
+
+          <Button type="submit" size="lg" disabled={busy} className="mt-1 w-full">
+            {busy && <Spinner />}
+            {copy.submit}
+          </Button>
+        </form>
+
+        <p className="mt-5 text-center text-sm text-ink-subtle">
+          {copy.switchPrompt}{' '}
+          <button
+            type="button"
+            onClick={toggle}
+            className="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink"
+          >
+            {copy.switchTo}
+          </button>
+        </p>
+      </div>
+    </main>
   );
 }

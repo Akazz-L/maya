@@ -1,12 +1,36 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import {
+  BookMarked,
+  ChevronDown,
+  FileText,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Pencil,
+  Plus,
+  StickyNote,
+  Trash2,
+  X,
+} from 'lucide-react';
 import type { DocumentKind, DocumentSummary } from '../api/types';
 import { cn } from '../lib/utils';
+import { Button } from './ui/button';
+import { ConfirmDialog } from './ui/confirm-dialog';
+import { Menu, MenuItem } from './ui/menu';
 
-const KIND_ICON: Record<string, string> = { bible: '⊙', chapter: '•', note: '▫' };
 // Creatable kinds, in menu order. The bible is seeded with the project, never here.
-const NEW_KINDS: { kind: DocumentKind; label: string }[] = [
-  { kind: 'chapter', label: 'chapter' },
-  { kind: 'note', label: 'note' },
+const NEW_KINDS: { kind: DocumentKind; label: string; hint: string; icon: ReactNode }[] = [
+  {
+    kind: 'chapter',
+    label: 'New chapter',
+    hint: 'Story text, read in order by the AI.',
+    icon: <FileText />,
+  },
+  {
+    kind: 'note',
+    label: 'New note',
+    hint: 'Research and reminders. The AI never reads notes.',
+    icon: <StickyNote />,
+  },
 ];
 
 interface DocumentSidebarProps {
@@ -14,6 +38,8 @@ interface DocumentSidebarProps {
   activeId: string | undefined;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  /** Set when the list is a drawer over the page, on a narrow screen: it closes rather than collapses. */
+  onClose?: () => void;
   onSelect: (id: string) => void;
   onCreate: (kind: DocumentKind) => void;
   onRename: (id: string, title: string) => void;
@@ -21,11 +47,15 @@ interface DocumentSidebarProps {
   onReorder: (ids: string[]) => void;
 }
 
+const iconButton =
+  'flex size-6 shrink-0 items-center justify-center rounded-[5px] text-ink-subtle hover:bg-surface-sunken hover:text-ink [&_svg]:size-3.5';
+
 export function DocumentSidebar({
   documents,
   activeId,
-  collapsed,
+  collapsed: collapsedPref,
   onToggleCollapsed,
+  onClose,
   onSelect,
   onCreate,
   onRename,
@@ -34,31 +64,10 @@ export function DocumentSidebar({
 }: DocumentSidebarProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Dismiss the kind menu on an outside press or Escape. Listeners are bound
-  // only while it is open, so a closed menu costs nothing.
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMenuOpen(false);
-    };
-    window.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [menuOpen]);
-
-  const create = (kind: DocumentKind) => {
-    setMenuOpen(false);
-    onCreate(kind);
-  };
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<DocumentSummary | null>(null);
+  // A drawer is opened to be read; it never shows the collapsed rail.
+  const collapsed = collapsedPref && !onClose;
 
   const commitRename = (id: string, value: string) => {
     const trimmed = value.trim();
@@ -66,20 +75,22 @@ export function DocumentSidebar({
     setRenamingId(null);
   };
 
+  const endDrag = () => {
+    setDraggingId(null);
+    setDropTargetId(null);
+  };
+
   const drop = (targetId: string) => {
-    if (!draggingId || draggingId === targetId) return;
+    if (!draggingId || draggingId === targetId) return endDrag();
     const dragged = documents.find((d) => d.id === draggingId);
     const target = documents.find((d) => d.id === targetId);
     // A drag across sections would silently move a document out of the group
     // its kind puts it in, so confine reordering to one section.
-    if (!dragged || !target || dragged.kind !== target.kind) {
-      setDraggingId(null);
-      return;
-    }
+    if (!dragged || !target || dragged.kind !== target.kind) return endDrag();
     const ids = documents.map((d) => d.id).filter((id) => id !== draggingId);
     ids.splice(ids.indexOf(targetId), 0, draggingId);
     onReorder(ids);
-    setDraggingId(null);
+    endDrag();
   };
 
   // Three sections, because a chapter and a note are read very differently by
@@ -91,110 +102,175 @@ export function DocumentSidebar({
 
   const sectionHeading = (label: string, count: number) =>
     collapsed ? null : (
-      <div className="flex items-baseline justify-between px-2 pt-2 pb-1">
-        <span className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">
-          {label}
-        </span>
-        <span className="text-[10px] text-gray-300 tabular-nums">{count}</span>
+      <div className="flex items-baseline justify-between px-2 pt-4 pb-1">
+        <span className="text-xs font-medium text-ink-subtle">{label}</span>
+        <span className="text-xs text-ink-faint tabular-nums">{count}</span>
       </div>
     );
 
-  const row = (doc: DocumentSummary, draggable: boolean) => (
-    <li
-      key={doc.id}
-      draggable={draggable}
-      onDragStart={() => setDraggingId(doc.id)}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={() => drop(doc.id)}
-      className={cn(
-        'group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm',
-        doc.id === activeId ? 'bg-blue-50 text-blue-900' : 'text-gray-700 hover:bg-gray-100',
-      )}
-    >
-      <span className="w-3 flex-shrink-0 text-center text-xs text-gray-400">
-        {KIND_ICON[doc.kind]}
+  // Chapters are a sequence, so they carry their place in it; the others an icon.
+  const marker = (doc: DocumentSummary, ordinal?: number) =>
+    doc.kind === 'chapter' ? (
+      // Hidden from assistive tech: the list already announces "1 of 3".
+      <span aria-hidden className="w-4 shrink-0 text-center text-xs text-ink-subtle tabular-nums">
+        {ordinal}
       </span>
-      {collapsed ? null : renamingId === doc.id ? (
-        <input
-          autoFocus
-          defaultValue={doc.title}
-          onBlur={(e) => commitRename(doc.id, e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitRename(doc.id, e.currentTarget.value);
-            if (e.key === 'Escape') setRenamingId(null);
-          }}
-          className="min-w-0 flex-1 rounded border border-blue-300 px-1 py-0.5 text-sm"
-        />
-      ) : (
-        <>
-          <button
-            type="button"
-            onClick={() => onSelect(doc.id)}
-            onDoubleClick={() => setRenamingId(doc.id)}
-            className={cn(
-              'min-w-0 flex-1 truncate text-left',
-              // Notes are not story text and never reach an agent, so they read
-              // as marginalia rather than as another chapter.
-              doc.kind === 'note' && 'italic',
-            )}
-          >
-            {doc.title}
-          </button>
-          {doc.kind !== 'bible' && (
+    ) : doc.kind === 'bible' ? (
+      <BookMarked aria-hidden className="size-4 shrink-0 text-ink-subtle" />
+    ) : (
+      <StickyNote aria-hidden className="size-4 shrink-0 text-ink-subtle" />
+    );
+
+  const row = (doc: DocumentSummary, draggable: boolean, ordinal?: number) => {
+    const active = doc.id === activeId;
+    return (
+      <li
+        key={doc.id}
+        draggable={draggable && renamingId !== doc.id}
+        onDragStart={() => setDraggingId(doc.id)}
+        onDragEnd={endDrag}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (draggingId && dropTargetId !== doc.id) setDropTargetId(doc.id);
+        }}
+        onDrop={() => drop(doc.id)}
+        className={cn(
+          'group relative flex h-8 items-center gap-2 rounded-control px-2 text-sm transition-colors',
+          active
+            ? 'bg-surface text-ink shadow-xs ring-1 ring-line'
+            : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
+          draggingId === doc.id && 'opacity-40',
+          // Where the dragged row will land: above this one.
+          dropTargetId === doc.id &&
+            draggingId !== doc.id &&
+            'before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded-full before:bg-pencil',
+          collapsed && 'justify-center px-0',
+        )}
+      >
+        {renamingId === doc.id ? (
+          <>
+            {marker(doc, ordinal)}
+            <input
+              autoFocus
+              aria-label={`Rename ${doc.title}`}
+              defaultValue={doc.title}
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={(e) => commitRename(doc.id, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename(doc.id, e.currentTarget.value);
+                if (e.key === 'Escape') setRenamingId(null);
+              }}
+              className="-mx-1 h-6 min-w-0 flex-1 rounded-[4px] border border-pencil bg-surface px-1 text-sm text-ink outline-none"
+            />
+          </>
+        ) : (
+          <>
             <button
               type="button"
-              title={`Delete ${doc.title}`}
-              onClick={() => {
-                if (window.confirm(`Delete "${doc.title}"? This cannot be undone.`))
-                  onDelete(doc.id);
-              }}
-              className="flex-shrink-0 px-1 text-xs text-gray-300 opacity-0 group-hover:opacity-100 hover:text-red-600"
+              onClick={() => onSelect(doc.id)}
+              onDoubleClick={() => setRenamingId(doc.id)}
+              aria-current={active ? 'page' : undefined}
+              aria-label={collapsed ? doc.title : undefined}
+              title={collapsed ? doc.title : undefined}
+              className={cn(
+                'flex h-full min-w-0 flex-1 items-center gap-2 text-left outline-none',
+                'after:absolute after:inset-0 after:rounded-control focus-visible:after:ring-2 focus-visible:after:ring-pencil',
+                collapsed && 'justify-center',
+              )}
             >
-              ✕
+              {marker(doc, ordinal)}
+              {!collapsed && (
+                <span
+                  className={cn(
+                    'truncate',
+                    active && 'font-medium',
+                    // Notes are not story text and never reach an agent, so they
+                    // read as marginalia rather than as another chapter.
+                    doc.kind === 'note' && 'font-serif italic',
+                  )}
+                >
+                  {doc.title}
+                </span>
+              )}
             </button>
-          )}
-        </>
-      )}
-    </li>
-  );
+            {!collapsed && (
+              // Revealed on hover, and on keyboard focus so they stay reachable.
+              <span className="relative flex opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
+                <button
+                  type="button"
+                  title={`Rename ${doc.title}`}
+                  aria-label={`Rename ${doc.title}`}
+                  onClick={() => setRenamingId(doc.id)}
+                  className={iconButton}
+                >
+                  <Pencil aria-hidden />
+                </button>
+                {doc.kind !== 'bible' && (
+                  <button
+                    type="button"
+                    title={`Delete ${doc.title}`}
+                    aria-label={`Delete ${doc.title}`}
+                    onClick={() => setConfirmingDelete(doc)}
+                    className={cn(iconButton, 'hover:bg-danger-soft hover:text-danger')}
+                  >
+                    <Trash2 aria-hidden />
+                  </button>
+                )}
+              </span>
+            )}
+          </>
+        )}
+      </li>
+    );
+  };
 
   return (
     <nav
+      aria-label="Documents"
       className={cn(
-        'flex flex-shrink-0 flex-col gap-1 border-r border-gray-200 bg-[#fafaf7] py-2',
-        collapsed ? 'w-11 px-1' : 'w-60 px-2',
+        'flex h-full shrink-0 flex-col border-r border-line bg-surface-muted transition-[width] duration-200',
+        onClose ? 'w-72 max-w-[85vw]' : collapsed ? 'w-14' : 'w-64',
       )}
     >
-      <div className="flex items-center justify-between px-1 pb-1">
-        {!collapsed && (
-          <span className="text-xs font-medium tracking-wide text-gray-400 uppercase">
-            Documents
-          </span>
+      <div
+        className={cn(
+          'flex h-11 shrink-0 items-center px-3',
+          collapsed ? 'justify-center' : 'justify-between',
         )}
-        <button
-          type="button"
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          onClick={onToggleCollapsed}
-          className="rounded px-1 text-xs text-gray-400 hover:bg-gray-200"
-        >
-          {collapsed ? '»' : '«'}
-        </button>
+      >
+        {!collapsed && <span className="text-xs font-medium text-ink-subtle">Documents</span>}
+        {onClose ? (
+          <Button variant="ghost" size="icon-sm" aria-label="Close documents" onClick={onClose}>
+            <X aria-hidden />
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!collapsed}
+            onClick={onToggleCollapsed}
+          >
+            {collapsed ? <PanelLeftOpen aria-hidden /> : <PanelLeftClose aria-hidden />}
+          </Button>
+        )}
       </div>
 
-      <ul className="flex flex-col gap-0.5">{bible.map((d) => row(d, false))}</ul>
-      {!collapsed && <div className="my-1 border-t border-gray-200" />}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-2">
+        <ul className="flex flex-col gap-0.5">{bible.map((d) => row(d, false))}</ul>
 
-      <div className="flex-1 overflow-y-auto">
         {sectionHeading('Chapters', chapters.length)}
-        <ul className="flex flex-col gap-0.5">{chapters.map((d) => row(d, true))}</ul>
+        {collapsed && <div aria-hidden className="mx-2 my-2 border-t border-line" />}
+        <ul className="flex flex-col gap-0.5">{chapters.map((d, i) => row(d, true, i + 1))}</ul>
         {chapters.length === 0 && !collapsed && (
-          <p className="px-2 py-1 text-xs text-gray-300">No chapters yet.</p>
+          <p className="px-2 py-1 text-xs text-ink-faint">No chapters yet.</p>
         )}
 
         {notes.length > 0 && (
           <>
-            {!collapsed && <div className="mt-2 border-t border-gray-200" />}
             {sectionHeading('Notes', notes.length)}
+            {collapsed && <div aria-hidden className="mx-2 my-2 border-t border-line" />}
             <ul className="flex flex-col gap-0.5">{notes.map((d) => row(d, true))}</ul>
           </>
         )}
@@ -202,50 +278,59 @@ export function DocumentSidebar({
 
       {/* Split button: the common case (a chapter) stays one click, while the
           caret reaches the other kinds. Without it, notes are uncreatable. */}
-      <div ref={menuRef} className="relative mt-1">
-        {menuOpen && (
-          <div
-            role="menu"
-            className="absolute bottom-full left-0 z-10 mb-1 min-w-36 overflow-hidden rounded-md border border-gray-200 bg-white py-1 shadow-lg"
-          >
-            {NEW_KINDS.map(({ kind, label }) => (
-              <button
-                key={kind}
-                type="button"
-                role="menuitem"
-                onClick={() => create(kind)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-gray-700 hover:bg-gray-100"
-              >
-                <span className="w-3 text-center text-xs text-gray-400">{KIND_ICON[kind]}</span>
-                New {label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="flex rounded-md border border-dashed border-gray-300 text-[13px] text-gray-400">
+      <div className={cn('shrink-0 border-t border-line p-2', collapsed && 'px-1.5')}>
+        <div className="flex rounded-control border border-line bg-surface text-sm text-ink shadow-xs">
           <button
             type="button"
-            onClick={() => create('chapter')}
+            onClick={() => onCreate('chapter')}
             title="New chapter"
             aria-label="New chapter"
-            className="min-w-0 flex-1 rounded-l-md py-1.5 hover:bg-gray-100"
+            className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-l-control font-medium hover:bg-surface-muted"
           >
-            {collapsed ? '+' : '+ New chapter'}
+            <Plus aria-hidden className="size-4 text-ink-subtle" />
+            {!collapsed && 'New chapter'}
           </button>
-          <button
-            type="button"
-            onClick={() => setMenuOpen((o) => !o)}
-            title="Choose document type"
-            aria-label="Choose document type"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            className="flex-shrink-0 rounded-r-md border-l border-dashed border-gray-300 px-1.5 hover:bg-gray-100"
-          >
-            ▾
-          </button>
+          {!collapsed && (
+            <Menu
+              label="New document"
+              side="top"
+              align="end"
+              className="w-64"
+              trigger={(props) => (
+                <button
+                  type="button"
+                  {...props}
+                  title="Choose document type"
+                  aria-label="Choose document type"
+                  className="flex h-8 items-center rounded-r-control border-l border-line px-2 text-ink-subtle hover:bg-surface-muted hover:text-ink"
+                >
+                  <ChevronDown aria-hidden className="size-4" />
+                </button>
+              )}
+            >
+              {NEW_KINDS.map(({ kind, label, hint, icon }) => (
+                <MenuItem key={kind} icon={icon} hint={hint} onSelect={() => onCreate(kind)}>
+                  {label}
+                </MenuItem>
+              ))}
+            </Menu>
+          )}
         </div>
       </div>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={`Delete “${confirmingDelete.title}”?`}
+          description="The document and everything in it will be gone. This can't be undone."
+          confirmLabel="Delete"
+          destructive
+          onCancel={() => setConfirmingDelete(null)}
+          onConfirm={() => {
+            onDelete(confirmingDelete.id);
+            setConfirmingDelete(null);
+          }}
+        />
+      )}
     </nav>
   );
 }

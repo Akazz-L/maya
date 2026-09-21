@@ -1,7 +1,10 @@
 // Sits under the reviewed span. Accept is focused on mount so Enter accepts;
 // the layer also listens for Escape and ⌘↵ window-wide while reviewing.
 import { useEffect, useRef } from 'react';
-import { cn } from '../lib/utils';
+import { AlertCircle, Check, RotateCcw, X } from 'lucide-react';
+import { ReviewBar, ReviewDivider, ReviewHint } from './ReviewBar';
+import { Button } from './ui/button';
+import { Kbd } from './ui/feedback';
 
 export interface RewriteReviewBarProps {
   error: string | null;
@@ -11,9 +14,6 @@ export interface RewriteReviewBarProps {
   onDiscard: () => void;
   onRetry: () => void;
 }
-
-const ghost =
-  'rounded-lg px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-800';
 
 export function RewriteReviewBar({
   error,
@@ -28,50 +28,49 @@ export function RewriteReviewBar({
     primary.current?.focus();
   }, []);
 
-  return (
-    <div
-      role="toolbar"
-      aria-label="Review rewrite"
-      className={cn(
-        'flex max-w-[calc(100vw-4rem)] items-center gap-1 rounded-xl border bg-white p-1.5 shadow-lg',
-        error ? 'border-red-200 shadow-red-900/10' : 'border-violet-200 shadow-violet-900/10',
-      )}
-    >
-      {error ? (
-        <>
-          <span className="max-w-xs truncate px-2 text-xs text-red-700" title={error}>
+  if (error) {
+    return (
+      <ReviewBar label="Review rewrite" failed>
+        <span role="alert" className="flex max-w-xs items-center gap-1.5 px-2 text-xs text-danger">
+          <AlertCircle aria-hidden className="size-3.5 shrink-0" />
+          <span className="truncate" title={error}>
             {error}
           </span>
-          <button ref={primary} type="button" onClick={onRetry} className={ghost}>
-            ↻ Retry
-          </button>
-          <button type="button" onClick={onDiscard} className={ghost}>
-            ✕ Discard
-          </button>
-        </>
-      ) : (
-        <>
-          <button
-            ref={primary}
-            type="button"
-            onClick={onAccept}
-            className="rounded-lg bg-violet-600 px-3 py-1 text-xs font-medium text-white hover:bg-violet-700"
-          >
-            ✓ Accept
-          </button>
-          <button type="button" onClick={onDiscard} className={ghost}>
-            ✕ Discard
-          </button>
-          <button type="button" onClick={onRetry} className={ghost}>
-            ↻ Try again
-          </button>
-          <span className="mx-0.5 h-4 w-px bg-gray-200" aria-hidden />
-          <button type="button" onClick={onToggleDiff} className={ghost}>
-            {showDiff ? 'Show result' : 'Show diff'}
-          </button>
-          <span className="pl-1 pr-1.5 text-[11px] text-gray-400">↵ accept · esc discard</span>
-        </>
-      )}
-    </div>
+        </span>
+        <Button ref={primary} variant="secondary" size="sm" onClick={onRetry}>
+          <RotateCcw aria-hidden />
+          Retry
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onDiscard}>
+          <X aria-hidden />
+          Discard
+        </Button>
+      </ReviewBar>
+    );
+  }
+
+  return (
+    <ReviewBar label="Review rewrite">
+      <Button ref={primary} variant="pencil" size="sm" onClick={onAccept}>
+        <Check aria-hidden />
+        Accept
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onDiscard}>
+        <X aria-hidden />
+        Discard
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onRetry}>
+        <RotateCcw aria-hidden />
+        Try again
+      </Button>
+      <ReviewDivider />
+      <Button variant="ghost" size="sm" onClick={onToggleDiff}>
+        {showDiff ? 'Show result' : 'Show diff'}
+      </Button>
+      <ReviewHint>
+        <Kbd>↵</Kbd> accept
+        <Kbd className="ml-1">esc</Kbd> discard
+      </ReviewHint>
+    </ReviewBar>
   );
 }

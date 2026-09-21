@@ -63,30 +63,45 @@ export class DiffWidget extends WidgetType {
   }
 }
 
+// Colours are the design tokens from index.css: the AI's work in blue pencil,
+// removals in proofreader's red, insertions in green.
 export const diffTheme = EditorView.baseTheme({
   '.cm-rewrite-selection': {
-    backgroundColor: '#ede9fe',
-    boxShadow: '0 0 0 2px #ede9fe',
+    backgroundColor: 'var(--color-pencil-soft)',
+    boxShadow: '0 0 0 2px var(--color-pencil-soft)',
     borderRadius: '2px',
   },
   '.cm-rewrite-widget': { whiteSpace: 'pre-wrap', borderRadius: '2px' },
-  '.cm-rewrite-stream': { backgroundColor: '#ede9fe', color: '#4c1d95', boxShadow: '0 0 0 2px #ede9fe' },
-  '.cm-rewrite-result': { backgroundColor: '#ede9fe', boxShadow: '0 0 0 2px #ede9fe' },
-  '.cm-rewrite-diff': { boxShadow: '0 0 0 2px #f5f3ff', backgroundColor: '#f5f3ff' },
-  '.cm-rewrite-del': {
-    backgroundColor: '#ffe4e6',
-    color: '#be123c',
-    textDecoration: 'line-through',
-    textDecorationColor: '#fb7185',
+  '.cm-rewrite-stream': {
+    backgroundColor: 'var(--color-pencil-faint)',
+    color: 'var(--color-pencil-strong)',
+    boxShadow: '0 0 0 2px var(--color-pencil-faint)',
   },
-  '.cm-rewrite-ins': { backgroundColor: '#dcfce7', color: '#15803d' },
+  '.cm-rewrite-result': {
+    backgroundColor: 'var(--color-pencil-faint)',
+    boxShadow: '0 0 0 2px var(--color-pencil-faint)',
+  },
+  '.cm-rewrite-diff': {
+    backgroundColor: 'var(--color-pencil-faint)',
+    boxShadow: '0 0 0 2px var(--color-pencil-faint)',
+  },
+  '.cm-rewrite-del': {
+    backgroundColor: 'var(--color-diff-del-bg)',
+    color: 'var(--color-diff-del)',
+    textDecoration: 'line-through',
+    textDecorationThickness: '1px',
+  },
+  '.cm-rewrite-ins': {
+    backgroundColor: 'var(--color-diff-ins-bg)',
+    color: 'var(--color-diff-ins)',
+  },
   '.cm-rewrite-caret': {
     display: 'inline-block',
     width: '2px',
     height: '1em',
     verticalAlign: 'text-bottom',
     marginLeft: '1px',
-    backgroundColor: '#7c3aed',
+    backgroundColor: 'var(--color-pencil)',
     animation: 'cm-rewrite-blink 1s steps(2, start) infinite',
   },
   '@keyframes cm-rewrite-blink': { to: { visibility: 'hidden' } },
