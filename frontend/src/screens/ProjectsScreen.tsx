@@ -1,76 +1,108 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { createProject, listProjects } from '../api/endpoints';
-import { useAuth } from '../auth/AuthContext';
+import { Link, useNavigate } from 'react-router-dom';
+import { Plus } from 'lucide-react';
+import type { ProjectSummary } from '../api/types';
+import { AccountMenu } from '../components/AccountMenu';
+import { Wordmark } from '../components/Wordmark';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
+import { Input } from '../components/ui/field';
+import { useCreateProject, useProjects } from '../hooks/queries';
+
+const started = (iso: string) =>
+  // In the interface's language, so the date reads as part of the sentence around it.
+  new Date(iso).toLocaleDateString('en', { year: 'numeric', month: 'long', day: 'numeric' });
+
+/** A project as the title page of its manuscript. */
+function TitlePage({ project }: { project: ProjectSummary }) {
+  return (
+    <Link
+      to={`/p/${project.project_id}`}
+      className="group flex aspect-[4/5] flex-col items-center justify-center gap-4 rounded-sm bg-paper px-6 text-center shadow-paper transition-transform duration-200 hover:-translate-y-1"
+    >
+      <span className="line-clamp-4 font-serif text-xl leading-snug font-semibold text-balance text-ink group-hover:text-accent-ink">
+        {project.name}
+      </span>
+      <span className="h-px w-8 bg-line" aria-hidden />
+      <span className="text-xs text-ink-3">Started {started(project.created_at)}</span>
+    </Link>
+  );
+}
 
 export function ProjectsScreen() {
-  const { logout } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState('');
-
-  const projects = useQuery({ queryKey: ['projects'], queryFn: listProjects });
-
-  const create = useMutation({
-    mutationFn: (projectName: string) => createProject(projectName),
-    onSuccess: (res) => navigate(`/p/${res.project_id}`),
-  });
+  const projects = useProjects();
+  const create = useCreateProject();
 
   const submitNew = (e: FormEvent) => {
     e.preventDefault();
     const trimmed = name.trim();
-    if (trimmed) create.mutate(trimmed);
+    if (trimmed)
+      create.mutate(trimmed, { onSuccess: (res) => navigate(`/p/${res.project_id}`) });
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f5f0]">
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
-        <h1 className="text-base font-semibold text-gray-800">Your projects</h1>
-        <Button variant="secondary" size="sm" onClick={logout}>
-          Log out
-        </Button>
+    <div className="min-h-screen bg-desk">
+      <header className="flex h-14 items-center justify-between px-4 sm:px-8">
+        <Wordmark />
+        <AccountMenu />
       </header>
 
-      <main className="mx-auto flex max-w-2xl flex-col gap-5 p-6">
-        <form onSubmit={submitNew} className="flex gap-2">
-          <Input
-            placeholder="New project name…"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Button type="submit" disabled={create.isPending || !name.trim()}>
-            {create.isPending ? 'Creating…' : 'Create'}
-          </Button>
-        </form>
+      <main className="mx-auto flex max-w-5xl flex-col gap-10 px-4 pt-10 pb-20 sm:px-8">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+          <h1 className="font-serif text-4xl font-semibold tracking-tight">Your projects</h1>
+          <form onSubmit={submitNew} className="flex w-full gap-2 sm:w-auto">
+            <Input
+              aria-label="New project name"
+              placeholder="Name a new project…"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="bg-paper sm:w-64"
+            />
+            <Button type="submit" disabled={create.isPending || !name.trim()}>
+              <Plus aria-hidden />
+              {create.isPending ? 'Creating…' : 'Create'}
+            </Button>
+          </form>
+        </div>
+
         {create.isError && (
-          <p className="text-xs text-red-700">{(create.error as Error).message}</p>
+          <p role="alert" className="text-sm text-danger">
+            {create.error.message}
+          </p>
         )}
 
-        {projects.isLoading && <p className="text-sm text-gray-400">Loading projects…</p>}
+        {projects.isPending && (
+          <ul aria-label="Loading projects" className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4">
+            {[0, 1, 2].map((i) => (
+              <li key={i} className="aspect-[4/5] animate-pulse rounded-sm bg-surface" />
+            ))}
+          </ul>
+        )}
         {projects.isError && (
-          <p className="text-sm text-red-700">{(projects.error as Error).message}</p>
+          <p role="alert" className="text-sm text-danger">
+            {projects.error.message}
+          </p>
         )}
-        {projects.data && projects.data.length === 0 && (
-          <p className="text-sm text-gray-400">No projects yet — create one to begin.</p>
+        {projects.data?.length === 0 && (
+          <div className="flex flex-col items-start gap-2 rounded-2xl border border-dashed border-line px-8 py-12">
+            <p className="font-serif text-xl">No projects yet.</p>
+            <p className="text-sm text-ink-2">
+              Name one above to begin. Each project starts with a story bible and room for
+              chapters.
+            </p>
+          </div>
         )}
 
-        <ul className="flex flex-col gap-2">
-          {projects.data?.map((p) => (
-            <li key={p.project_id}>
-              <button
-                onClick={() => navigate(`/p/${p.project_id}`)}
-                className="flex w-full items-center justify-between rounded-md border border-gray-200 bg-white px-4 py-3 text-left hover:border-blue-300 hover:bg-blue-50"
-              >
-                <span className="font-medium text-gray-800">{p.name}</span>
-                <span className="text-xs text-gray-400">
-                  {new Date(p.created_at).toLocaleDateString()}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        {!!projects.data?.length && (
+          <ul className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4">
+            {projects.data.map((p) => (
+              <li key={p.project_id}>
+                <TitlePage project={p} />
+              </li>
+            ))}
+          </ul>
+        )}
       </main>
     </div>
   );

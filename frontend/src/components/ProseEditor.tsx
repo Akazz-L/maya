@@ -6,7 +6,6 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { cn } from '../lib/utils';
 
 export interface ProseEditorProps {
   value: string;
@@ -25,17 +24,37 @@ export interface ProseEditorProps {
 /** Marks transactions that mirror the `value` prop, so they don't echo back through onChange. */
 const external = Annotation.define<boolean>();
 
+/**
+ * The prose is a sheet of paper on the desk: a centred column of measured
+ * width, in the manuscript face. Sizes come from CSS variables the parent sets
+ * per breakpoint, so the sheet lines up with the title block above it and
+ * narrows on a phone. The top edge is clipped out of the shadow because the
+ * title block is the top of the same sheet.
+ */
 const proseTheme = EditorView.theme({
-  '&': { height: '100%', fontSize: '15px', backgroundColor: 'transparent', color: '#1f2937' },
+  '&': { height: '100%', fontSize: '17px', backgroundColor: 'transparent', color: 'var(--ink)' },
   '.cm-scroller': {
-    fontFamily: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
-    lineHeight: '1.8',
-    padding: '24px 0',
+    fontFamily: 'var(--font-serif)',
+    lineHeight: '1.85',
+    padding: '0 var(--sheet-gutter, 0px)',
+    scrollbarGutter: 'stable both-edges',
   },
-  '.cm-content': { padding: '0 24px', caretColor: '#1f2937' },
+  '.cm-content': {
+    boxSizing: 'border-box',
+    width: '100%',
+    maxWidth: 'var(--sheet-width, 46rem)',
+    margin: '0 auto',
+    padding: '12px var(--sheet-pad-x, 24px) 40vh',
+    backgroundColor: 'var(--paper)',
+    boxShadow: 'var(--shadow-paper)',
+    clipPath: 'inset(0 -64px -64px -64px)',
+    caretColor: 'var(--accent)',
+    transition: 'opacity 200ms ease',
+  },
   '.cm-line': { padding: '0' },
+  '.cm-cursor': { borderLeftColor: 'var(--accent)', borderLeftWidth: '2px' },
   '&.cm-focused': { outline: 'none' },
-  '.cm-placeholder': { color: '#9ca3af', fontStyle: 'italic' },
+  '.cm-placeholder': { color: 'var(--ink-3)', fontStyle: 'italic' },
 });
 
 const readOnlyConfig = (readOnly: boolean): Extension => [
@@ -118,7 +137,7 @@ export function ProseEditor({
   }, [readOnly, readOnlyComp]);
 
   return (
-    <div className={cn('relative flex-1 min-h-0', readOnly ? 'bg-gray-50' : 'bg-white')}>
+    <div className="relative min-h-0 flex-1" data-readonly={readOnly || undefined}>
       <div ref={host} className="h-full" />
       {children}
     </div>

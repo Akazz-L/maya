@@ -1,8 +1,10 @@
 // The "+" beside the chat composer: specialist passes over the chapter. Picking
 // one sends its turn straight away — the pass has nothing to ask, it reads the
 // chapter and answers with fixes in the prose.
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { Plus, Wand2 } from 'lucide-react';
 import type { AgentOption } from '../api/types';
+import { useDismiss } from '../hooks/useDismiss';
 import { cn } from '../lib/utils';
 
 export interface AgentPickerProps {
@@ -15,26 +17,7 @@ export interface AgentPickerProps {
 export function AgentPicker({ agents, disabledReason, onRun }: AgentPickerProps) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-
-  // Click-away and Escape, so the menu never strands the composer.
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        setOpen(false);
-      }
-    };
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  useDismiss(root, open, () => setOpen(false));
 
   return (
     <div ref={root} className="relative">
@@ -42,29 +25,28 @@ export function AgentPicker({ agents, disabledReason, onRun }: AgentPickerProps)
         type="button"
         aria-label="Run a specialist"
         aria-expanded={open}
+        aria-haspopup="menu"
         title="Specialist passes over this chapter"
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          'flex h-7 w-7 items-center justify-center rounded-full border text-base leading-none transition',
+          'flex size-7 items-center justify-center rounded-full border transition-[background-color,border-color,color,transform]',
           open
-            ? 'border-violet-300 bg-violet-50 text-violet-700'
-            : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700',
+            ? 'rotate-45 border-ai-line bg-ai-soft text-ai-ink'
+            : 'border-line bg-raised text-ink-2 hover:border-ai-line hover:text-ai-ink',
         )}
       >
-        +
+        <Plus aria-hidden className="size-4" />
       </button>
 
       {open && (
         <div
           role="menu"
           aria-label="Specialists"
-          className="absolute bottom-9 left-0 z-30 w-72 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl shadow-gray-900/10"
+          className="absolute bottom-10 left-0 z-30 w-72 origin-bottom-left animate-rise overflow-hidden rounded-xl border border-line bg-raised p-1 shadow-pop"
         >
-          <p className="border-b border-gray-100 px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400">
-            Review this chapter
-          </p>
+          <p className="px-2.5 pt-1.5 pb-1 text-xs font-semibold text-ink-2">Review this chapter</p>
           {disabledReason ? (
-            <p className="px-3 py-2.5 text-xs text-gray-500">{disabledReason}</p>
+            <p className="px-2.5 py-2 text-xs text-ink-3">{disabledReason}</p>
           ) : agents.length ? (
             agents.map((agent) => (
               <button
@@ -75,16 +57,17 @@ export function AgentPicker({ agents, disabledReason, onRun }: AgentPickerProps)
                   setOpen(false);
                   onRun(agent.key);
                 }}
-                className="block w-full px-3 py-2 text-left hover:bg-violet-50"
+                className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-ai-soft"
               >
-                <span className="block text-xs font-medium text-gray-800">{agent.label}</span>
-                <span className="mt-0.5 block text-[11px] leading-snug text-gray-500">
-                  {agent.hint}
+                <Wand2 aria-hidden className="mt-0.5 size-4 shrink-0 text-ai" />
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-[13px] font-medium text-ink">{agent.label}</span>
+                  <span className="text-xs leading-snug text-ink-2">{agent.hint}</span>
                 </span>
               </button>
             ))
           ) : (
-            <p className="px-3 py-2.5 text-xs text-gray-500">No specialists available.</p>
+            <p className="px-2.5 py-2 text-xs text-ink-3">No specialists available.</p>
           )}
         </div>
       )}

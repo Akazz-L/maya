@@ -1,11 +1,191 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/instrument-sans';
+@import '@fontsource-variable/literata';
+@import '@fontsource-variable/literata/wght-italic.css';
 
-html,
-body,
-#root {
-  height: 100%;
+/*
+ * Maya's palette: a manuscript sheet lying on a sage-grey desk.
+ *
+ * Two inks carry meaning and are never used for decoration. Verdigris is the
+ * writer's own hand: primary actions, the open document, focus. Iris is the
+ * machine's: anything the AI proposes, streams, or offers to run. A glance at
+ * a colour therefore says whose words these are.
+ *
+ * Every colour is a variable that swaps wholesale for dark mode, so components
+ * name roles (`bg-paper`, `text-ink-2`) and never switch on the theme.
+ */
+:root {
+  color-scheme: light;
+
+  --desk: #e8ebe5;
+  --surface: #f1f3ee;
+  --paper: #fcfcf9;
+  --raised: #ffffff;
+  --ink: #1d2433;
+  --ink-2: #525b6b;
+  --ink-3: #858c97;
+  --line: #d3d8cf;
+  --line-soft: #e2e6de;
+
+  --accent: #2e6b62;
+  --accent-hover: #245850;
+  --accent-soft: #dceae6;
+  --accent-ink: #1f4e47;
+  --on-accent: #ffffff;
+
+  --ai: #5b4bc4;
+  --ai-hover: #4a3bab;
+  --ai-soft: #eeebfb;
+  --ai-line: #d2cbf5;
+  --ai-ink: #3c2f96;
+  --on-ai: #ffffff;
+
+  --danger: #b23a52;
+  --danger-soft: #f8e4e8;
+  --warn: #9a5f0e;
+  --warn-soft: #f6ead3;
+
+  --ins-bg: #d6ece1;
+  --ins-fg: #1e6547;
+  --del-bg: #f6dde2;
+  --del-fg: #a3304a;
+
+  --shadow-paper: 0 1px 2px rgb(29 36 51 / 0.06), 0 12px 32px -12px rgb(29 36 51 / 0.18);
+  --shadow-pop: 0 2px 6px rgb(29 36 51 / 0.08), 0 16px 40px -12px rgb(29 36 51 / 0.28);
 }
 
-* {
-  box-sizing: border-box;
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --desk: #111419;
+    --surface: #161a20;
+    --paper: #1c2028;
+    --raised: #222731;
+    --ink: #e7e5de;
+    --ink-2: #a9aeb8;
+    --ink-3: #747b87;
+    --line: #2d333d;
+    --line-soft: #242932;
+
+    --accent: #6fb3a7;
+    --accent-hover: #86c4b9;
+    --accent-soft: #1d3431;
+    --accent-ink: #9fd3c9;
+    --on-accent: #0e1917;
+
+    --ai: #a99cf2;
+    --ai-hover: #bdb2f6;
+    --ai-soft: #25213d;
+    --ai-line: #3f3868;
+    --ai-ink: #cbc2fa;
+    --on-ai: #16122b;
+
+    --danger: #e27c90;
+    --danger-soft: #3a1e26;
+    --warn: #e0a94f;
+    --warn-soft: #3a2e17;
+
+    --ins-bg: #1c3a2f;
+    --ins-fg: #8fd6b4;
+    --del-bg: #40202a;
+    --del-fg: #f0a2b2;
+
+    --shadow-paper: 0 1px 2px rgb(0 0 0 / 0.4), 0 16px 40px -16px rgb(0 0 0 / 0.7);
+    --shadow-pop: 0 2px 6px rgb(0 0 0 / 0.4), 0 18px 44px -12px rgb(0 0 0 / 0.75);
+  }
+}
+
+@theme inline {
+  --font-sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Literata Variable', ui-serif, Georgia, serif;
+
+  --color-desk: var(--desk);
+  --color-surface: var(--surface);
+  --color-paper: var(--paper);
+  --color-raised: var(--raised);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-on-accent: var(--on-accent);
+
+  --color-ai: var(--ai);
+  --color-ai-hover: var(--ai-hover);
+  --color-ai-soft: var(--ai-soft);
+  --color-ai-line: var(--ai-line);
+  --color-ai-ink: var(--ai-ink);
+  --color-on-ai: var(--on-ai);
+
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+
+  --shadow-paper: var(--shadow-paper);
+  --shadow-pop: var(--shadow-pop);
+
+  --animate-rise: rise 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade: fade 200ms ease-out;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-desk font-sans text-ink antialiased;
+    font-feature-settings: 'ss01';
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 24%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+
+  dialog::backdrop {
+    background: color-mix(in oklab, var(--desk) 55%, rgb(0 0 0 / 0.35));
+    backdrop-filter: blur(2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }

@@ -9,6 +9,8 @@ import { useSelectionRewrite } from '../hooks/useSelectionRewrite';
 import { contextWindows, type TextRange } from '../lib/rewrite';
 import { RewritePrompt } from './RewritePrompt';
 import { RewriteReviewBar } from './RewriteReviewBar';
+import { Sparkles, X } from 'lucide-react';
+import { StreamingChip } from './ui/review';
 
 export interface RewriteLayerProps {
   view: EditorView;
@@ -212,17 +214,19 @@ export function RewriteLayer({
         // Still shown when the budget is spent, so ⌘K on a selection explains
         // itself instead of doing nothing.
         (aiBlocked ? (
-          <span className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white py-1 px-2.5 text-xs font-medium text-gray-400 shadow-md shadow-gray-900/10">
-            <span aria-hidden>✦</span> Rewrite paused — AI budget used
+          <span className="flex items-center gap-1.5 rounded-full border border-line bg-raised px-2.5 py-1 text-xs font-medium text-ink-3 shadow-pop">
+            <Sparkles aria-hidden className="size-3.5" /> Rewrite paused — AI budget used
           </span>
         ) : (
           <button
             type="button"
             onClick={open}
-            className="flex items-center gap-1.5 rounded-full border border-violet-200 bg-white py-1 pl-2.5 pr-2 text-xs font-medium text-violet-700 shadow-md shadow-violet-900/10 hover:bg-violet-50"
+            className="flex animate-rise items-center gap-1.5 rounded-full border border-ai-line bg-raised py-1 pr-1.5 pl-2.5 text-xs font-medium text-ai-ink shadow-pop transition-colors hover:bg-ai-soft"
           >
-            <span aria-hidden>✦</span> Rewrite
-            <kbd className="rounded bg-violet-50 px-1 font-sans text-[10px] text-violet-500">⌘K</kbd>
+            <Sparkles aria-hidden className="size-3.5 text-ai" /> Rewrite
+            <kbd className="rounded-md bg-ai-soft px-1.5 py-px font-sans text-[10px] text-ai-ink">
+              ⌘K
+            </kbd>
           </button>
         ))}
 
@@ -236,13 +240,16 @@ export function RewriteLayer({
       )}
 
       {phase === 'streaming' && (
-        <div className="flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-1.5 text-xs text-violet-700 shadow-lg shadow-violet-900/10">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" aria-hidden />
+        <StreamingChip>
           Rewriting…
-          <button type="button" onClick={discard} className="ml-1 text-gray-500 hover:text-gray-800">
-            ✕ Cancel
+          <button
+            type="button"
+            onClick={discard}
+            className="ml-1 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-ink-2 hover:bg-ink/6 hover:text-ink"
+          >
+            <X aria-hidden className="size-3" /> Cancel
           </button>
-        </div>
+        </StreamingChip>
       )}
 
       {phase === 'reviewing' && (

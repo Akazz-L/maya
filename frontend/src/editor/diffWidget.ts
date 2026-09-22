@@ -63,30 +63,41 @@ export class DiffWidget extends WidgetType {
   }
 }
 
+// Colours are the app's CSS variables, so the overlay follows light and dark
+// mode with the rest of the page. Iris marks the AI's text; the diff itself
+// uses the shared insert/delete pair.
 export const diffTheme = EditorView.baseTheme({
   '.cm-rewrite-selection': {
-    backgroundColor: '#ede9fe',
-    boxShadow: '0 0 0 2px #ede9fe',
+    backgroundColor: 'var(--ai-soft)',
+    boxShadow: '0 0 0 2px var(--ai-soft)',
     borderRadius: '2px',
   },
   '.cm-rewrite-widget': { whiteSpace: 'pre-wrap', borderRadius: '2px' },
-  '.cm-rewrite-stream': { backgroundColor: '#ede9fe', color: '#4c1d95', boxShadow: '0 0 0 2px #ede9fe' },
-  '.cm-rewrite-result': { backgroundColor: '#ede9fe', boxShadow: '0 0 0 2px #ede9fe' },
-  '.cm-rewrite-diff': { boxShadow: '0 0 0 2px #f5f3ff', backgroundColor: '#f5f3ff' },
-  '.cm-rewrite-del': {
-    backgroundColor: '#ffe4e6',
-    color: '#be123c',
-    textDecoration: 'line-through',
-    textDecorationColor: '#fb7185',
+  '.cm-rewrite-stream': {
+    backgroundColor: 'var(--ai-soft)',
+    color: 'var(--ai-ink)',
+    boxShadow: '0 0 0 2px var(--ai-soft)',
   },
-  '.cm-rewrite-ins': { backgroundColor: '#dcfce7', color: '#15803d' },
+  '.cm-rewrite-result': { backgroundColor: 'var(--ai-soft)', boxShadow: '0 0 0 2px var(--ai-soft)' },
+  '.cm-rewrite-diff': {
+    backgroundColor: 'color-mix(in oklab, var(--ai-soft) 55%, transparent)',
+    boxShadow: '0 0 0 2px color-mix(in oklab, var(--ai-soft) 55%, transparent)',
+  },
+  '.cm-rewrite-del': {
+    backgroundColor: 'var(--del-bg)',
+    color: 'var(--del-fg)',
+    textDecoration: 'line-through',
+    textDecorationThickness: '1px',
+    borderRadius: '2px',
+  },
+  '.cm-rewrite-ins': { backgroundColor: 'var(--ins-bg)', color: 'var(--ins-fg)', borderRadius: '2px' },
   '.cm-rewrite-caret': {
     display: 'inline-block',
     width: '2px',
     height: '1em',
     verticalAlign: 'text-bottom',
     marginLeft: '1px',
-    backgroundColor: '#7c3aed',
+    backgroundColor: 'var(--ai)',
     animation: 'cm-rewrite-blink 1s steps(2, start) infinite',
   },
   '@keyframes cm-rewrite-blink': { to: { visibility: 'hidden' } },

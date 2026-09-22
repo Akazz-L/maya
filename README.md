@@ -12,7 +12,7 @@ Edit the plan, regenerate or remove it (with undo), or draft from it.
 Prior chapters are summarized automatically and fed back in as context.
 
 Beside each chapter is a chat that does the drafting.
-Ask it for a first draft, a draft from the saved scene plan (the Plan view's Draft from plan → sends exactly that), a continuation, or changes to what is already written.
+Ask it for a first draft, a draft from the saved scene plan (the Plan view's Draft from plan sends exactly that), a continuation, or changes to what is already written.
 Planning is optional: a chapter can go straight from a prompt to a draft.
 Every change the chat makes arrives as a proposal in the editor, streamed in place and shown as a diff you accept or discard.
 Targeted changes arrive as a set of separate fixes, each drawn where it applies with one line on what is wrong, each taken or left on its own.
@@ -85,7 +85,7 @@ every toolbar action has something to act on:
 |---|---|---|
 | Story Bible | Filled in, not the empty template | Context for every agent |
 | Chapter 1 | Prose plus a pre-cached summary | **Continuity check** from the chat's `+`, and prior-chapter context |
-| Chapter 2 | Scene plan saved, body empty | **Draft from plan →** in the Plan view, which drafts through the chat |
+| Chapter 2 | Scene plan saved, body empty | **Draft from plan** in the Plan view, which drafts through the chat |
 | Chapter 3 | Context only | **Plan**, written by hand or generated, or a draft straight from a chat prompt |
 | Research note | Scratch notes | Notes are excluded from all agent context |
 

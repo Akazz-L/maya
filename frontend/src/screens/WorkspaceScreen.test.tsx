@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -206,8 +206,9 @@ describe('WorkspaceScreen', () => {
   it('lists the documents in the sidebar', async () => {
     mockApi();
     renderAt('/p/p1/d/c1');
-    expect(await screen.findByText('Story Bible')).toBeInTheDocument();
-    expect(screen.getByText('Chapter 1')).toBeInTheDocument();
+    const sidebar = await screen.findByRole('navigation', { name: 'Documents' });
+    expect(await within(sidebar).findByText('Story Bible')).toBeInTheDocument();
+    expect(within(sidebar).getByText('Chapter 1')).toBeInTheDocument();
   });
 
   it('opens the document named in the route', async () => {

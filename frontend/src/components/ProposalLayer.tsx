@@ -18,6 +18,7 @@ import {
 import type { SuggestionHost } from '../editor/suggestionWidget';
 import { changedSpan, liveFixes, shiftFixes, sha256Hex, streamingBody, type LiveFix } from '../lib/chat';
 import { ProposalReviewBar } from './ProposalReviewBar';
+import { StreamingChip } from './ui/review';
 
 export type ProposalView =
   | { phase: 'streaming'; mode: 'replace' | 'append' | null; text: string }
@@ -323,19 +324,16 @@ export function ProposalLayer({ view, proposal, hostRef, onResolve }: ProposalLa
   if (set && !live?.length) return null; // every fix reviewed; the bar goes with them
 
   return (
-    <div className="absolute right-4 top-3 z-20">
+    <div className="absolute top-4 right-4 z-20 sm:right-6">
       {proposal.phase === 'streaming' ? (
-        <div className="flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-1.5 text-xs text-violet-700 shadow-lg shadow-violet-900/10">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" aria-hidden />
-          Writing…
-        </div>
+        <StreamingChip>Writing…</StreamingChip>
       ) : set ? (
         <ProposalReviewBar
           title={`${set.label ?? 'Suggested fixes'} · ${live!.length} of ${total} left`}
           onAccept={acceptAll}
           onDiscard={discardAll}
-          acceptLabel="✓ Accept all"
-          discardLabel="✕ Discard all"
+          acceptLabel="Accept all"
+          discardLabel="Discard all"
           hint="⌘↵ accept all · esc discard all"
         />
       ) : (

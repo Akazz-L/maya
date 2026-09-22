@@ -95,12 +95,12 @@ export class SuggestionWidget extends WidgetType {
     // Labelled by number, so a chapter under review has one unambiguous Accept
     // per fix for both a screen reader and a test.
     actions.appendChild(
-      this.button(`✓ Accept`, `Accept fix ${number}`, 'cm-suggestion-accept', () =>
+      this.button('Accept', `Accept fix ${number}`, 'cm-suggestion-accept', () =>
         this.host.current.onAccept(index),
       ),
     );
     actions.appendChild(
-      this.button(`✕ Discard`, `Discard fix ${number}`, 'cm-suggestion-discard', () =>
+      this.button('Discard', `Discard fix ${number}`, 'cm-suggestion-discard', () =>
         this.host.current.onDiscard(index),
       ),
     );
@@ -130,57 +130,70 @@ export class SuggestionWidget extends WidgetType {
   }
 }
 
+const SANS = 'var(--font-sans)';
+
+// A margin note under the passage it concerns: the edge colour says how much
+// the fix matters, the rest is iris because the note is the AI's.
 export const suggestionTheme = EditorView.baseTheme({
   '.cm-suggestion': { whiteSpace: 'pre-wrap' },
   '.cm-suggestion-diff': {
     borderRadius: '2px',
-    backgroundColor: '#f5f3ff',
-    boxShadow: '0 0 0 2px #f5f3ff',
+    backgroundColor: 'color-mix(in oklab, var(--ai-soft) 55%, transparent)',
+    boxShadow: '0 0 0 2px color-mix(in oklab, var(--ai-soft) 55%, transparent)',
   },
   '.cm-suggestion-card': {
     display: 'block',
-    margin: '6px 0 10px',
-    padding: '7px 9px',
-    borderRadius: '8px',
-    border: '1px solid #ddd6fe',
-    borderLeft: '3px solid #a78bfa',
-    backgroundColor: '#fbfaff',
-    font: '500 12px/1.45 ui-sans-serif, system-ui, sans-serif',
+    margin: '8px 0 14px',
+    padding: '10px 12px',
+    borderRadius: '10px',
+    border: '1px solid var(--ai-line)',
+    borderLeft: '3px solid var(--ai)',
+    backgroundColor: 'var(--raised)',
+    boxShadow: '0 1px 2px rgb(29 36 51 / 0.06)',
+    font: `400 13px/1.5 ${SANS}`,
     whiteSpace: 'normal',
     maxWidth: '34rem',
   },
-  '.cm-suggestion-critical': { borderLeftColor: '#f43f5e' },
-  '.cm-suggestion-minor': { borderLeftColor: '#f59e0b' },
-  '.cm-suggestion-style': { borderLeftColor: '#a78bfa' },
+  '.cm-suggestion-critical': { borderLeftColor: 'var(--danger)' },
+  '.cm-suggestion-minor': { borderLeftColor: 'var(--warn)' },
+  '.cm-suggestion-style': { borderLeftColor: 'var(--ai)' },
   '.cm-suggestion-head': {
     display: 'flex',
     alignItems: 'center',
-    gap: '5px',
-    fontSize: '10.5px',
+    gap: '6px',
+    fontSize: '12px',
     fontWeight: '600',
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase',
-    color: '#6b7280',
+    color: 'var(--ink-2)',
   },
   '.cm-suggestion-dot': {
     width: '6px',
     height: '6px',
     borderRadius: '50%',
-    backgroundColor: '#a78bfa',
+    backgroundColor: 'var(--ai)',
   },
-  '.cm-suggestion-critical .cm-suggestion-dot': { backgroundColor: '#f43f5e' },
-  '.cm-suggestion-minor .cm-suggestion-dot': { backgroundColor: '#f59e0b' },
-  '.cm-suggestion-why': { display: 'block', marginTop: '3px', color: '#374151', fontWeight: '400' },
-  '.cm-suggestion-actions': { display: 'flex', gap: '5px', marginTop: '7px' },
+  '.cm-suggestion-critical .cm-suggestion-dot': { backgroundColor: 'var(--danger)' },
+  '.cm-suggestion-minor .cm-suggestion-dot': { backgroundColor: 'var(--warn)' },
+  '.cm-suggestion-why': { display: 'block', marginTop: '3px', color: 'var(--ink)' },
+  '.cm-suggestion-actions': { display: 'flex', gap: '6px', marginTop: '9px' },
   '.cm-suggestion-actions button': {
-    borderRadius: '6px',
+    height: '26px',
+    borderRadius: '7px',
     border: '1px solid transparent',
-    padding: '2px 8px',
-    font: '500 11.5px ui-sans-serif, system-ui, sans-serif',
+    padding: '0 10px',
+    font: `500 12px ${SANS}`,
     cursor: 'pointer',
+    transition: 'background-color 150ms',
   },
-  '.cm-suggestion-accept': { backgroundColor: '#7c3aed', color: '#fff' },
-  '.cm-suggestion-accept:hover': { backgroundColor: '#6d28d9' },
-  '.cm-suggestion-discard': { backgroundColor: '#fff', borderColor: '#e5e7eb', color: '#4b5563' },
-  '.cm-suggestion-discard:hover': { backgroundColor: '#f9fafb' },
+  '.cm-suggestion-accept': { backgroundColor: 'var(--ai)', color: 'var(--on-ai)' },
+  '.cm-suggestion-accept:hover': { backgroundColor: 'var(--ai-hover)' },
+  '.cm-suggestion-discard': {
+    backgroundColor: 'transparent',
+    borderColor: 'var(--line)',
+    color: 'var(--ink-2)',
+  },
+  '.cm-suggestion-discard:hover': { backgroundColor: 'var(--surface)', color: 'var(--ink)' },
+  '.cm-suggestion-actions button:focus-visible': {
+    outline: '2px solid var(--accent)',
+    outlineOffset: '2px',
+  },
 });

@@ -1,4 +1,5 @@
 import type { UsageSnapshot } from '../api/types';
+import { cn } from '../lib/utils';
 
 /** Amber once most of the month's budget is gone, so the wall isn't a surprise. */
 const WARN_AT = 80;
@@ -14,12 +15,18 @@ function formatReset(isoDate: string): string {
 
 export function UsageMeter({ usage }: { usage: UsageSnapshot }) {
   const { percent, blocked } = usage;
-  const tone = blocked ? 'red' : percent >= WARN_AT ? 'amber' : 'neutral';
+  const tone = blocked ? 'danger' : percent >= WARN_AT ? 'warn' : 'neutral';
   const reset = formatReset(usage.period_end);
 
   return (
     <div
-      className="flex items-center gap-2"
+      className={cn(
+        'flex h-8 items-center gap-2.5 rounded-lg px-2.5',
+        // On a phone the meter only speaks up once the budget needs attention.
+        tone === 'neutral' && 'max-sm:hidden',
+        tone === 'danger' && 'bg-danger-soft',
+        tone === 'warn' && 'bg-warn-soft',
+      )}
       title={
         blocked
           ? `AI is paused until the budget resets on ${reset}.`
@@ -32,20 +39,28 @@ export function UsageMeter({ usage }: { usage: UsageSnapshot }) {
         aria-valuenow={Math.round(percent)}
         aria-valuemin={0}
         aria-valuemax={100}
-        className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-200"
+        className="h-1.5 w-16 overflow-hidden rounded-full bg-ink/10"
       >
         <div
-          className={
-            tone === 'red' ? 'h-full bg-red-500' : tone === 'amber' ? 'h-full bg-amber-500' : 'h-full bg-gray-500'
-          }
+          className={cn(
+            'h-full rounded-full transition-[width] duration-500',
+            tone === 'danger' ? 'bg-danger' : tone === 'warn' ? 'bg-warn' : 'bg-accent',
+          )}
           // Capped at 100 so a call that overshot the cap doesn't overflow the track.
           style={{ width: `${Math.min(percent, 100)}%` }}
         />
       </div>
       {blocked ? (
-        <span className="text-xs font-medium text-red-700">Budget used — AI paused until {reset}</span>
+        <span className="text-xs font-medium text-danger">
+          Budget used — AI paused until {reset}
+        </span>
       ) : (
-        <span className={tone === 'amber' ? 'text-xs text-amber-700' : 'text-xs text-gray-500'}>
+        <span
+          className={cn(
+            'text-xs tabular-nums max-sm:hidden',
+            tone === 'warn' ? 'font-medium text-warn' : 'text-ink-2',
+          )}
+        >
           {formatUsd(usage.spent_usd)} / {formatUsd(usage.budget_usd)} · {Math.round(percent)}%
         </span>
       )}

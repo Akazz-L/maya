@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatPane } from './ChatPane';
 import type { AgentOption, ChatMessage, ProposalOutcome, Suggestion } from '../api/types';
@@ -179,13 +179,26 @@ describe('ChatPane', () => {
   it('clears the conversation once confirmed', async () => {
     const p = props();
     render(<ChatPane {...p} />);
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
     await userEvent.click(screen.getByRole('button', { name: /clear/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(p.onClear).not.toHaveBeenCalled();
 
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     await userEvent.click(screen.getByRole('button', { name: /clear/i }));
+    const dialog = screen.getByRole('alertdialog', { name: /clear this conversation/i });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Clear' }));
     expect(p.onClear).toHaveBeenCalled();
+  });
+
+  it('offers starters on an empty conversation, and sends one as written', async () => {
+    const p = props({ messages: [] });
+    render(<ChatPane {...p} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Draft this chapter.' }));
+    expect(p.onSend).toHaveBeenCalledWith('Draft this chapter.');
+  });
+
+  it('disables the starters while a message cannot be sent', () => {
+    render(<ChatPane {...props({ messages: [], disabledReason: 'AI budget used — chat is paused.' })} />);
+    expect(screen.getByRole('button', { name: 'Draft this chapter.' })).toBeDisabled();
   });
 
   it('hides itself', async () => {

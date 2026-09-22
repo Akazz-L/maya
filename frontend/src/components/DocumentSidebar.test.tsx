@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DocumentSidebar } from './DocumentSidebar';
 import type { DocumentSummary } from '../api/types';
@@ -96,16 +96,20 @@ describe('DocumentSidebar', () => {
 
   it('deletes behind a confirm', async () => {
     const props = setup();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     await userEvent.click(screen.getByTitle('Delete Chapter 1'));
+    expect(props.onDelete).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('alertdialog', { name: /delete “chapter 1”/i });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
     expect(props.onDelete).toHaveBeenCalledWith('c1');
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
   it('does not delete when the confirm is declined', async () => {
     const props = setup();
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
     await userEvent.click(screen.getByTitle('Delete Chapter 1'));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(props.onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
   it('offers no delete control for the story bible', () => {

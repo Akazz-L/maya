@@ -1,20 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { generatePlan, getProject, updateDocument, type DocumentPatch } from '../api/endpoints';
+import { X } from 'lucide-react';
+import { generatePlan, updateDocument } from '../api/endpoints';
 import type { DocumentDetail, ProposalOutcome, ScenePlan } from '../api/types';
-import { useAuth } from '../auth/AuthContext';
 import { ChapterToolbar } from '../components/ChapterToolbar';
 import { chapterPanelId, chapterTabId, type ChapterView } from '../components/chapterView';
 import { ChatPane } from '../components/ChatPane';
-import { ModelPicker } from '../components/ModelPicker';
-import { UsageMeter } from '../components/UsageMeter';
-import { AUTOSAVE_MS, DocumentEditor, type SaveState } from '../components/DocumentEditor';
+import { DocumentEditor } from '../components/DocumentEditor';
 import { DocumentSidebar } from '../components/DocumentSidebar';
 import { PlanView, type PlanUndo } from '../components/PlanView';
-import type { ProposalView } from '../components/ProposalLayer';
-import { Button } from '../components/ui/button';
+import { WorkspaceHeader } from '../components/WorkspaceHeader';
 import { useChat } from '../hooks/useChat';
+import { useDocumentSaving } from '../hooks/useDocumentSaving';
+import { useStoredFlag } from '../hooks/useStoredFlag';
 import {
   documentKey,
   documentsKey,
@@ -24,9 +23,11 @@ import {
   useDocument,
   useDocuments,
   useMe,
+  useProject,
   useReorderDocuments,
   useSetModel,
 } from '../hooks/queries';
+import { proposalViewOf } from '../lib/proposalView';
 
 const COLLAPSE_KEY = 'maya.sidebar.collapsed';
 const CHAT_KEY = 'maya.chat.open';
@@ -36,12 +37,11 @@ const DRAFT_FROM_PLAN = 'Draft this chapter from the scene plan.';
 
 export function WorkspaceScreen() {
   const { projectId, documentId } = useParams<{ projectId: string; documentId?: string }>();
-  const { logout } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1');
-  const [chatOpen, setChatOpen] = useState(() => localStorage.getItem(CHAT_KEY) !== '0');
+  const [collapsed, setCollapsed] = useStoredFlag(COLLAPSE_KEY, false);
+  const [chatOpen, setChatOpen] = useStoredFlag(CHAT_KEY, true);
   const [chapterView, setView] = useState<ChapterView>('write');
   // Tagged with its document, because a regenerate can finish after the writer moved on.
   const [undoState, setUndoState] = useState<{
@@ -49,10 +49,6 @@ export function WorkspaceScreen() {
     plan: ScenePlan;
     reason: PlanUndo;
   } | null>(null);
-  // The chapter context as the writer is typing it. It lives here rather than in
-  // the editor because the Plan view edits the same text; tagged with its
-  // document, so switching documents falls back to what the server sent.
-  const [contextEdit, setContextEdit] = useState<{ id: string; value: string } | null>(null);
   // Opening a document, or coming back to one, starts on the prose with no undo
   // pending. Reset during render rather than in an effect, so the previous
   // document's view never paints over the new one.
@@ -64,25 +60,10 @@ export function WorkspaceScreen() {
   }
   // Whether a chat proposal was on screen last render; see where it is compared.
   const [proposalShown, setProposalShown] = useState(false);
-  const [saveState, setSaveState] = useState<SaveState>('idle');
   const [rewriteBusy, setRewriteBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Holds the in-flight autosaves so a request that reads the document
-  // server-side can wait for them to land. Without this the server works from a
-  // stale body and the writer's last keystrokes vanish.
-  const pendingSave = useRef<Promise<unknown>>(Promise.resolve());
-  // Filled by the editor: saves a title or body edit still inside the debounce.
-  const editorFlush = useRef<(() => void) | null>(null);
-  // The chapter context edit waiting out its own debounce, with the document it belongs to.
-  const contextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const contextPending = useRef<{ id: string; value: string } | null>(null);
-
-  const project = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: () => getProject(projectId!),
-    enabled: !!projectId,
-  });
+  const project = useProject(projectId);
   const documents = useDocuments(projectId!);
   const document = useDocument(projectId!, documentId);
   const createDoc = useCreateDocument(projectId!);
@@ -91,6 +72,8 @@ export function WorkspaceScreen() {
   const me = useMe();
   const setModel = useSetModel();
   const applyUsage = useApplyUsage();
+  const saving = useDocumentSaving(projectId!, documentId);
+  const { save, settle } = saving;
 
   // With no document in the route, open the bible.
   useEffect(() => {
@@ -108,61 +91,6 @@ export function WorkspaceScreen() {
     },
     [qc, projectId],
   );
-  const patchCache = useCallback(
-    (fields: Partial<DocumentDetail>) => patchDocument(documentId!, fields),
-    [patchDocument, documentId],
-  );
-
-  /** Saves to one named document, so a late flush lands where it was typed. */
-  const saveTo = useCallback(
-    (id: string, patch: DocumentPatch) => {
-      setSaveState('saving');
-      const promise = updateDocument(projectId!, id, patch)
-        .then((saved) => {
-          qc.setQueryData(documentKey(projectId!, id), saved);
-          if (patch.title !== undefined) {
-            qc.invalidateQueries({ queryKey: documentsKey(projectId!) });
-          }
-          setSaveState('saved');
-        })
-        .catch(() => setSaveState('error'));
-      // Chained rather than replaced: a context save and a body save can be in
-      // flight at once, and a request that reads the document must await both.
-      pendingSave.current = Promise.all([pendingSave.current, promise]);
-      return promise;
-    },
-    [projectId, qc],
-  );
-
-  const save = useCallback(
-    (patch: DocumentPatch) => (documentId ? saveTo(documentId, patch) : Promise.resolve()),
-    [documentId, saveTo],
-  );
-
-  const flushContext = useCallback(() => {
-    const patch = contextPending.current;
-    contextPending.current = null;
-    if (contextTimer.current) {
-      clearTimeout(contextTimer.current);
-      contextTimer.current = null;
-    }
-    if (patch) saveTo(patch.id, { brief: patch.value });
-  }, [saveTo]);
-
-  // Switching documents mid-debounce must save rather than drop the edit; the
-  // pending record carries its own document id, so it still lands correctly.
-  useEffect(() => () => flushContext(), [documentId, flushContext]);
-
-  /**
-   * Put everything the writer has typed on the server before a request reads it
-   * there. Awaiting only the in-flight saves is not enough: an edit still inside
-   * a debounce has not been sent at all.
-   */
-  const settle = useCallback(async () => {
-    editorFlush.current?.();
-    flushContext();
-    await pendingSave.current;
-  }, [flushContext]);
 
   // Plan and review take the document id as their variable rather than reading
   // the route: a result that lands after the writer has switched documents
@@ -179,7 +107,7 @@ export function WorkspaceScreen() {
     },
     onError: (e: Error) => {
       setError(e.message);
-      me.refetch();
+      void me.refetch();
     },
   });
 
@@ -192,10 +120,17 @@ export function WorkspaceScreen() {
     onFailure: () => void me.refetch(),
   });
 
+  if (!projectId) return <Navigate to="/" replace />;
+  if (project.isError) return <Navigate to="/" replace />;
+
+  const doc = document.data;
+  const isChapter = doc?.kind === 'chapter';
+  const context = saving.contextFor(doc?.brief);
+
   /** Generate a plan, keeping the one it replaces so the writer can undo. */
   const generatePlanFor = () => {
     const id = documentId!;
-    const previous = document.data?.plan ?? null;
+    const previous = doc?.plan ?? null;
     setUndoState(null);
     planMut.mutate(id, {
       onSuccess: () => {
@@ -205,25 +140,16 @@ export function WorkspaceScreen() {
   };
 
   const setPlan = (plan: ScenePlan | null) => {
-    patchCache({ plan });
-    save({ plan });
+    patchDocument(documentId!, { plan });
+    void save({ plan });
   };
 
-  const openChat = () => {
-    localStorage.setItem(CHAT_KEY, '1');
-    setChatOpen(true);
-  };
-
-  const toggleChat = () =>
-    setChatOpen((open) => {
-      localStorage.setItem(CHAT_KEY, open ? '0' : '1');
-      return !open;
-    });
+  const toggleChat = () => setChatOpen((open) => !open);
 
   const draftFromPlan = () => {
     setUndoState(null);
     setView('write'); // the draft streams into the editor and is reviewed there
-    openChat();
+    setChatOpen(true);
     void chat.send(DRAFT_FROM_PLAN);
   };
 
@@ -231,24 +157,8 @@ export function WorkspaceScreen() {
    *  prose, so the Write view comes forward with them. */
   const runAgent = (key: string) => {
     setView('write');
-    openChat();
+    setChatOpen(true);
     void chat.run(key);
-  };
-
-  if (!projectId) return <Navigate to="/" replace />;
-  if (project.isError) return <Navigate to="/" replace />;
-
-  const doc = document.data;
-  const isChapter = doc?.kind === 'chapter';
-  const context =
-    contextEdit && contextEdit.id === documentId ? contextEdit.value : (doc?.brief ?? '');
-
-  const changeContext = (value: string) => {
-    const id = documentId!;
-    setContextEdit({ id, value });
-    contextPending.current = { id, value };
-    if (contextTimer.current) clearTimeout(contextTimer.current);
-    contextTimer.current = setTimeout(flushContext, AUTOSAVE_MS);
   };
 
   // The server refuses generation once the budget is spent (402). Kept apart
@@ -259,26 +169,7 @@ export function WorkspaceScreen() {
   const pending = chat.pendingProposal;
   // While a proposal streams or waits for review, the editor is read-only and
   // every other generation waits: each would change the text it is drawn against.
-  const proposal: ProposalView | null = chat.streaming?.progress
-    ? { phase: 'streaming', mode: chat.streaming.progress.mode, text: chat.streaming.progress.text }
-    : pending?.proposal.kind === 'suggestions'
-      ? {
-          phase: 'reviewing',
-          kind: 'suggestions',
-          suggestions: pending.proposal.suggestions,
-          baseHash: pending.proposal.base_hash,
-          label: chat.agents.find((a) => a.key === pending.agent)?.label,
-        }
-      : pending?.proposal.kind === 'write' && pending.proposal.proposed_body !== null
-        ? {
-            phase: 'reviewing',
-            kind: 'write',
-            proposed: pending.proposal.proposed_body,
-            baseHash: pending.proposal.base_hash,
-            // A new draft shown against the old one is noise.
-            showDiff: false,
-          }
-        : null;
+  const proposal = proposalViewOf(chat.streaming, pending, chat.agents);
   // A proposal is reviewed in the editor, so when one appears the Write view
   // comes forward. Only on its arrival: the writer can still switch away.
   const proposalOnScreen = isChapter && proposal !== null;
@@ -317,44 +208,26 @@ export function WorkspaceScreen() {
       : {};
 
   return (
-    <div className="flex h-screen flex-col bg-[#f5f5f0]">
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
-        <div className="flex items-center gap-3">
-          <Button variant="secondary" size="sm" onClick={() => navigate('/')}>
-            ← Projects
-          </Button>
-          <h1 className="text-base font-semibold text-gray-800">{project.data?.name ?? '…'}</h1>
-        </div>
-        <div className="flex items-center gap-4">
-          {me.data && (
-            <>
-              <ModelPicker
-                models={me.data.models}
-                value={me.data.model_key}
-                saving={setModel.isPending}
-                onChange={(key) => setModel.mutate(key)}
-              />
-              <UsageMeter usage={me.data.usage} />
-            </>
-          )}
-          <Button variant="secondary" size="sm" onClick={logout}>
-            Log out
-          </Button>
-        </div>
-      </header>
+    <div className="flex h-screen flex-col bg-desk">
+      <WorkspaceHeader
+        projectName={project.data?.name}
+        me={me.data}
+        savingModel={setModel.isPending}
+        onModelChange={(key) => setModel.mutate(key)}
+      />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex flex-1 overflow-hidden">
         <DocumentSidebar
           documents={documents.data ?? []}
+          loading={documents.isPending}
           activeId={documentId}
           collapsed={collapsed}
-          onToggleCollapsed={() =>
-            setCollapsed((c) => {
-              localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1');
-              return !c;
-            })
-          }
-          onSelect={(id) => navigate(`/p/${projectId}/d/${id}`)}
+          onToggleCollapsed={() => setCollapsed((c) => !c)}
+          onSelect={(id) => {
+            navigate(`/p/${projectId}/d/${id}`);
+            // On a phone the open list covers the page; get it out of the way.
+            if (window.matchMedia?.('(max-width: 767px)').matches) setCollapsed(true);
+          }}
           onCreate={(kind) =>
             createDoc.mutate(
               { title: kind === 'note' ? 'Untitled note' : 'Untitled', kind },
@@ -377,7 +250,7 @@ export function WorkspaceScreen() {
           onReorder={(ids) => reorderDocs.mutate(ids)}
         />
 
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           {isChapter && (
             <ChapterToolbar
               view={view}
@@ -389,8 +262,8 @@ export function WorkspaceScreen() {
 
           {doc ? (
             <>
-              {/* Hidden rather than unmounted behind the Plan and Issues views, so the
-                  editor keeps its undo history, scroll and selection. */}
+              {/* Hidden rather than unmounted behind the Plan view, so the editor
+                  keeps its undo history, scroll and selection. */}
               <div
                 hidden={view !== 'write'}
                 className="flex flex-1 flex-col overflow-hidden"
@@ -402,15 +275,15 @@ export function WorkspaceScreen() {
                   projectId={projectId}
                   readOnly={false}
                   onSave={save}
-                  saveState={saveState}
+                  saveState={saving.saveState}
                   onBusyChange={setRewriteBusy}
                   aiBlocked={aiBlocked}
                   onUsage={applyUsage}
                   proposal={isChapter ? proposal : null}
                   onProposalResolve={resolveProposal}
-                  flushRef={editorFlush}
+                  flushRef={saving.editorFlush}
                   context={context}
-                  onContextChange={changeContext}
+                  onContextChange={saving.changeContext}
                 />
               </div>
 
@@ -419,7 +292,7 @@ export function WorkspaceScreen() {
                   <PlanView
                     plan={doc.plan}
                     context={context}
-                    onContextChange={changeContext}
+                    onContextChange={saving.changeContext}
                     generating={planMut.isPending && planForThisDoc}
                     undo={undoState && undoState.id === documentId ? undoState.reason : null}
                     busy={busy}
@@ -446,16 +319,31 @@ export function WorkspaceScreen() {
                 </div>
               )}
             </>
+          ) : documents.isLoading || document.isLoading ? (
+            <div className="flex flex-1 justify-center px-10 pt-8" aria-busy="true">
+              <div className="h-64 w-full max-w-[46rem] animate-pulse bg-paper/60 shadow-paper" />
+            </div>
           ) : (
-            <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
-              {documents.isLoading || document.isLoading ? 'Loading…' : 'Select a document.'}
+            <div className="flex flex-1 items-center justify-center font-serif text-ink-3 italic">
+              Choose a document from the list.
             </div>
           )}
 
           {error && (
-            <p className="border-t border-red-200 bg-red-50 px-6 py-1.5 text-xs text-red-700">
-              {error}
-            </p>
+            <div
+              role="alert"
+              className="absolute bottom-5 left-1/2 z-40 flex max-w-[calc(100%-2rem)] -translate-x-1/2 animate-rise items-center gap-3 rounded-xl border border-danger/30 bg-raised py-2 pr-2 pl-4 text-[13px] text-danger shadow-pop"
+            >
+              <span className="min-w-0">{error}</span>
+              <button
+                type="button"
+                aria-label="Dismiss"
+                onClick={() => setError(null)}
+                className="flex size-6 shrink-0 items-center justify-center rounded-md text-ink-3 hover:bg-ink/6 hover:text-ink"
+              >
+                <X aria-hidden className="size-3.5" />
+              </button>
+            </div>
           )}
         </div>
 

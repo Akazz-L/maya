@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react';
@@ -56,11 +57,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTokenState(res.access_token);
   }, []);
 
-  return (
-    <AuthContext.Provider value={{ token, isAuthenticated: !!token, login, register, logout }}>
-      {children}
-    </AuthContext.Provider>
+  // Stable between renders, so consumers re-render only when auth changes.
+  const value = useMemo(
+    () => ({ token, isAuthenticated: !!token, login, register, logout }),
+    [token, login, register, logout],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

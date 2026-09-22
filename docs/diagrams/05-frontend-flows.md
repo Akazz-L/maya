@@ -216,7 +216,7 @@ Taking one fix leaves the rest live, and the bar counts down what is left.
 While any fix is unreviewed the chat input is disabled with the reason shown, and the server would refuse the next message with a 409 anyway — the model has to be told what became of each fix before it is asked anything else.
 A failed message is removed from the pane and its text goes back into the input.
 
-**The Plan view's Draft from plan → is a chat message.**
+**The Plan view's Draft from plan is a chat message.**
 It switches to the Write view, opens the chat, and sends "Draft this chapter from the scene plan."; the agent reads the saved plan along with the rest of the chapter's context.
 Nothing plans on its own when drafting: a chapter without a plan is drafted from its chapter context, if any, and the writer's message.
 

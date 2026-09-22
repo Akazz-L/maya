@@ -2,6 +2,9 @@ import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createDocument,
+  createProject,
+  getProject,
+  listProjects,
   deleteDocument,
   getDocument,
   getMe,
@@ -12,6 +15,8 @@ import {
 import type { DocumentKind, Me, ModelKey, UsageSnapshot } from '../api/types';
 
 export const meKey = ['me'] as const;
+export const projectsKey = ['projects'] as const;
+export const projectKey = (projectId: string) => ['project', projectId] as const;
 export const documentsKey = (projectId: string) => ['documents', projectId] as const;
 export const documentKey = (projectId: string, documentId: string) =>
   ['document', projectId, documentId] as const;
@@ -45,6 +50,26 @@ export function useApplyUsage() {
     },
     [qc],
   );
+}
+
+export function useProjects() {
+  return useQuery({ queryKey: projectsKey, queryFn: listProjects });
+}
+
+export function useProject(projectId: string | undefined) {
+  return useQuery({
+    queryKey: projectKey(projectId ?? ''),
+    queryFn: () => getProject(projectId!),
+    enabled: !!projectId,
+  });
+}
+
+export function useCreateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => createProject(name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: projectsKey }),
+  });
 }
 
 export function useDocuments(projectId: string) {

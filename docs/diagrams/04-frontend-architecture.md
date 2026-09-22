@@ -18,11 +18,12 @@ graph TD
     APP --> CATCH["* → / or /login"]
 
     GUARD --> PROJ["/ → ProjectsScreen"]
-    GUARD --> WS1["/p/:projectId → WorkspaceScreen"]
-    GUARD --> WS2["/p/:projectId/d/:documentId → WorkspaceScreen"]
+    GUARD --> WS1["/p/:projectId → WorkspaceScreen (lazy-loaded)"]
+    GUARD --> WS2["/p/:projectId/d/:documentId → WorkspaceScreen (lazy-loaded)"]
 
     WS1 --- WS["WorkspaceScreen"]
     WS2 --- WS
+    WS --> HDR["WorkspaceHeader<br/>project · ModelPicker · UsageMeter · AccountMenu"]
     WS --> SIDE["DocumentSidebar<br/>select · create · rename<br/>delete · drag to reorder"]
     WS --> TB["ChapterToolbar<br/>chapter documents only"]
     WS --> ED["DocumentEditor<br/>title · ProseEditor"]
@@ -65,7 +66,7 @@ graph TD
     end
 
     subgraph components["components/ — presentational"]
-        CMP["DocumentSidebar · DocumentEditor · ChapterContext · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChatPane · AgentPicker · ProposalLayer · ProposalReviewBar<br/>ChapterToolbar · PlanView · PlanForm<br/>ui/ — button, card, input, select, textarea"]
+        CMP["DocumentSidebar · DocumentEditor · ChapterContext · ProseEditor<br/>RewriteLayer · RewritePrompt · RewriteReviewBar<br/>ChatPane · AgentPicker · ProposalLayer · ProposalReviewBar<br/>ChapterToolbar · PlanView · PlanForm<br/>WorkspaceHeader · AccountMenu · ModelPicker · UsageMeter · Wordmark<br/>ui/ — button, field, confirm-dialog, review"]
     end
 
     subgraph hooks["hooks/ — server state"]
@@ -73,6 +74,8 @@ graph TD
         DS["useDraftStream.ts<br/>isStreaming · error · run()"]
         SR["useSelectionRewrite.ts<br/>idle → prompting → streaming → reviewing"]
         CH["useChat.ts<br/>messages · streaming reply · pending proposal<br/>specialist catalogue · per-fix outcomes"]
+        SV["useDocumentSaving.ts<br/>saveState · contextEdit · pendingSave · editorFlush<br/>settle() before any server read"]
+        UI["useStoredFlag.ts · useDismiss.ts<br/>remembered preferences · popover dismissal"]
     end
 
     subgraph api["api/ — transport"]
@@ -135,12 +138,10 @@ graph LR
     end
 
     subgraph local["WorkspaceScreen — ephemeral UI"]
-        L1["collapsed"]
-        L2["chapterView · undoState · contextEdit<br/>the last two tagged with their document"]
-        L3["saveState · error"]
-        L5["pendingSave — ref to the in-flight save"]
-        L6["chatOpen"]
-        L7["editorFlush — ref filled by the editor"]
+        L1["collapsed · chatOpen — useStoredFlag"]
+        L2["chapterView · undoState<br/>undoState tagged with its document"]
+        L3["error"]
+        L5["useDocumentSaving: saveState · contextEdit (tagged with its document)<br/>pendingSave and editorFlush refs"]
     end
 
     subgraph ed["DocumentEditor — draft text"]
@@ -156,16 +157,16 @@ graph LR
 
     T -.->|mirrored| S1
     L1 -.->|mirrored| S2
-    L6 -.->|mirrored| S4
+    L1 -.->|mirrored| S4
 ```
 
 Two conventions are worth internalizing:
 
-**`patchCache` writes to the query cache, `save` writes to the server.**
+**`patchDocument` writes to the query cache, `save` writes to the server.**
 A generated `plan` is pushed into the cache with `qc.setQueryData` and separately persisted — no refetch round-trip, so the Plan view updates the instant the response lands.
 
 **The chapter context is the one text the editor does not own.**
-Both the Write and Plan views edit it, so `WorkspaceScreen` holds it in `contextEdit` and saves it; `ChapterContext` itself only reports edits, and remembers whether it is expanded in `maya.context.open`.
+Both the Write and Plan views edit it, so `useDocumentSaving` holds it in `contextEdit` and saves it; `ChapterContext` itself only reports edits, and remembers whether it is expanded in `maya.context.open` through `useStoredFlag`, which keeps both views' copies in step.
 
 **The editor's local state is seeded from props once and never re-synced.**
 An effect that copied props into state would fight the user's in-flight typing.

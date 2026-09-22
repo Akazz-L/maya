@@ -1,22 +1,34 @@
 import { cva, type VariantProps } from 'class-variance-authority';
-import type { ButtonHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, Ref } from 'react';
 import { cn } from '../../lib/utils';
 
+/**
+ * One button for the whole app. The variant names whose action it is, not how
+ * it looks: `primary` is the writer's, `ai` calls a model, `ghost` is chrome.
+ */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+  [
+    'inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium',
+    'transition-[background-color,color,border-color,box-shadow] duration-150',
+    'disabled:pointer-events-none disabled:opacity-45',
+    '[&_svg]:size-4 [&_svg]:shrink-0',
+  ],
   {
     variants: {
       variant: {
-        primary: 'bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-400',
-        success: 'bg-green-600 text-white hover:bg-green-700 focus-visible:ring-green-400',
-        secondary:
-          'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus-visible:ring-blue-300',
-        dark: 'bg-gray-900 text-white hover:bg-black focus-visible:ring-gray-400',
+        primary: 'bg-accent text-on-accent shadow-xs hover:bg-accent-hover',
+        ai: 'bg-ai text-on-ai shadow-xs hover:bg-ai-hover',
+        secondary: 'border border-line bg-raised text-ink hover:border-ink-3/60 hover:bg-surface',
+        ghost: 'text-ink-2 hover:bg-ink/6 hover:text-ink',
+        danger: 'bg-danger text-white hover:bg-danger/90',
       },
       size: {
-        default: 'px-5 py-2',
-        sm: 'px-3 py-1.5 text-xs',
-        full: 'w-full px-4 py-2',
+        default: 'h-9 px-4 text-sm',
+        sm: 'h-8 px-3 text-[13px]',
+        xs: 'h-7 px-2 text-xs [&_svg]:size-3.5',
+        icon: 'size-8 p-0',
+        'icon-sm': 'size-7 p-0 [&_svg]:size-3.5',
+        full: 'h-10 w-full px-4 text-sm',
       },
     },
     defaultVariants: { variant: 'primary', size: 'default' },
@@ -25,8 +37,12 @@ const buttonVariants = cva(
 
 export interface ButtonProps
   extends ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
+    VariantProps<typeof buttonVariants> {
+  ref?: Ref<HTMLButtonElement>;
+}
 
-export function Button({ className, variant, size, ...props }: ButtonProps) {
-  return <button className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+export function Button({ className, variant, size, type = 'button', ...props }: ButtonProps) {
+  return (
+    <button type={type} className={cn(buttonVariants({ variant, size }), className)} {...props} />
+  );
 }

@@ -8,6 +8,8 @@ import { ChapterContext } from './ChapterContext';
 import { ProposalLayer, type ProposalView } from './ProposalLayer';
 import { ProseEditor } from './ProseEditor';
 import { RewriteLayer } from './RewriteLayer';
+import { cn } from '../lib/utils';
+import { Textarea } from './ui/field';
 
 export const AUTOSAVE_MS = 800;
 
@@ -60,11 +62,35 @@ interface DocumentEditorProps {
 
 const noop = () => {};
 
+const SAVE_LABEL: Record<Exclude<SaveState, 'idle'>, string> = {
+  saving: 'Saving…',
+  saved: 'Saved',
+  error: "Couldn't save. Your next edit tries again.",
+};
+
+/** Quiet unless something is wrong: a dot and a word in the sheet's corner. */
 function SaveIndicator({ state }: { state: SaveState }) {
-  if (state === 'saving') return <span className="text-xs text-gray-400">Saving…</span>;
-  if (state === 'saved') return <span className="text-xs text-green-600">Saved.</span>;
-  if (state === 'error') return <span className="text-xs text-red-600">Error saving.</span>;
-  return null;
+  if (state === 'idle') return null;
+  return (
+    <span
+      role="status"
+      className={cn(
+        'flex items-center gap-1.5 text-xs whitespace-nowrap',
+        state === 'error' ? 'text-danger' : 'text-ink-3',
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          'size-1.5 rounded-full',
+          state === 'saving' && 'animate-pulse bg-ink-3',
+          state === 'saved' && 'bg-accent',
+          state === 'error' && 'bg-danger',
+        )}
+      />
+      {SAVE_LABEL[state]}
+    </span>
+  );
 }
 
 /**
@@ -170,23 +196,38 @@ export function DocumentEditor({
   }, []);
 
   return (
-    <main className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-4 border-b border-gray-200 bg-white px-6 py-2">
-        <input
-          value={title}
-          aria-label="Document title"
-          onChange={(e) => {
-            setTitle(e.target.value);
-            queueSave({ title: e.target.value });
-          }}
-          className="min-w-0 flex-1 border-none bg-transparent text-base font-semibold text-gray-800 outline-none"
-        />
-        <SaveIndicator state={saveState} />
+    <main className="flex flex-1 flex-col overflow-hidden bg-desk [--sheet-gutter:0.75rem] [--sheet-pad-x:1.25rem] [--sheet-width:46rem] sm:[--sheet-gutter:2.5rem] sm:[--sheet-pad-x:4.5rem]">
+      {/* The top of the sheet: same width and padding as the prose column below. */}
+      <div className="px-[var(--sheet-gutter)] pt-4 [scrollbar-gutter:stable_both-edges] sm:pt-8">
+        <header className="mx-auto flex max-w-[var(--sheet-width)] flex-col gap-3 bg-paper px-[var(--sheet-pad-x)] pt-8 shadow-paper [clip-path:inset(-64px_-64px_0_-64px)] sm:pt-12">
+          <div className="flex items-start gap-4">
+            {/* Wraps rather than scrolling sideways, but stays one paragraph:
+                a title has no line breaks, so Enter is swallowed. */}
+            <Textarea
+              autoGrow
+              rows={1}
+              value={title}
+              aria-label="Document title"
+              placeholder="Untitled"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.preventDefault();
+              }}
+              onChange={(e) => {
+                const next = e.target.value.replace(/\n/g, ' ');
+                setTitle(next);
+                queueSave({ title: next });
+              }}
+              className="min-w-0 flex-1 rounded-none border-none bg-transparent p-0 font-serif text-[1.75rem] leading-tight font-semibold tracking-tight text-balance hover:border-none focus:bg-transparent focus:shadow-none sm:text-[2rem]"
+            />
+            <span className="pt-2.5">
+              <SaveIndicator state={saveState} />
+            </span>
+          </div>
+          {isChapter && (
+            <ChapterContext value={context} onChange={(value) => onContextChange?.(value)} />
+          )}
+        </header>
       </div>
-
-      {isChapter && (
-        <ChapterContext value={context} onChange={(value) => onContextChange?.(value)} />
-      )}
 
       <ProseEditor
         value={bodyOverride ?? body}
