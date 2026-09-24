@@ -1,22 +1,19 @@
-import { LogOut } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { AccountMenu } from './AccountMenu';
 import { Wordmark } from './Wordmark';
-import { Button } from './ui/button';
 
 interface AppHeaderProps {
   /** Shown before the wordmark: the document-list toggle on a narrow screen. */
   leading?: ReactNode;
   /** Where the writer is, after the wordmark: the open project's name. */
   title?: ReactNode;
-  /** Account-level controls beside Log out. */
+  /** Account-level controls beside the account menu. */
   children?: ReactNode;
 }
 
 /** The bar across the top of every signed-in screen. */
 export function AppHeader({ leading, title, children }: AppHeaderProps) {
-  const { logout } = useAuth();
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 sm:px-4">
       {leading}
@@ -37,10 +34,7 @@ export function AppHeader({ leading, title, children }: AppHeaderProps) {
       )}
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
         {children}
-        <Button variant="ghost" size="sm" onClick={logout} aria-label="Log out" title="Log out">
-          <LogOut aria-hidden />
-          <span className="hidden sm:inline">Log out</span>
-        </Button>
+        <AccountMenu />
       </div>
     </header>
   );

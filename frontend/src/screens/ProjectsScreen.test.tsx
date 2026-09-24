@@ -26,6 +26,19 @@ function jsonResponse(data: unknown): Response {
   });
 }
 
+const ME = { email: 'writer@example.com', model_key: 'sonnet', models: [], usage: {} };
+
+/**
+ * The screen asks for two things: the account behind the header's menu, and
+ * the projects themselves. Each call needs its own Response — a body reads once.
+ */
+function mockApi(projects: unknown) {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+    const url = typeof input === 'string' ? input : String(input);
+    return Promise.resolve(jsonResponse(url.includes('/me') ? ME : projects));
+  });
+}
+
 afterEach(() => {
   clearToken();
   vi.restoreAllMocks();
@@ -33,12 +46,10 @@ afterEach(() => {
 
 describe('ProjectsScreen', () => {
   it('lists the projects returned by the API', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      jsonResponse([
-        { project_id: 'p1', name: 'First Novel', created_at: '2026-01-01T00:00:00Z' },
-        { project_id: 'p2', name: 'Second Novel', created_at: '2026-02-01T00:00:00Z' },
-      ]),
-    );
+    mockApi([
+      { project_id: 'p1', name: 'First Novel', created_at: '2026-01-01T00:00:00Z' },
+      { project_id: 'p2', name: 'Second Novel', created_at: '2026-02-01T00:00:00Z' },
+    ]);
 
     renderScreen();
 
@@ -47,7 +58,7 @@ describe('ProjectsScreen', () => {
   });
 
   it('shows the empty state when there are no projects', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse([]));
+    mockApi([]);
     renderScreen();
     expect(await screen.findByText(/no projects yet/i)).toBeInTheDocument();
   });
