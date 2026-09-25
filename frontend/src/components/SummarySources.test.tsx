@@ -19,7 +19,7 @@ describe('SummarySources', () => {
 
   it('names the one chapter the chat reads', () => {
     render(<SummarySources sources={sources} onOpen={() => {}} />);
-    expect(screen.getByText(/the chat reads only The Gates/i)).toBeInTheDocument();
+    expect(screen.getByText(/the chat reads only the last of these/i)).toBeInTheDocument();
   });
 
   it('opens the summary of the chapter clicked', async () => {
