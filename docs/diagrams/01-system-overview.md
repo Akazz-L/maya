@@ -1,6 +1,6 @@
 # System overview
 
-Maya is one FastAPI process, one React single-page app, one SQL database, and one external service (the Anthropic API).
+Maya is one FastAPI process, one React single-page app, one SQL database, and two external services: the Anthropic API, and Clerk for accounts and sessions.
 There is no queue, no cache server, and no background worker: every generation happens inside the HTTP request that asked for it.
 
 ```mermaid
@@ -24,8 +24,11 @@ graph TB
 
     ANTHROPIC["Anthropic API<br/>model chosen per writer, backend/llm.py"]
     SQL[("SQLite ./maya.db<br/>or PostgreSQL via DATABASE_URL")]
+    CLERK["Clerk<br/>sign-up · sign-in · sessions"]
 
+    SPA -->|"sign in, getToken()"| CLERK
     SPA -->|"fetch, Bearer Clerk session token"| MAIN
+    DEPS -.->|"JWKS, cached"| CLERK
     SPA --> DOCS
     SPA -->|"POST, reads SSE body"| GEN
     SPA -->|"POST, reads SSE body"| CHAT
