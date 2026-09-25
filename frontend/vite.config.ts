@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 // In dev, proxy the backend API routes to the FastAPI server. It listens on
 // :8000 unless BACKEND_PORT says otherwise, which is how a second checkout runs
 // alongside the first without either claiming the other's port.
-const API_ROUTES = ['/me', '/agents', '/projects', '/static'];
+const API_ROUTES = ['/me', '/agents', '/billing', '/projects', '/static'];
 const BACKEND = `http://localhost:${process.env.BACKEND_PORT ?? 8000}`;
 
 export default defineConfig({

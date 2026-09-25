@@ -5,6 +5,7 @@ import { useAuth } from '@clerk/react';
 import { RequireAuth } from './components/RequireAuth';
 import { Spinner } from './components/ui/feedback';
 import { AuthScreen } from './screens/AuthScreen';
+import { PlansScreen } from './screens/PlansScreen';
 import { ProjectsScreen } from './screens/ProjectsScreen';
 
 // The workspace carries the editor (CodeMirror, the diff engine): most of the
@@ -50,6 +51,7 @@ export function App() {
         />
         <Route element={<RequireAuth />}>
           <Route path="/" element={<ProjectsScreen />} />
+          <Route path="/plans" element={<PlansScreen />} />
           <Route path="/p/:projectId" element={<WorkspaceScreen />} />
           <Route path="/p/:projectId/d/:documentId" element={<WorkspaceScreen />} />
         </Route>

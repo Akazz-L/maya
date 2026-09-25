@@ -1,6 +1,6 @@
 # System overview
 
-Maya is one FastAPI process, one React single-page app, one SQL database, and two external services: the Anthropic API, and Clerk for accounts and sessions.
+Maya is one FastAPI process, one React single-page app, one SQL database, and three external services: the Anthropic API, Clerk for accounts and sessions, and Stripe for paid plans.
 There is no queue, no cache server, and no background worker: every generation happens inside the HTTP request that asked for it.
 
 ```mermaid
@@ -11,6 +11,7 @@ graph TB
 
     subgraph server["FastAPI process — backend/"]
         MAIN["main.py<br/>/me · /agents · /projects<br/>/health · SPA catch-all"]
+        BILL["routes/billing.py + billing.py<br/>/billing/plans · checkout · portal<br/>sync · webhook"]
         DOCS["routes/documents.py<br/>/projects/{pid}/documents/*"]
         GEN["routes/generate.py<br/>/plan · /rewrite/stream"]
         CHAT["routes/chat.py<br/>/chat · /chat/stream<br/>/chat/messages/{id}/outcome"]
@@ -25,10 +26,14 @@ graph TB
     ANTHROPIC["Anthropic API<br/>model chosen per writer, backend/llm.py"]
     SQL[("SQLite ./maya.db<br/>or PostgreSQL via DATABASE_URL")]
     CLERK["Clerk<br/>sign-up · sign-in · sessions"]
+    STRIPE["Stripe<br/>checkout · billing portal · subscriptions"]
 
     SPA -->|"sign in, getToken()"| CLERK
     SPA -->|"fetch, Bearer Clerk session token"| MAIN
     DEPS -.->|"JWKS, cached"| CLERK
+    SPA --> BILL
+    BILL -->|"checkout and portal sessions,<br/>list subscriptions"| STRIPE
+    STRIPE -.->|"customer.subscription.* webhooks"| BILL
     SPA --> DOCS
     SPA -->|"POST, reads SSE body"| GEN
     SPA -->|"POST, reads SSE body"| CHAT
