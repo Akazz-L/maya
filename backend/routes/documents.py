@@ -6,12 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db import get_db
 from backend.db_models import Document, Project
-from backend.context import prior_chapter_documents
+from backend.context import WINDOW, digest_hash, prior_chapters, prose_mode
 from backend.doc_storage import (
     create_document,
     delete_document,
     get_document,
     list_documents,
+    digest_status,
     reorder_documents,
     summary_status,
     update_document,
@@ -34,6 +35,8 @@ class DocumentUpdateRequest(BaseModel):
     kind: str | None = None
     #: The writer's own summary. Blank reverts to the generated one.
     summary: str | None = None
+    #: The writer's own "story so far". Blank reverts to the generated one.
+    digest: str | None = None
 
 
 class OrderRequest(BaseModel):
@@ -59,6 +62,8 @@ def _detail(document: Document) -> dict:
         # What later chapters read of this one, and whether it still fits the body.
         "summary": document.summary,
         "summary_status": summary_status(document),
+        # What this chapter reads of the ones before it.
+        "digest": document.digest,
     }
 
 
@@ -113,12 +118,29 @@ async def get_summary_context(
     to look.
     """
     document = await get_document(db, project.id, document_id)
-    previous = await prior_chapter_documents(db, project.id, document.position)
+    prior = await prior_chapters(db, project.id, document.position)
+    if prose_mode(prior):
+        # Short project: nothing is summarized, so there is no window and no digest.
+        return {
+            "mode": "prose",
+            "previous": [{"id": str(d.id), "title": d.title, "summary_status": "empty"} for d in prior],
+            "digest": None,
+        }
+
+    window = prior[-WINDOW:]
+    older = prior[: -len(window)] if window else prior
     return {
+        "mode": "summaries",
         "previous": [
             {"id": str(d.id), "title": d.title, "summary_status": summary_status(d)}
-            for d in previous
-        ]
+            for d in window
+        ],
+        "digest": {
+            "status": digest_status(document, digest_hash(older) if older else None),
+            "covers": [d.title for d in older],
+        }
+        if older
+        else None,
     }
 
 
@@ -133,6 +155,13 @@ async def patch_document(
     # exclude_unset so an omitted field is left alone while an explicit null
     # (dropping a plan) still clears it.
     fields = body.model_dump(exclude_unset=True)
+    if fields.get("digest"):
+        # Stamp it with the chapters it was written against, so a later edit to
+        # one of them shows as "the story has moved on" rather than as stale
+        # from the moment it was saved.
+        prior = await prior_chapters(db, project.id, document.position)
+        older = prior[:-WINDOW] if len(prior) > WINDOW else []
+        fields["digest_hash"] = digest_hash(older) if older else None
     return _detail(await update_document(db, document, **fields))
 
 

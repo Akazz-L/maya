@@ -9,9 +9,9 @@ which model it used.
 from dataclasses import dataclass
 from decimal import Decimal
 
-# Cache reads bill at a tenth of the input rate; cache writes at 1.25x. Nothing
-# in the app uses prompt caching yet, but recording the two counts costs nothing
-# and keeps the recorded cost correct the day it does.
+# Cache reads bill at a tenth of the input rate; cache writes at 1.25x. The chat
+# caches its stable layers — rules and bible, the story so far, the voice sample
+# — so both counts are live and the meter has to price them apart.
 _CACHE_READ_RATE = Decimal("0.1")
 _CACHE_WRITE_RATE = Decimal("1.25")
 

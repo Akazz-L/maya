@@ -1,5 +1,6 @@
 import anthropic
 
+from backend.agents.context_render import story_so_far_text
 from backend.llm import request_params, usage_from
 
 client = anthropic.AsyncAnthropic()
@@ -48,13 +49,7 @@ def _task_text(brief: str) -> str:
 
 
 async def planner_node(state: dict, model_key: str) -> dict:
-    summaries = state["previous_summaries"]
-
-    summaries_text = (
-        "\n\n".join(f"{title} — summary:\n{summary}" for title, summary in summaries)
-        if summaries
-        else "No previous chapters."
-    )
+    summaries_text = story_so_far_text(state)
 
     response = await client.messages.create(
         **request_params(model_key, max_tokens=1024),

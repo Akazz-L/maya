@@ -98,6 +98,14 @@ class Document(Base):
     #: automatically, however far the body drifts from it: a corrected
     #: continuity fact outranks a fresh one the model invented.
     summary_edited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    #: "The story so far", as it stood before THIS chapter: every earlier
+    #: chapter outside the summary window, folded into one running digest.
+    #: Held per chapter rather than per project because it is a prefix — the
+    #: digest read while revising chapter 6 must not contain chapter 30.
+    digest: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Hash of the (document id, summary hash) pairs the digest was folded from.
+    digest_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    digest_edited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     position: Mapped[int] = mapped_column(nullable=False, default=0)
     # server_default as well as default, so the migration's raw-SQL backfill and
     # the ORM agree. Without it, an INSERT that bypasses the ORM hits NOT NULL.
@@ -174,7 +182,7 @@ class UsageEvent(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, server_default=func.now())
     model_key: Mapped[str] = mapped_column(String(16), nullable=False)
-    #: plan | chat | review | rewrite | summarize (draft, check and revise on
+    #: plan | chat | review | rewrite | summarize | digest (draft, check and revise on
     #: rows written before chat and inline review replaced those routes)
     operation: Mapped[str] = mapped_column(String(16), nullable=False)
     input_tokens: Mapped[int] = mapped_column(default=0)

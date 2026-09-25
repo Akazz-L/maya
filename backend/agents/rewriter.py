@@ -19,12 +19,19 @@ def _build_rewrite_messages(state: dict) -> tuple[str, str]:
     client-side, so everything outside the selection is preserved by
     construction rather than by trusting the model.
     """
+    from backend.agents.chat import plan_text
+
     bible = state["story_bible"]
+    chapter = state.get("chapter", "")
+    plan = state.get("scene_plan") or {}
 
     system_prompt = (
         "You are rewriting a passage of literary fiction.\n"
         "Follow the voice and prose rules given in the story bible below.\n\n"
         f"STORY BIBLE:\n{bible}\n\n"
+        f"THE CHAPTER THIS PASSAGE IS FROM (for continuity; do not rewrite it):\n"
+        f"{chapter or '(not provided)'}\n\n"
+        f"SCENE PLAN:\n{plan_text(plan)}\n\n"
         "Rewrite ONLY the passage marked PASSAGE TO REWRITE, following the instruction.\n"
         "The context before and after is shown for continuity only: do not rewrite or repeat it.\n"
         "Your reply must begin where the passage begins and end where the passage ends. "

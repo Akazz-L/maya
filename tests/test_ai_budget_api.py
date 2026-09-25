@@ -189,9 +189,13 @@ async def test_a_review_pass_is_metered_as_review(chapter, db):
 
 
 @pytest_asyncio.fixture
-async def chapter_after_a_written_one(chapter):
+async def chapter_after_a_written_one(chapter, summaries_mode):
     """A chapter whose predecessor has a body but no summary yet, so any
-    generation on it first refreshes that summary: a billed call."""
+    generation on it first refreshes that summary: a billed call.
+
+    `summaries_mode` because the predecessor is one line long: a real project
+    that short reads its chapters directly and summarizes nothing.
+    """
     client, project_id, doc_id = chapter
     earlier = (
         await client.post(f"/projects/{project_id}/documents", json={"title": "Chapter 0"})

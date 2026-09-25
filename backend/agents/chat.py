@@ -28,7 +28,10 @@ MAX_HISTORY_MESSAGES = 40
 # words, plus the reply text around it.
 _MAX_TOKENS = 16000
 
-_CACHED = {"type": "ephemeral"}
+# An hour, not the five-minute default: a writer rereads, thinks, and edits by
+# hand between messages, so at five minutes most turns would pay to write the
+# prefix again rather than read it.
+_CACHED = {"type": "ephemeral", "ttl": "1h"}
 
 SEVERITIES = ["critical", "minor", "style"]
 
@@ -119,8 +122,11 @@ _SYSTEM_RULES = (
     "Follow the voice and prose rules given in the story bible below, and give each character "
     "the speech patterns their dialogue examples establish.\n\n"
     "Every message from the writer arrives with the chapter as it stands: the author's notes "
-    "for it if they wrote any, its scene plan if it has one, a summary of the previous chapter, and the current chapter text, "
-    "including any edits the writer made by hand.\n\n"
+    "for it if they wrote any, its scene plan if it has one, and the current chapter text, "
+    "including any edits the writer made by hand.\n"
+    "The story so far is given above: a running record of the earlier chapters, the most recent "
+    "ones as summaries, and the closing prose of the chapter immediately before this one. Match "
+    "that prose's voice and pick up where it leaves off.\n\n"
     "To change the chapter:\n"
     "- For a first draft, a draft from the scene plan, or a rewrite of the whole chapter, "
     "call write_draft with mode \"replace\".\n"
@@ -442,21 +448,54 @@ def plan_text(plan: dict) -> str:
     )
 
 
-def _previous_chapter(summaries: list[tuple[str, str]]) -> str:
-    """Only the nearest chapter: a draft continues from what came immediately
-    before it. The planner and the specialists read the whole window."""
-    if not summaries:
-        return "This is the first chapter."
-    title, summary = summaries[-1]
-    return f"{title} — summary:\n{summary}"
+def story_so_far(state: dict) -> str:
+    """The facts layer: the digest of the older chapters, then the recent ones
+    as summaries. In prose mode there is neither — the chapters are there
+    instead, in their own block."""
+    parts = []
+    if state.get("digest"):
+        parts.append(f"THE STORY SO FAR (everything before the chapters below):\n{state['digest']}")
+    summaries = state.get("previous_summaries") or []
+    if summaries:
+        rendered = "\n\n".join(f"{title} — summary:\n{summary}" for title, summary in summaries)
+        parts.append(f"RECENT CHAPTERS:\n{rendered}")
+    return "\n\n".join(parts)
+
+
+def previous_prose(state: dict) -> str:
+    """The prose layer for a short project: the earlier chapters themselves."""
+    chapters = state.get("previous_prose") or []
+    if not chapters:
+        return ""
+    rendered = "\n\n".join(f"{title}:\n{body}" for title, body in chapters)
+    return f"EARLIER CHAPTERS, IN FULL:\n{rendered}"
+
+
+def voice_sample(state: dict) -> str:
+    """The voice layer: the end of the previous chapter, word for word.
+
+    The summaries deliberately carry no style, so without this the drafter has
+    never read a sentence the author wrote outside the open chapter."""
+    sample = state.get("voice_sample")
+    if not sample:
+        return ""
+    title, text = sample
+    if not text.strip():
+        return ""
+    return (
+        f"HOW {title.upper()} ENDS (the author's own prose, for voice and "
+        f"continuity — do not repeat it):\n{text}"
+    )
 
 
 def build_turn(state: dict) -> tuple[list[dict], list[dict]]:
     """Build (system, messages) for one writer message.
 
-    Stable content comes first so the prefix caches across turns: the rules and
-    the bible, then the history. The chapter as it stands changes every turn,
-    so it rides in the new message at the end.
+    Ordered by how often each part changes, because prompt caching is a prefix
+    match: the rules and the bible, then the story so far, then the previous
+    chapter's closing prose, then the conversation. The chapter as it stands
+    changes every turn, so it rides in the new message after the last
+    breakpoint. Four breakpoints is the API maximum and this uses all four.
     """
     system = [
         {
@@ -465,17 +504,21 @@ def build_turn(state: dict) -> tuple[list[dict], list[dict]]:
             "cache_control": _CACHED,
         }
     ]
+    facts = story_so_far(state) or previous_prose(state)
+    if facts:
+        system.append({"type": "text", "text": facts, "cache_control": _CACHED})
+    voice = voice_sample(state)
+    if voice:
+        system.append({"type": "text", "text": voice, "cache_control": _CACHED})
 
     history = render_history(state["history"])
     if history:
         last = history[-1]
         last["content"] = [{"type": "text", "text": last["content"], "cache_control": _CACHED}]
 
-    summaries = state["previous_summaries"]
     parts = [
         f"CHAPTER NOTES:\n{state['brief'].strip() or '(The author has not written notes for this chapter.)'}",
         f"SCENE PLAN:\n{plan_text(state['scene_plan'])}",
-        f"PREVIOUS CHAPTER:\n{_previous_chapter(summaries)}",
         f"CURRENT CHAPTER TEXT:\n{state['draft'] or '(The chapter is empty.)'}",
     ]
     note = _outcome_note(state["history"][-1]) if state["history"] else None

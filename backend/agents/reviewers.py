@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 
 from backend.agents.chat import ChatEvent, plan_text, stream_turn, suggest_tool
+from backend.agents.context_render import story_so_far_text
 from backend.llm import Usage
 
 _CACHED = {"type": "ephemeral"}
@@ -58,12 +59,7 @@ _SUGGEST_RULES = (
 
 
 def _continuity_render(state: dict) -> str:
-    summaries = state["previous_summaries"]
-    previous = (
-        "\n\n".join(f"{title} — summary:\n{summary}" for title, summary in summaries)
-        if summaries
-        else "No previous chapters."
-    )
+    previous = story_so_far_text(state)
     return (
         f"SCENE PLAN (the POV, location and beats this chapter is meant to have):\n"
         f"{plan_text(state['scene_plan'])}\n\n"

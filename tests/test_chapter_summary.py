@@ -170,24 +170,24 @@ async def test_a_summary_saved_with_a_body_describes_that_body(db, project):
 
 
 @pytest.mark.asyncio
-async def test_summaries_carry_their_chapter_title(db, project):
+async def test_summaries_carry_their_chapter_title(db, project, summaries_mode):
     """The prompts number chapters from the window's start, which is wrong once
     the window slides. Titles are what the writer sees in the sidebar."""
-    from backend.context import build_previous_summaries
+    from backend.context import build_previous_window
     from backend.doc_storage import body_hash
 
     await _chapter(db, project.id, 1, "A.", summary="sa", summary_hash=body_hash("A."))
     await _chapter(db, project.id, 2, "B.", summary="sb", summary_hash=body_hash("B."))
 
-    assert await build_previous_summaries(db, project.id, 3, MODEL_KEY, _ignore) == [
+    assert await build_previous_window(db, project.id, 3, MODEL_KEY, _ignore) == [
         ("Ch 1", "sa"),
         ("Ch 2", "sb"),
     ]
 
 
 @pytest.mark.asyncio
-async def test_an_edited_summary_is_never_regenerated(db, project):
-    from backend.context import build_previous_summaries
+async def test_an_edited_summary_is_never_regenerated(db, project, summaries_mode):
+    from backend.context import build_previous_window
 
     await _chapter(
         db, project.id, 1, "Prose.", summary="mine", summary_hash="old", summary_edited=True
@@ -195,7 +195,7 @@ async def test_an_edited_summary_is_never_regenerated(db, project):
 
     mock = AsyncMock(return_value=("fresh", _usage()))
     with patch("backend.context.summarize_node", new=mock):
-        result = await build_previous_summaries(db, project.id, 2, MODEL_KEY, _ignore)
+        result = await build_previous_window(db, project.id, 2, MODEL_KEY, _ignore)
     assert result == [("Ch 1", "mine")]
     mock.assert_not_awaited()
 
@@ -204,13 +204,13 @@ async def test_an_edited_summary_is_never_regenerated(db, project):
 async def test_prior_chapters_are_reported_without_summarizing(db, project):
     """The Write view names the chapters the AI will read. Merely looking at
     that list must not spend anything."""
-    from backend.context import prior_chapter_documents
+    from backend.context import prior_chapters
 
     await _chapter(db, project.id, 1, "A.")
     await _chapter(db, project.id, 2, "")  # never summarized
     await _chapter(db, project.id, 3, "C.")
 
-    documents = await prior_chapter_documents(db, project.id, 4)
+    documents = await prior_chapters(db, project.id, 4)
     assert [d.title for d in documents] == ["Ch 1", "Ch 3"]
 
 
@@ -295,6 +295,8 @@ async def test_the_write_view_can_list_what_the_ai_reads(chapter):
 
     resp = await client.get(f"/projects/{project_id}/documents/{later}/summary-context")
     assert resp.status_code == 200
-    assert resp.json()["previous"] == [
-        {"id": doc_id, "title": "Ch 1", "summary_status": "missing"}
-    ]
+    # Two one-line chapters: the project is far under the prose budget, so the
+    # AI reads them rather than summaries of them.
+    assert resp.json()["mode"] == "prose"
+    assert [p["title"] for p in resp.json()["previous"]] == ["Ch 1"]
+    assert resp.json()["digest"] is None

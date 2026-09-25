@@ -87,7 +87,11 @@ async def chat_stream(
     meter = Meter(db, user, user.model_key)
     async with meter.flushed_on_error():
         state = await build_chapter_state(
-            db, document, user.model_key, partial(meter.add, "summarize")
+            db,
+            document,
+            user.model_key,
+            partial(meter.add, "summarize"),
+            for_agent="review" if reviewer else "chat",
         )
     state.update(
         draft=document.body,

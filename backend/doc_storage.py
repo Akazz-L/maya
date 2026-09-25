@@ -43,6 +43,37 @@ def set_generated_summary(document: Document, text: str) -> None:
     document.summary_edited = False
 
 
+def set_digest(document: Document, text: str | None) -> None:
+    """Store a digest the writer wrote. Blank hands it back to the model.
+
+    The caller stamps `digest_hash` with the chapters it was written against;
+    this only records the text and whose it is.
+    """
+    if text is None or not text.strip():
+        document.digest = None
+        document.digest_hash = None
+        document.digest_edited = False
+        return
+    document.digest = text
+    document.digest_edited = True
+
+
+def digest_status(document: Document, expected_hash: str | None) -> str:
+    """How the Story so far view describes this chapter's digest.
+
+    `expected_hash` identifies the chapters it should cover, or None when there
+    are none — a chapter with nothing but the window behind it.
+    """
+    if expected_hash is None:
+        return "empty"
+    if document.digest is None:
+        return "missing"
+    fresh = document.digest_hash == expected_hash
+    if document.digest_edited:
+        return "edited" if fresh else "edited_stale"
+    return "current" if fresh else "stale"
+
+
 def summary_status(document: Document) -> str:
     """How the Summary view describes this chapter's summary.
 
@@ -109,6 +140,7 @@ async def update_document(db: AsyncSession, document: Document, **fields) -> Doc
     # `plan: None` is meaningful — it is how the UI drops a plan — so only skip
     # keys the caller did not send at all.
     summary = fields.pop("summary", _UNSET)
+    digest = fields.pop("digest", _UNSET)
     for key, value in fields.items():
         setattr(document, key, value)
     if "body" in fields:
@@ -116,6 +148,8 @@ async def update_document(db: AsyncSession, document: Document, **fields) -> Doc
     # After the body, so a summary saved alongside one describes the new text.
     if summary is not _UNSET:
         set_summary(document, summary)
+    if digest is not _UNSET:
+        set_digest(document, digest)
     await db.commit()
     await db.refresh(document)
     return document
