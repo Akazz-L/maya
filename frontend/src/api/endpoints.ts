@@ -11,6 +11,7 @@ import type {
   DocumentSummary,
   Me,
   ModelKey,
+  PlanOption,
   ProjectDetail,
   ProjectSummary,
   ProposalOutcome,
@@ -20,6 +21,20 @@ import type {
 
 // ── account: model choice and AI budget ──────────────────────────────────────
 export const getMe = () => request<Me>('/me');
+
+// ── plans and billing ────────────────────────────────────────────────────────
+export const listPlans = () => request<PlanOption[]>('/billing/plans');
+
+/** A Stripe Checkout URL subscribing the writer to a paid plan. */
+export const startCheckout = (plan: string) =>
+  request<{ url: string }>('/billing/checkout', { method: 'POST', body: { plan } });
+
+/** A Stripe billing portal URL: change plan, update the card, cancel. */
+export const openBillingPortal = () =>
+  request<{ url: string }>('/billing/portal', { method: 'POST' });
+
+/** Refresh the writer's plan from Stripe, for the return from checkout. */
+export const syncBilling = () => request<null>('/billing/sync', { method: 'POST' });
 
 /** The specialist review passes the chat's "+" picker offers. */
 export const listAgents = () => request<AgentOption[]>('/agents');

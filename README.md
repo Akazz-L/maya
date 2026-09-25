@@ -27,8 +27,8 @@ for a targeted rewrite; the suggestion streams in place and shows as a diff you 
 accept or discard.
 
 Each writer picks their own model — Haiku, Sonnet, or Opus — from the editor header,
-and the meter beside it shows what they have spent against this month's budget.
-Generation is refused once the budget is reached.
+and the meter beside it shows what they have spent against their plan's budget.
+Generation is refused once the budget is reached, and the meter offers an upgrade.
 
 FastAPI + SQLAlchemy backend, React + Vite frontend.
 
@@ -52,8 +52,8 @@ make install              # uv sync + npm install
   A free development instance is enough for local work.
   In production, also set `CLERK_AUTHORIZED_PARTIES` to the public URL the app is served from.
 
-`MONTHLY_BUDGET_USD` is optional and defaults to `5.00`. It is the AI budget each
-writer gets per calendar month (UTC).
+`MONTHLY_BUDGET_USD` is optional and defaults to `5.00`. It is the Free plan's AI budget per calendar month (UTC).
+Paid plans are optional too; see [Plans and billing](#plans-and-billing).
 
 `DATABASE_URL` is optional; unset, the app uses an on-disk SQLite file (`./maya.db`)
 that persists across restarts. No database setup needed for local dev.
@@ -69,7 +69,7 @@ Then open **http://localhost:5173**.
 This applies migrations, then starts the backend on `:8000` (with `--reload`) and
 the Vite dev server on `:5173`. Ctrl-C stops both.
 
-Both servers need to be up: Vite proxies `/me`, `/agents`, `/projects`, and `/static` to the
+Both servers need to be up: Vite proxies `/me`, `/agents`, `/billing`, `/projects`, and `/static` to the
 backend, so `:5173` is the URL you want — `:8000` serves the API but not the dev UI.
 
 To run just one side: `make backend` or `make frontend`.
@@ -153,9 +153,9 @@ it started on.
 Every call's tokens are priced at that model's rates and written to `usage_events`.
 The cost is frozen at write time, so changing the price table never rewrites what
 someone has already spent.
-The meter sums the current calendar month in UTC.
+The meter sums the current budget period: the calendar month in UTC on Free, the Stripe billing period on a paid plan.
 
-Enforcement is pre-flight: a generation is refused with a `402` once the month's
+Enforcement is pre-flight: a generation is refused with a `402` once the period's
 spend reaches the budget, but a call already running always finishes.
 A writer therefore never loses a draft mid-stream.
 The check reserves nothing, and a call's cost is recorded only when it finishes, so every request that starts under the cap goes through.
@@ -169,4 +169,35 @@ UPDATE users SET monthly_budget_micro_usd = 20000000 WHERE clerk_user_id = 'user
 
 The column is in micro-dollars — the same unit the ledger counts in, so a cap and a
 running total compare without any float in the path.
-`NULL` means "use `MONTHLY_BUDGET_USD`".
+`NULL` means "use the plan's budget"; a value overrides it whatever the plan.
+
+## Plans and billing
+
+| Plan | Price | AI budget per period (default) |
+|---|---|---|
+| Free | $0 | `MONTHLY_BUDGET_USD`, $5 |
+| Starter | $20 / month | `PLAN_STARTER_BUDGET_USD`, $10 |
+| Pro | $50 / month | `PLAN_PRO_BUDGET_USD`, $25 |
+| Studio | $100 / month | `PLAN_STUDIO_BUDGET_USD`, $50 |
+
+Every plan has every feature and every model; plans differ only in budget.
+Each budget is its own setting, not the price, so the margin can be tuned without a deploy.
+
+Paid plans go through Stripe and are off until `STRIPE_SECRET_KEY` is set; without it every writer is on Free.
+To turn them on in Stripe (test mode first):
+
+1. Create a product per plan, each with one recurring monthly price, and put the price ids in `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_STUDIO`.
+2. In the Customer Portal settings, allow switching between those three prices and cancelling at the end of the period.
+3. Point a webhook at `/billing/webhook` for the `customer.subscription.created`, `.updated` and `.deleted` events, and put its signing secret in `STRIPE_WEBHOOK_SECRET`.
+   Locally: `stripe listen --forward-to localhost:8000/billing/webhook`.
+
+A writer upgrades from **Plan & billing** in the account menu, which opens Stripe Checkout.
+A subscriber changes plan, updates their card or cancels in Stripe's billing portal from the same page.
+
+Stripe is the source of truth.
+Every webhook, and the return from checkout, re-reads the customer's subscriptions from Stripe rather than applying the event, so late or out-of-order events cannot leave a writer on the wrong plan.
+A subscription pays for its plan while Stripe reports it `active` or `trialing`:
+
+- A cancelled plan keeps its budget until the period it was paid for ends, then drops to Free.
+- A failed renewal (`past_due`) drops to Free at once. The payment that failed was for the period just starting, so the paid period has already ended.
+  A later successful retry restores the plan.
