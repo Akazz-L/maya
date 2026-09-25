@@ -25,7 +25,7 @@ sequenceDiagram
 
     UI->>R: POST …/plan
     R->>D: require_project(project_id)
-    D->>DB: decode JWT → load User, load Project
+    D->>DB: verify Clerk token → load User, load Project
     alt not found or owned by someone else
         D-->>UI: 404 Project not found
     end

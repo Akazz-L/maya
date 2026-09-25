@@ -6,7 +6,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-os.environ.setdefault("JWT_SECRET", "test-secret-key-for-unit-tests-only")
+os.environ.setdefault("CLERK_SECRET_KEY", "sk_test_unit_tests_only")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
 from backend.db_models import Base
@@ -27,9 +27,27 @@ async def db():
     await engine.dispose()
 
 
+#: The Clerk user id the default authed client signs in as.
+TEST_CLERK_USER_ID = "user_test"
+
+
+@pytest.fixture
+def fake_clerk(monkeypatch):
+    """Stand in for Clerk's token check: a bearer token is taken to be the
+    Clerk user id it was issued to. Everything after that check, from creating
+    the local user to project ownership, runs for real."""
+    from backend import auth
+
+    async def verify_session(request):
+        header = request.headers.get("Authorization", "")
+        return header.removeprefix("Bearer ") or None
+
+    monkeypatch.setattr(auth, "verify_session", verify_session)
+
+
 @pytest_asyncio.fixture
-async def authed_client(db):
-    """Return (AsyncClient, project_id) with a registered user and project."""
+async def api_client(db, fake_clerk):
+    """An unauthenticated client against the app, on the test database."""
     from backend.main import app
     from backend.db import get_db
 
@@ -37,21 +55,19 @@ async def authed_client(db):
         yield db
 
     app.dependency_overrides[get_db] = override_db
-
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        # Register + login
-        await client.post("/auth/register", json={"email": "test@example.com", "password": "secret"})
-        resp = await client.post("/auth/token", json={"email": "test@example.com", "password": "secret"})
-        token = resp.json()["access_token"]
-        client.headers["Authorization"] = f"Bearer {token}"
-
-        # Create project. The story bible document is seeded server-side.
-        resp = await client.post("/projects", json={"name": "Test Novel"})
-        project_id = resp.json()["project_id"]
-
-        yield client, project_id
-
+        yield client
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def authed_client(api_client):
+    """Return (AsyncClient, project_id), signed in with one project."""
+    api_client.headers["Authorization"] = f"Bearer {TEST_CLERK_USER_ID}"
+    # Create project. The story bible document is seeded server-side.
+    resp = await api_client.post("/projects", json={"name": "Test Novel"})
+    project_id = resp.json()["project_id"]
+    return api_client, project_id
 
 
 # ---------------------------------------------------------------------------

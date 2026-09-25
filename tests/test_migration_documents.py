@@ -14,10 +14,10 @@ async def test_backfill_converts_bible_chapters_and_outline(db):
     user_id = uuid.uuid4()
     await db.execute(
         text(
-            "INSERT INTO users (id, email, hashed_password, created_at) "
-            "VALUES (:i, :e, :p, CURRENT_TIMESTAMP)"
+            "INSERT INTO users (id, clerk_user_id, created_at) "
+            "VALUES (:i, :c, CURRENT_TIMESTAMP)"
         ),
-        {"i": user_id.hex, "e": "a@b.c", "p": "x"},
+        {"i": user_id.hex, "c": "user_a"},
     )
     await db.execute(
         text(
@@ -71,8 +71,8 @@ async def test_backfill_carries_over_summaries(db):
     project_id, user_id, chapter_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     await db.execute(
         text(
-            "INSERT INTO users (id, email, hashed_password, created_at) "
-            "VALUES (:i, 'x@y.z', 'p', CURRENT_TIMESTAMP)"
+            "INSERT INTO users (id, clerk_user_id, created_at) "
+            "VALUES (:i, 'user_x', CURRENT_TIMESTAMP)"
         ),
         {"i": user_id.hex},
     )
@@ -118,10 +118,10 @@ async def test_backfill_seeds_template_for_unparseable_bible(db):
     project_id, user_id = uuid.uuid4(), uuid.uuid4()
     await db.execute(
         text(
-            "INSERT INTO users (id, email, hashed_password, created_at) "
-            "VALUES (:i, :e, :p, CURRENT_TIMESTAMP)"
+            "INSERT INTO users (id, clerk_user_id, created_at) "
+            "VALUES (:i, :c, CURRENT_TIMESTAMP)"
         ),
-        {"i": user_id.hex, "e": "c@d.e", "p": "x"},
+        {"i": user_id.hex, "c": "user_c"},
     )
     await db.execute(
         text(
@@ -146,7 +146,7 @@ async def test_one_bible_per_project_enforced(db):
 
     from backend.db_models import Document, Project, User
 
-    user = User(email="e@f.g", hashed_password="x")
+    user = User(clerk_user_id="user_e")
     db.add(user)
     await db.flush()
     project = Project(user_id=user.id, name="P")

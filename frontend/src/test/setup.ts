@@ -1,6 +1,9 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import { afterEach, vi } from 'vitest';
+import { resetClerk } from './clerk';
+
+vi.mock('@clerk/react', async () => (await import('./clerk')).clerkModule);
 
 // jsdom has no layout engine, so Range is missing getClientRects. CodeMirror
 // calls it to map a document position to screen coordinates; an empty list is
@@ -27,4 +30,5 @@ if (typeof HTMLDialogElement !== 'undefined' && !HTMLDialogElement.prototype.sho
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  resetClerk();
 });

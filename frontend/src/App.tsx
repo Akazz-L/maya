@@ -1,6 +1,7 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { useAuth } from './auth/AuthContext';
+import { useAuth } from '@clerk/react';
 import { RequireAuth } from './components/RequireAuth';
 import { Spinner } from './components/ui/feedback';
 import { AuthScreen } from './screens/AuthScreen';
@@ -21,21 +22,38 @@ function ScreenFallback() {
   );
 }
 
+/** Cached queries belong to whoever fetched them; drop them when the account changes. */
+function useClearCacheOnAccountChange(userId: string | null | undefined) {
+  const queryClient = useQueryClient();
+  const last = useRef(userId);
+  useEffect(() => {
+    if (last.current !== userId) queryClient.clear();
+    last.current = userId;
+  }, [userId, queryClient]);
+}
+
 export function App() {
-  const { isAuthenticated } = useAuth();
+  const { isLoaded, isSignedIn, userId } = useAuth();
+  useClearCacheOnAccountChange(userId);
+  if (!isLoaded) return <ScreenFallback />;
+  const home = isSignedIn ? '/' : '/sign-in';
   return (
     <Suspense fallback={<ScreenFallback />}>
       <Routes>
         <Route
-          path="/login"
-          element={isAuthenticated ? <Navigate to="/" replace /> : <AuthScreen />}
+          path="/sign-in/*"
+          element={isSignedIn ? <Navigate to="/" replace /> : <AuthScreen mode="sign-in" />}
+        />
+        <Route
+          path="/sign-up/*"
+          element={isSignedIn ? <Navigate to="/" replace /> : <AuthScreen mode="sign-up" />}
         />
         <Route element={<RequireAuth />}>
           <Route path="/" element={<ProjectsScreen />} />
           <Route path="/p/:projectId" element={<WorkspaceScreen />} />
           <Route path="/p/:projectId/d/:documentId" element={<WorkspaceScreen />} />
         </Route>
-        <Route path="*" element={<Navigate to={isAuthenticated ? '/' : '/login'} replace />} />
+        <Route path="*" element={<Navigate to={home} replace />} />
       </Routes>
     </Suspense>
   );

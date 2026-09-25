@@ -4,7 +4,8 @@ Usage:
     make seed
     uv run python scripts/seed_demo.py --email you@example.com --password hunter2
 
-Creates one user and one project whose documents cover every state the
+Creates (or reuses) the user in Clerk, which needs CLERK_SECRET_KEY in .env,
+then one project whose documents cover every state the
 workspace can be in, so each toolbar action has something to act on:
 
   Story Bible   a filled bible, not the empty heading template
@@ -23,6 +24,7 @@ import asyncio
 import sys
 from pathlib import Path
 
+from clerk_backend_api import Clerk
 from dotenv import load_dotenv
 from sqlalchemy import select
 
@@ -31,12 +33,13 @@ load_dotenv()
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from backend.auth import hash_password  # noqa: E402
+from backend.auth import get_or_create_user  # noqa: E402
 from backend.db import get_session_factory, init_db  # noqa: E402
-from backend.db_models import Document, Project, User  # noqa: E402
+from backend.db_models import Document, Project  # noqa: E402
 from backend.doc_storage import body_hash  # noqa: E402
+from backend.settings import get_clerk_secret_key  # noqa: E402
 
-DEFAULT_EMAIL = "demo@maya.local"
+DEFAULT_EMAIL = "demo@example.com"
 DEFAULT_PASSWORD = "demo1234"
 DEFAULT_PROJECT = "Demo — The Salt Road"
 
@@ -247,22 +250,32 @@ def _documents(project_id) -> list[Document]:
     ]
 
 
+async def _clerk_user_id(email: str, password: str) -> str:
+    """The Clerk user for this email, created if missing. The password is reset
+    either way so a forgotten demo password is never a dead end."""
+    async with Clerk(bearer_auth=get_clerk_secret_key()) as clerk:
+        found = await clerk.users.list_async(request={"email_address": [email]})
+        if found:
+            user = found[0]
+            await clerk.users.update_async(
+                user_id=user.id, password=password, skip_password_checks=True
+            )
+            print(f"Reusing Clerk user {email} (password reset)")
+            return user.id
+        user = await clerk.users.create_async(
+            email_address=[email], password=password, skip_password_checks=True
+        )
+        print(f"Created Clerk user {email}")
+        return user.id
+
+
 async def seed(email: str, password: str, project_name: str) -> None:
     # Surfaces "run make migrate" rather than "no such table: users".
     await init_db()
+    clerk_user_id = await _clerk_user_id(email, password)
 
     async with get_session_factory()() as db:
-        result = await db.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
-        if user is None:
-            user = User(email=email, hashed_password=hash_password(password))
-            db.add(user)
-            await db.flush()
-            print(f"Created user {email}")
-        else:
-            # Reset the password so a forgotten demo password is never a dead end.
-            user.hashed_password = hash_password(password)
-            print(f"Reusing user {email} (password reset)")
+        user = await get_or_create_user(db, clerk_user_id)
 
         result = await db.execute(
             select(Project).where(Project.user_id == user.id, Project.name == project_name)
@@ -296,7 +309,7 @@ async def seed(email: str, password: str, project_name: str) -> None:
                 state = "notes only"
         print(f"  [{document.position}] {document.title} ({document.kind}, {state})")
 
-    print(f"\nLog in at http://localhost:5173 with {email} / {password}")
+    print(f"\nSign in at http://localhost:5173 with {email} / {password}")
     print("Then: Chapter 3 tests Generate Plan and the chat, Chapter 2 tests drafting")
     print("from a saved plan, and Chapter 1 tests Check. Generation needs ANTHROPIC_API_KEY in .env.")
 

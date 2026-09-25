@@ -3,17 +3,13 @@ import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { ProjectsScreen } from './ProjectsScreen';
-import { AuthProvider } from '../auth/AuthContext';
-import { clearToken } from '../auth/token';
 
 function renderScreen() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <MemoryRouter initialEntries={['/projects']}>
       <QueryClientProvider client={qc}>
-        <AuthProvider>
-          <ProjectsScreen />
-        </AuthProvider>
+        <ProjectsScreen />
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -40,7 +36,6 @@ function mockApi(projects: unknown) {
 }
 
 afterEach(() => {
-  clearToken();
   vi.restoreAllMocks();
 });
 

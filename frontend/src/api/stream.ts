@@ -2,7 +2,7 @@
 // response body stream directly and parse `data: {...}\n\n` frames.
 // Ported from the old index.html `streamPost()`.
 
-import { authHeaders, handleUnauthorized } from '../auth/token';
+import { authHeaders, handleUnauthorized } from '../auth/session';
 import type { ChatMessage, UsageSnapshot } from './types';
 
 /** The prose of a chat proposal as the model writes it. */
@@ -58,7 +58,7 @@ export async function streamPost(
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: body ? JSON.stringify(body) : null,
       signal,
     });
