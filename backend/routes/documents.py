@@ -6,12 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db import get_db
 from backend.db_models import Document, Project
+from backend.context import prior_chapter_documents
 from backend.doc_storage import (
     create_document,
     delete_document,
     get_document,
     list_documents,
     reorder_documents,
+    summary_status,
     update_document,
 )
 from backend.routes.deps import require_project
@@ -30,6 +32,8 @@ class DocumentUpdateRequest(BaseModel):
     brief: str | None = None
     plan: dict | None = None
     kind: str | None = None
+    #: The writer's own summary. Blank reverts to the generated one.
+    summary: str | None = None
 
 
 class OrderRequest(BaseModel):
@@ -52,6 +56,9 @@ def _detail(document: Document) -> dict:
         "body": document.body,
         "brief": document.brief,
         "plan": document.plan,
+        # What later chapters read of this one, and whether it still fits the body.
+        "summary": document.summary,
+        "summary_status": summary_status(document),
     }
 
 
@@ -91,6 +98,28 @@ async def get_one(
     db: AsyncSession = Depends(get_db),
 ):
     return _detail(await get_document(db, project.id, document_id))
+
+
+@router.get("/{document_id}/summary-context")
+async def get_summary_context(
+    document_id: uuid.UUID,
+    project: Project = Depends(require_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """The preceding chapters this chapter's AI calls read, as summaries.
+
+    Named in the Write view, so a writer can see that the AI works from these
+    and not from the chapters themselves. Summarizes nothing: it costs nothing
+    to look.
+    """
+    document = await get_document(db, project.id, document_id)
+    previous = await prior_chapter_documents(db, project.id, document.position)
+    return {
+        "previous": [
+            {"id": str(d.id), "title": d.title, "summary_status": summary_status(d)}
+            for d in previous
+        ]
+    }
 
 
 @router.patch("/{document_id}")

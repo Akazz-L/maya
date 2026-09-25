@@ -1,17 +1,18 @@
 import uuid
 from functools import partial
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agents.planner import planner_node
 from backend.agents.rewriter import rewriter_token_stream
+from backend.agents.summarizer import summarize_node
 from backend.context import build_chapter_state
 from backend.db import get_db
 from backend.db_models import Project, User
-from backend.doc_storage import get_bible_body
+from backend.doc_storage import get_bible_body, set_generated_summary, summary_status
 from backend.routes.deps import require_chapter, require_project
 from backend.routes.sse import SSE_HEADERS, sse
 from backend.usage import Meter, require_ai_budget
@@ -44,6 +45,37 @@ async def generate_plan(
     document.plan = result["scene_plan"]
     await meter.flush()
     return {"plan": result["scene_plan"], "usage": (await meter.snapshot()).as_dict()}
+
+
+@router.post("/summary")
+async def generate_summary(
+    document_id: uuid.UUID,
+    project: Project = Depends(require_project),
+    user: User = Depends(require_ai_budget),
+    db: AsyncSession = Depends(get_db),
+):
+    """Summarize this chapter now, replacing whatever summary it had.
+
+    The implicit refresh in build_chapter_state covers the common case; this is
+    the writer asking for one directly, from the Summary view — to fill one in
+    before a generation pays for it, or to take back an edit of their own. It
+    therefore overwrites an edited summary, which the UI confirms first.
+    """
+    document = await require_chapter(db, project.id, document_id)
+    if not document.body:
+        raise HTTPException(status_code=400, detail="An empty chapter has nothing to summarize")
+
+    meter = Meter(db, user, user.model_key)
+    async with meter.flushed_on_error():
+        summary, usage = await summarize_node(document.body, user.model_key)
+    meter.add("summarize", usage)
+    set_generated_summary(document, summary)
+    await meter.flush()
+    return {
+        "summary": document.summary,
+        "summary_status": summary_status(document),
+        "usage": (await meter.snapshot()).as_dict(),
+    }
 
 
 @router.post("/rewrite/stream")

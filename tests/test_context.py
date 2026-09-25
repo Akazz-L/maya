@@ -54,7 +54,7 @@ async def test_summarizes_preceding_chapters_in_order(db, project):
 
     with patch("backend.context.summarize_node", new=AsyncMock(side_effect=lambda t, m: (f"sum:{t}", _usage()))):
         result = await build_previous_summaries(db, project.id, 3, MODEL_KEY, _ignore)
-    assert result == ["sum:First.", "sum:Second."]
+    assert result == [("Ch 1", "sum:First."), ("Ch 2", "sum:Second.")]
 
 
 @pytest.mark.asyncio
@@ -67,7 +67,7 @@ async def test_reuses_a_cached_summary(db, project):
     mock = AsyncMock(side_effect=lambda t, m: ("fresh", _usage()))
     with patch("backend.context.summarize_node", new=mock):
         result = await build_previous_summaries(db, project.id, 2, MODEL_KEY, _ignore)
-    assert result == ["cached"]
+    assert result == [("Ch 1", "cached")]
     mock.assert_not_awaited()
 
 
@@ -78,7 +78,7 @@ async def test_stale_hash_triggers_resummarize(db, project):
     await _chapter(db, project.id, 1, "Edited body.", summary="old", summary_hash="deadbeef")
 
     with patch("backend.context.summarize_node", new=AsyncMock(return_value=("fresh", _usage()))):
-        assert await build_previous_summaries(db, project.id, 2, MODEL_KEY, _ignore) == ["fresh"]
+        assert await build_previous_summaries(db, project.id, 2, MODEL_KEY, _ignore) == [("Ch 1", "fresh")]
 
 
 @pytest.mark.asyncio
@@ -105,8 +105,8 @@ async def test_caps_at_the_ten_nearest(db, project):
     with patch("backend.context.summarize_node", new=AsyncMock(side_effect=lambda t, m: (t, _usage()))):
         result = await build_previous_summaries(db, project.id, 15, MODEL_KEY, _ignore)
     assert len(result) == MAX_PRIOR_CHAPTERS
-    assert result[0] == "Body 5."
-    assert result[-1] == "Body 14."
+    assert result[0] == ("Ch 5", "Body 5.")
+    assert result[-1] == ("Ch 14", "Body 14.")
 
 
 @pytest.mark.asyncio

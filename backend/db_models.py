@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, Uuid, func, text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, Uuid, false, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from backend.llm import DEFAULT_MODEL_KEY
@@ -94,6 +94,10 @@ class Document(Base):
     plan: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: The writer wrote this summary themselves. It is then never replaced
+    #: automatically, however far the body drifts from it: a corrected
+    #: continuity fact outranks a fresh one the model invented.
+    summary_edited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     position: Mapped[int] = mapped_column(nullable=False, default=0)
     # server_default as well as default, so the migration's raw-SQL backfill and
     # the ORM agree. Without it, an INSERT that bypasses the ORM hits NOT NULL.

@@ -60,7 +60,7 @@ _SUGGEST_RULES = (
 def _continuity_render(state: dict) -> str:
     summaries = state["previous_summaries"]
     previous = (
-        "\n\n".join(f"Chapter {i + 1} summary:\n{s}" for i, s in enumerate(summaries))
+        "\n\n".join(f"{title} — summary:\n{summary}" for title, summary in summaries)
         if summaries
         else "No previous chapters."
     )
