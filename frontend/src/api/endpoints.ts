@@ -15,6 +15,8 @@ import type {
   ProjectSummary,
   ProposalOutcome,
   ScenePlan,
+  SummarySource,
+  SummaryStatus,
   UsageSnapshot,
 } from './types';
 
@@ -75,7 +77,7 @@ export const createDocument = (
   });
 
 export type DocumentPatch = Partial<
-  Pick<DocumentDetail, 'title' | 'body' | 'brief' | 'plan' | 'kind'>
+  Pick<DocumentDetail, 'title' | 'body' | 'brief' | 'plan' | 'kind' | 'summary'>
 >;
 
 export const updateDocument = (
@@ -104,6 +106,22 @@ export const generatePlan = (projectId: string, documentId: string) =>
     {
       method: 'POST',
     },
+  );
+
+/**
+ * Summarize this chapter now, replacing any summary it had — including one the
+ * writer wrote, which is why the view confirms first. Costs a model call.
+ */
+export const generateSummary = (projectId: string, documentId: string) =>
+  request<{ summary: string; summary_status: SummaryStatus; usage: UsageSnapshot }>(
+    `/projects/${projectId}/documents/${documentId}/summary`,
+    { method: 'POST' },
+  );
+
+/** The preceding chapters this chapter's AI calls read, as summaries. Free to ask. */
+export const getSummaryContext = (projectId: string, documentId: string) =>
+  request<{ previous: SummarySource[] }>(
+    `/projects/${projectId}/documents/${documentId}/summary-context`,
   );
 
 /** SSE stream URLs, read by stream.ts. */
