@@ -45,7 +45,10 @@ export function liveFixes(suggestions: Suggestion[]): LiveFix[] {
  * by the length the splice added or removed, and one before it does not move at
  * all. Accepting out of order therefore works as well as in order.
  */
-export function shiftFixes(fixes: LiveFix[], applied: { from: number; to: number; insert: string }): LiveFix[] {
+export function shiftFixes(
+  fixes: LiveFix[],
+  applied: { from: number; to: number; insert: string },
+): LiveFix[] {
   const delta = applied.insert.length - (applied.to - applied.from);
   return fixes.map((fix) =>
     fix.from >= applied.to ? { ...fix, from: fix.from + delta, to: fix.to + delta } : fix,
@@ -69,10 +72,7 @@ export function changedSpan(base: string, proposed: string): Span {
   let start = 0;
   while (start < max && base[start] === proposed[start]) start++;
   let end = 0;
-  while (
-    end < max - start &&
-    base[base.length - 1 - end] === proposed[proposed.length - 1 - end]
-  ) {
+  while (end < max - start && base[base.length - 1 - end] === proposed[proposed.length - 1 - end]) {
     end++;
   }
   return {

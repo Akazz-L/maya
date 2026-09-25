@@ -33,7 +33,14 @@ interface UseChatOptions {
   onFailure?: () => void;
 }
 
-export function useChat({ projectId, documentId, enabled, beforeSend, onUsage, onFailure }: UseChatOptions) {
+export function useChat({
+  projectId,
+  documentId,
+  enabled,
+  beforeSend,
+  onUsage,
+  onFailure,
+}: UseChatOptions) {
   const qc = useQueryClient();
   const id = documentId ?? '';
   const key = chatKey(projectId, id);
@@ -127,10 +134,7 @@ export function useChat({ projectId, documentId, enabled, beforeSend, onUsage, o
     [projectId, id, update],
   );
 
-  const send = useCallback(
-    (content: string) => post({ content }, content),
-    [post],
-  );
+  const send = useCallback((content: string) => post({ content }, content), [post]);
 
   /** Run a specialist pass. The server supplies the turn's wording. */
   const run = useCallback(
