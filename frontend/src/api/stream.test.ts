@@ -38,18 +38,18 @@ describe('streamPost', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       streamingResponse(['data: {"type":"error","detail":"boom"}\n\n']),
     );
-    await expect(
-      streamPost('/x', {}, { onDelta: () => {}, onDone: () => {} }),
-    ).rejects.toThrow('boom');
+    await expect(streamPost('/x', {}, { onDelta: () => {}, onDone: () => {} })).rejects.toThrow(
+      'boom',
+    );
   });
 
   it('throws the detail message on a non-OK response', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ detail: 'bad request' }), { status: 400 }),
     );
-    await expect(
-      streamPost('/x', {}, { onDelta: () => {}, onDone: () => {} }),
-    ).rejects.toThrow('bad request');
+    await expect(streamPost('/x', {}, { onDelta: () => {}, onDone: () => {} })).rejects.toThrow(
+      'bad request',
+    );
   });
 
   it('resolves silently when the request is aborted before it starts', async () => {

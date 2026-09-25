@@ -23,7 +23,9 @@ describe('ProseEditor', () => {
     const { rerender } = render(
       <ProseEditor value="The rain." onChange={onChange} readOnly={false} ariaLabel="Body" />,
     );
-    rerender(<ProseEditor value="The rain. More." onChange={onChange} readOnly={false} ariaLabel="Body" />);
+    rerender(
+      <ProseEditor value="The rain. More." onChange={onChange} readOnly={false} ariaLabel="Body" />,
+    );
     expect(viewFor('Body').state.doc.toString()).toBe('The rain. More.');
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -33,7 +35,9 @@ describe('ProseEditor', () => {
       <ProseEditor value="The rain." onChange={vi.fn()} readOnly ariaLabel="Body" />,
     );
     expect(screen.getByLabelText('Body')).toHaveAttribute('contenteditable', 'false');
-    rerender(<ProseEditor value="The rain." onChange={vi.fn()} readOnly={false} ariaLabel="Body" />);
+    rerender(
+      <ProseEditor value="The rain." onChange={vi.fn()} readOnly={false} ariaLabel="Body" />,
+    );
     expect(screen.getByLabelText('Body')).toHaveAttribute('contenteditable', 'true');
     expect(screen.getByLabelText('Body')).toHaveTextContent('The rain.');
   });
@@ -41,10 +45,22 @@ describe('ProseEditor', () => {
   it('hands the view to onViewReady once', () => {
     const onViewReady = vi.fn();
     const { rerender } = render(
-      <ProseEditor value="x" onChange={vi.fn()} readOnly={false} ariaLabel="Body" onViewReady={onViewReady} />,
+      <ProseEditor
+        value="x"
+        onChange={vi.fn()}
+        readOnly={false}
+        ariaLabel="Body"
+        onViewReady={onViewReady}
+      />,
     );
     rerender(
-      <ProseEditor value="y" onChange={vi.fn()} readOnly={false} ariaLabel="Body" onViewReady={onViewReady} />,
+      <ProseEditor
+        value="y"
+        onChange={vi.fn()}
+        readOnly={false}
+        ariaLabel="Body"
+        onViewReady={onViewReady}
+      />,
     );
     expect(onViewReady).toHaveBeenCalledTimes(1);
     expect(onViewReady.mock.calls[0][0]).toBe(viewFor('Body'));

@@ -32,9 +32,7 @@ describe('UsageMeter', () => {
   it('says AI is paused once the budget is spent, naming the reset', () => {
     render(<UsageMeter usage={snapshot({ spent_usd: 5, percent: 100, blocked: true })} />);
     // The reset date is what tells a blocked writer when they get it back.
-    expect(
-      screen.getByText(`Budget used — AI paused until ${RESET_LABEL}`),
-    ).toBeInTheDocument();
+    expect(screen.getByText(`Budget used — AI paused until ${RESET_LABEL}`)).toBeInTheDocument();
   });
 
   it('does not overflow its track when a call overshot the cap', () => {

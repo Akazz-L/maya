@@ -16,7 +16,11 @@ function at(phase: RewriteState['phase'], extra: Partial<RewriteState> = {}): Re
 
 describe('rewriteReducer', () => {
   it('open moves idle to prompting with the range and original text', () => {
-    const s = rewriteReducer(initialRewriteState, { type: 'open', range: RANGE, original: 'Old text' });
+    const s = rewriteReducer(initialRewriteState, {
+      type: 'open',
+      range: RANGE,
+      original: 'Old text',
+    });
     expect(s).toEqual(at('prompting'));
   });
 
@@ -35,7 +39,10 @@ describe('rewriteReducer', () => {
   });
 
   it('done moves to reviewing with the edge whitespace matched to the original', () => {
-    const s = rewriteReducer(at('streaming', { original: 'Old text\n' }), { type: 'done', text: ' New text ' });
+    const s = rewriteReducer(at('streaming', { original: 'Old text\n' }), {
+      type: 'done',
+      text: ' New text ',
+    });
     expect(s.phase).toBe('reviewing');
     expect(s.replacement).toBe('New text\n');
     expect(s.error).toBeNull();
@@ -49,14 +56,20 @@ describe('rewriteReducer', () => {
   });
 
   it('error moves streaming to reviewing with the message', () => {
-    const s = rewriteReducer(at('streaming', { replacement: 'partial' }), { type: 'error', message: 'boom' });
+    const s = rewriteReducer(at('streaming', { replacement: 'partial' }), {
+      type: 'error',
+      message: 'boom',
+    });
     expect(s).toEqual(at('reviewing', { error: 'boom', replacement: '' }));
   });
 
   it('retry returns to prompting and keeps the instruction', () => {
-    const s = rewriteReducer(at('reviewing', { instruction: 'tighten', replacement: 'x', error: 'boom' }), {
-      type: 'retry',
-    });
+    const s = rewriteReducer(
+      at('reviewing', { instruction: 'tighten', replacement: 'x', error: 'boom' }),
+      {
+        type: 'retry',
+      },
+    );
     expect(s).toEqual(at('prompting', { instruction: 'tighten' }));
   });
 
@@ -77,7 +90,9 @@ describe('useSelectionRewrite', () => {
     const { result } = renderHook(() => useSelectionRewrite({ projectId: 'p', documentId: 'd' }));
 
     act(() => result.current.open(RANGE, 'Old text'));
-    await act(() => result.current.submit('tighten', { selection: 'Old text', before: '', after: '' }));
+    await act(() =>
+      result.current.submit('tighten', { selection: 'Old text', before: '', after: '' }),
+    );
 
     expect(result.current.state.phase).toBe('reviewing');
     expect(result.current.state.replacement).toBe('New text');
@@ -94,7 +109,9 @@ describe('useSelectionRewrite', () => {
     const { result } = renderHook(() => useSelectionRewrite({ projectId: 'p', documentId: 'd' }));
 
     act(() => result.current.open(RANGE, 'Old text'));
-    await act(() => result.current.submit('tighten', { selection: 'Old text', before: '', after: '' }));
+    await act(() =>
+      result.current.submit('tighten', { selection: 'Old text', before: '', after: '' }),
+    );
 
     expect(result.current.state.phase).toBe('reviewing');
     expect(result.current.state.error).toBe('boom');

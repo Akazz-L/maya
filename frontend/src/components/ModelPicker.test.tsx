@@ -12,7 +12,9 @@ const MODELS = [
 describe('ModelPicker', () => {
   it('names the relative cost of each model, so the choice is legible', () => {
     render(<ModelPicker models={MODELS} value="haiku" onChange={() => {}} />);
-    expect(screen.getByRole('option', { name: /opus 5 · best prose, 5x the cost/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: /opus 5 · best prose, 5x the cost/i }),
+    ).toBeInTheDocument();
   });
 
   it('reports the chosen model', async () => {

@@ -109,7 +109,9 @@ describe('rewriteExtension', () => {
 
     view.dispatch({ effects: setRewriteOverlay.of({ ...reviewing, showDiff: false }) });
     expect(view.contentDOM.querySelector('.cm-rewrite-del')).toBeNull();
-    expect(view.contentDOM.querySelector('.cm-rewrite-result')?.textContent).toBe('She froze by the door.');
+    expect(view.contentDOM.querySelector('.cm-rewrite-result')?.textContent).toBe(
+      'She froze by the door.',
+    );
     view.destroy();
   });
 
