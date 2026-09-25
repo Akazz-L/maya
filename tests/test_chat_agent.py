@@ -303,11 +303,18 @@ def state(base_state, sample_scene_plan):
     return {
         **base_state,
         "scene_plan": sample_scene_plan,
-        "previous_summaries": ["Elena crossed the Wastes alone."],
+        "previous_summaries": [("Chapter 1", "Elena crossed the Wastes alone.")],
         "draft": "Elena stood at the gates.",
         "history": [],
         "message": "Make the ending darker.",
     }
+
+
+def test_the_previous_chapter_reaches_the_draft_by_title(state):
+    """The chat drafts, so it reads the chapter immediately before this one —
+    named, so the model can refer to it the way the writer does."""
+    _, messages = build_turn(state)
+    assert "PREVIOUS CHAPTER:\nChapter 1 — summary:\nElena crossed the Wastes alone." in messages[-1]["content"]
 
 
 def test_the_system_prompt_carries_the_bible_and_is_cached(state):

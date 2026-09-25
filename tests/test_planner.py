@@ -76,12 +76,15 @@ async def test_planner_proposes_the_next_chapter_without_notes(base_state, brief
 
 @pytest.mark.asyncio
 async def test_planner_includes_previous_summaries(base_state):
-    base_state["previous_summaries"] = ["Chapter 1: Elena left the Wastes."]
+    base_state["previous_summaries"] = [("Chapter 1", "Elena left the Wastes.")]
     mock_response = _mock_tool_response(VALID_PLAN)
     with patch("backend.agents.planner.client.messages.create", new_callable=AsyncMock, return_value=mock_response) as mock_create:
         await planner_node(base_state, MODEL_KEY)
     prompt_text = mock_create.call_args.kwargs["messages"][0]["content"]
     assert "Elena left the Wastes" in prompt_text
+    # By title, not by position in the window: past ten chapters a counted
+    # label names the wrong chapter.
+    assert "Chapter 1 — summary" in prompt_text
 
 
 @pytest.mark.asyncio

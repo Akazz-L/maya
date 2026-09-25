@@ -442,6 +442,15 @@ def plan_text(plan: dict) -> str:
     )
 
 
+def _previous_chapter(summaries: list[tuple[str, str]]) -> str:
+    """Only the nearest chapter: a draft continues from what came immediately
+    before it. The planner and the specialists read the whole window."""
+    if not summaries:
+        return "This is the first chapter."
+    title, summary = summaries[-1]
+    return f"{title} — summary:\n{summary}"
+
+
 def build_turn(state: dict) -> tuple[list[dict], list[dict]]:
     """Build (system, messages) for one writer message.
 
@@ -466,7 +475,7 @@ def build_turn(state: dict) -> tuple[list[dict], list[dict]]:
     parts = [
         f"CHAPTER NOTES:\n{state['brief'].strip() or '(The author has not written notes for this chapter.)'}",
         f"SCENE PLAN:\n{plan_text(state['scene_plan'])}",
-        f"PREVIOUS CHAPTER:\n{summaries[-1] if summaries else 'This is the first chapter.'}",
+        f"PREVIOUS CHAPTER:\n{_previous_chapter(summaries)}",
         f"CURRENT CHAPTER TEXT:\n{state['draft'] or '(The chapter is empty.)'}",
     ]
     note = _outcome_note(state["history"][-1]) if state["history"] else None

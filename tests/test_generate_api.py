@@ -139,7 +139,7 @@ async def test_generation_uses_preceding_chapter_summaries(chapter, sample_scene
     ):
         await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
 
-    assert planner.call_args.args[0]["previous_summaries"] == ["Elena departed."]
+    assert planner.call_args.args[0]["previous_summaries"] == [("Chapter 0", "Elena departed.")]
 
 
 @pytest.mark.asyncio
