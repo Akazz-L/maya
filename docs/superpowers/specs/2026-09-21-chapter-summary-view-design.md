@@ -59,7 +59,8 @@ A derived `summary_status`, computed server-side from those three columns and th
 - `POST /projects/{pid}/documents/{id}/summary` summarizes the chapter now and returns the detail.
   It checks the AI budget and meters the call as `summarize`, like the implicit refreshes.
   It is refused with 400 for a non-chapter or an empty chapter.
-- `GET /projects/{pid}/documents/{id}/context` returns the prior chapters this chapter's AI calls read, in order, as `{id, title, summary_status}`, reusing the query in `build_previous_summaries` without summarizing anything.
+- `GET /projects/{pid}/documents/{id}/summary-context` returns the prior chapters this chapter's AI calls read, in order, as `{id, title, summary_status}`.
+  It shares the window query (`prior_chapter_documents`) with `build_previous_summaries` and summarizes nothing, so looking costs nothing.
 
 ## UI
 

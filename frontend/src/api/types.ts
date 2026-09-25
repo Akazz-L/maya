@@ -28,12 +28,37 @@ export interface DocumentSummary {
   updated_at: string;
 }
 
+/**
+ * How a chapter's summary stands against its body.
+ *
+ * - `empty` — nothing written, so nothing to summarize.
+ * - `missing` — never summarized; the next AI request that reads it pays for one.
+ * - `current` — generated, and describes the body as it stands.
+ * - `stale` — the body moved on; the next AI request that reads it refreshes it.
+ * - `edited` — the writer's own, describing this body.
+ * - `edited_stale` — the writer's own, and the chapter has changed since.
+ */
+export type SummaryStatus = 'empty' | 'missing' | 'current' | 'stale' | 'edited' | 'edited_stale';
+
 /** A single open document, from GET /projects/{id}/documents/{did}. */
 export interface DocumentDetail extends DocumentSummary {
   body: string;
   /** Chapter only — the writer's optional chapter notes, read by the planner and the chat. Empty on bible and note documents. */
   brief: string;
   plan: ScenePlan | null;
+  /**
+   * Chapter only — what later chapters read of this one, in place of its body.
+   * Null until something summarizes it.
+   */
+  summary: string | null;
+  summary_status: SummaryStatus;
+}
+
+/** One preceding chapter an AI call on this chapter reads, as a summary. */
+export interface SummarySource {
+  id: string;
+  title: string;
+  summary_status: SummaryStatus;
 }
 
 /** A project in the list, from GET /projects. */

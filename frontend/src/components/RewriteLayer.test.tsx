@@ -15,6 +15,8 @@ const DOC: DocumentDetail = {
   body: BODY,
   brief: '',
   plan: null,
+  summary: null,
+  summary_status: 'missing' as const,
 };
 
 function sse(frames: object[]): Response {

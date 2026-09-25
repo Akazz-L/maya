@@ -6,13 +6,20 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { WorkspaceScreen } from './WorkspaceScreen';
 import { AuthProvider } from '../auth/AuthContext';
 import { clearToken } from '../auth/token';
-import { EMPTY_PLAN, type ChatMessage, type ChatProposal, type ScenePlan } from '../api/types';
+import {
+  EMPTY_PLAN,
+  type ChatMessage,
+  type ChatProposal,
+  type ScenePlan,
+  type SummaryStatus,
+} from '../api/types';
 import { sha256Hex } from '../lib/chat';
 import { selectRange, typeAtEnd, viewFor } from '../test/editor';
 
 const DOCS = [
   { id: 'b', title: 'Story Bible', kind: 'bible', position: 0, updated_at: '2026-01-01' },
   { id: 'c1', title: 'Chapter 1', kind: 'chapter', position: 1, updated_at: '2026-01-01' },
+  { id: 'c2', title: 'Chapter 2', kind: 'chapter', position: 2, updated_at: '2026-01-01' },
 ];
 
 const CHAPTER = {
@@ -24,6 +31,20 @@ const CHAPTER = {
   body: 'The rain.',
   brief: 'Mara waits.',
   plan: null as ScenePlan | null,
+  summary: 'Mara waited out the rain.' as string | null,
+  summary_status: 'current' as SummaryStatus,
+};
+
+/** The chapter after c1, which therefore reads c1 as a summary. */
+const CHAPTER_2 = {
+  ...CHAPTER,
+  id: 'c2',
+  title: 'Chapter 2',
+  position: 2,
+  body: '',
+  brief: '',
+  summary: null,
+  summary_status: 'empty' as SummaryStatus,
 };
 
 const BIBLE = {
@@ -140,6 +161,7 @@ interface MockOptions {
 /** A fake backend whose chapter c1 remembers patches and plans like the real one. */
 function mockApi({ me = ME, chapter = CHAPTER, chat = [], handle }: MockOptions = {}) {
   let current = { ...(chapter as object) };
+  const openId = (chapter as { id: string }).id;
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = String(input);
     const request = init as RequestInit | undefined;
@@ -151,14 +173,34 @@ function mockApi({ me = ME, chapter = CHAPTER, chat = [], handle }: MockOptions 
     if (url.endsWith('/documents')) return json(DOCS);
     if (url.endsWith('/chat') && method === 'GET') return json({ messages: chat });
     if (url.endsWith('/rewrite/stream')) return sse([{ type: 'done', body: 'The downpour.' }]);
+    if (url.endsWith('/summary-context')) {
+      // Chapter 2 reads chapter 1; chapter 1 has nothing before it.
+      return json({
+        previous: url.includes('/documents/c2')
+          ? [{ id: 'c1', title: 'Chapter 1', summary_status: 'current' }]
+          : [],
+      });
+    }
+    if (url.endsWith('/summary') && method === 'POST') {
+      current = { ...current, summary: 'Mara left in the storm.', summary_status: 'current' };
+      return json({
+        summary: 'Mara left in the storm.',
+        summary_status: 'current',
+        usage: ME.usage,
+      });
+    }
     if (url.endsWith('/plan') && method === 'POST') {
       current = { ...current, plan: NEW_PLAN };
       return json({ plan: NEW_PLAN, usage: ME.usage });
     }
-    if (url.includes('/documents/c1')) {
+    // Only the chapter under test remembers its patches; the others are fixed,
+    // so opening one from another (a summary, say) reads that chapter's own text.
+    if (url.includes(`/documents/${openId}`)) {
       if (method === 'PATCH') current = { ...current, ...JSON.parse(String(request?.body)) };
       return json(current);
     }
+    if (url.includes('/documents/c1')) return json(CHAPTER);
+    if (url.includes('/documents/c2')) return json(CHAPTER_2);
     if (url.includes('/documents/b')) return json(BIBLE);
     return json({ project_id: 'p1', name: 'Novel' });
   });
@@ -810,5 +852,58 @@ describe('WorkspaceScreen', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/used up/i);
     expect(screen.getByLabelText('Message')).toHaveValue('Draft it.');
+  });
+  it('names the earlier chapters the AI reads, as summaries', async () => {
+    mockApi({ chapter: CHAPTER_2 });
+    renderAt('/p/p1/d/c2');
+    await editorReady();
+
+    expect(await screen.findByText(/in place of the earlier/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open chapter 1's summary/i })).toBeInTheDocument();
+  });
+
+  it('opens an earlier chapter on its summary, from the chapter that reads it', async () => {
+    mockApi({ chapter: CHAPTER_2 });
+    renderAt('/p/p1/d/c2');
+    await editorReady();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /open chapter 1's summary/i }),
+    );
+
+    // Chapter 1, and on the Summary view rather than its prose.
+    expect(await screen.findByLabelText('Chapter summary')).toHaveValue('Mara waited out the rain.');
+    expect(screen.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('saves a summary the writer corrects', async () => {
+    const calls: string[] = [];
+    mockApi({
+      handle: (_url, init) => {
+        if (init?.method === 'PATCH') calls.push(String(init.body));
+        return undefined;
+      },
+    });
+    renderAt('/p/p1/d/c1');
+    await userEvent.click(await screen.findByRole('tab', { name: 'Summary' }));
+
+    await userEvent.type(await screen.findByLabelText('Chapter summary'), ' She is left-handed.');
+    // The planner reads the saved summary, so the edit has to land on the server.
+    await waitFor(() =>
+      expect(calls).toContain(
+        JSON.stringify({ summary: 'Mara waited out the rain. She is left-handed.' }),
+      ),
+    );
+  });
+
+  it('summarizes a chapter on request and shows what came back', async () => {
+    mockApi({ chapter: { ...CHAPTER, summary: null, summary_status: 'missing' } });
+    renderAt('/p/p1/d/c1');
+    await userEvent.click(await screen.findByRole('tab', { name: 'Summary' }));
+
+    await userEvent.click(await screen.findByRole('button', { name: /summarize now/i }));
+
+    expect(await screen.findByLabelText('Chapter summary')).toHaveValue('Mara left in the storm.');
+    expect(screen.getByRole('status')).toHaveTextContent(/up to date/i);
   });
 });

@@ -5,11 +5,14 @@ Instead of generating a book in one shot, Maya keeps a project as a list of docu
 
 Documents are plain text with a name, added and reordered freely from a sidebar.
 Every project has one pinned Story Bible.
-Chapter documents carry optional chapter context — an outline, a line of intent, or nothing at all — and a Write / Plan switcher.
+Chapter documents carry optional chapter context — an outline, a line of intent, or nothing at all — and a Write / Plan / Summary switcher.
 The context is editable from both views, and every AI call reads it.
 Plan opens the scene plan: empty and ready to type on a chapter without one, or generated on request, with no notes needed.
 Edit the plan, regenerate or remove it (with undo), or draft from it.
 Prior chapters are summarized automatically and fed back in as context.
+Summary opens that summary: what the AI remembers of the chapter, whether it still matches the prose, and a field to correct it.
+A summary the writer edits is kept, and nothing rewrites it unless they ask.
+The Write view names the earlier chapters each request reads, so it is clear the AI works from those summaries rather than the chapters themselves.
 
 Beside each chapter is a chat that does the drafting.
 Ask it for a first draft, a draft from the saved scene plan (the Plan view's Draft from plan → sends exactly that), a continuation, or changes to what is already written.
