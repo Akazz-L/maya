@@ -174,11 +174,14 @@ function mockApi({ me = ME, chapter = CHAPTER, chat = [], handle }: MockOptions 
     if (url.endsWith('/chat') && method === 'GET') return json({ messages: chat });
     if (url.endsWith('/rewrite/stream')) return sse([{ type: 'done', body: 'The downpour.' }]);
     if (url.endsWith('/summary-context')) {
-      // Chapter 2 reads chapter 1; chapter 1 has nothing before it.
+      // Chapter 2 reads chapter 1; chapter 1 has nothing before it. Two short
+      // chapters are far under the prose budget, so nothing is summarized.
       return json({
+        mode: 'prose',
         previous: url.includes('/documents/c2')
-          ? [{ id: 'c1', title: 'Chapter 1', summary_status: 'current' }]
+          ? [{ id: 'c1', title: 'Chapter 1', summary_status: 'empty' }]
           : [],
+        digest: null,
       });
     }
     if (url.endsWith('/summary') && method === 'POST') {
@@ -588,7 +591,12 @@ describe('WorkspaceScreen', () => {
           return new Promise<Response>((resolve) => {
             resolvePlan = resolve;
           }) as unknown as Response;
-        if (url.includes('/documents/c1') && !url.endsWith('/chat')) return json(CHAPTER);
+        if (
+          url.includes('/documents/c1') &&
+          !url.endsWith('/chat') &&
+          !url.endsWith('/summary-context')
+        )
+          return json(CHAPTER);
         return undefined;
       },
     });
@@ -853,27 +861,46 @@ describe('WorkspaceScreen', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/used up/i);
     expect(screen.getByLabelText('Message')).toHaveValue('Draft it.');
   });
-  it('names the earlier chapters the AI reads, as summaries', async () => {
+  it('names what the AI reads of the story before this chapter', async () => {
     mockApi({ chapter: CHAPTER_2 });
     renderAt('/p/p1/d/c2');
     await editorReady();
 
-    expect(await screen.findByText(/in place of the earlier/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /open chapter 1's summary/i })).toBeInTheDocument();
+    expect(await screen.findByText(/reads your earlier chapters in full/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open chapter 1/i })).toBeInTheDocument();
   });
 
-  it('opens an earlier chapter on its summary, from the chapter that reads it', async () => {
+  it('names the running record once a project is long enough to have one', async () => {
+    mockApi({
+      chapter: CHAPTER_2,
+      handle: (url) =>
+        url.endsWith('/summary-context') && url.includes('/documents/c2')
+          ? json({
+              mode: 'summaries',
+              previous: [{ id: 'c1', title: 'Chapter 1', summary_status: 'current' }],
+              digest: { status: 'stale', covers: ['Chapter A', 'Chapter B'] },
+            })
+          : undefined,
+    });
+    renderAt('/p/p1/d/c2');
+    await editorReady();
+
+    expect(
+      await screen.findByRole('button', { name: /the story so far \(2 chapters\)/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/end of Chapter 1, verbatim/i)).toBeInTheDocument();
+  });
+
+  it('opens an earlier chapter on its memory, from the chapter that reads it', async () => {
     mockApi({ chapter: CHAPTER_2 });
     renderAt('/p/p1/d/c2');
     await editorReady();
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: /open chapter 1's summary/i }),
-    );
+    await userEvent.click(await screen.findByRole('button', { name: /open chapter 1/i }));
 
-    // Chapter 1, and on the Summary view rather than its prose.
+    // Chapter 1, and on the Memory view rather than its prose.
     expect(await screen.findByLabelText('Chapter summary')).toHaveValue('Mara waited out the rain.');
-    expect(screen.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Memory' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('saves a summary the writer corrects', async () => {
@@ -885,7 +912,7 @@ describe('WorkspaceScreen', () => {
       },
     });
     renderAt('/p/p1/d/c1');
-    await userEvent.click(await screen.findByRole('tab', { name: 'Summary' }));
+    await userEvent.click(await screen.findByRole('tab', { name: 'Memory' }));
 
     await userEvent.type(await screen.findByLabelText('Chapter summary'), ' She is left-handed.');
     // The planner reads the saved summary, so the edit has to land on the server.
@@ -899,7 +926,7 @@ describe('WorkspaceScreen', () => {
   it('summarizes a chapter on request and shows what came back', async () => {
     mockApi({ chapter: { ...CHAPTER, summary: null, summary_status: 'missing' } });
     renderAt('/p/p1/d/c1');
-    await userEvent.click(await screen.findByRole('tab', { name: 'Summary' }));
+    await userEvent.click(await screen.findByRole('tab', { name: 'Memory' }));
 
     await userEvent.click(await screen.findByRole('button', { name: /summarize now/i }));
 

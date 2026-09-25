@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { generateSummary, getSummaryContext } from '../api/endpoints';
+import { generateDigest, generateSummary, getSummaryContext } from '../api/endpoints';
 import type { UsageSnapshot } from '../api/types';
 import { usePatchDocument } from './queries';
 
@@ -12,8 +12,9 @@ interface ChapterSummaryOptions {
   enabled: boolean;
   /** Saves every pending edit; the summarizer reads the chapter as saved. */
   settle: () => Promise<void>;
-  /** Drops the local edit, so the model's new summary is what shows. */
+  /** Drops the local edits, so the model's new text is what shows. */
   resetEdit: () => void;
+  resetDigestEdit: () => void;
   onUsage: (usage: UsageSnapshot | undefined) => void;
   /** A failure to show, or null to clear the last one when a new request starts. */
   onError: (message: string | null) => void;
@@ -32,6 +33,7 @@ export function useChapterSummary({
   enabled,
   settle,
   resetEdit,
+  resetDigestEdit,
   onUsage,
   onError,
 }: ChapterSummaryOptions) {
@@ -62,11 +64,31 @@ export function useChapterSummary({
     onError: (e: Error) => onError(e.message),
   });
 
+  // Same shape, different artifact: the story so far is the record of every
+  // chapter before the recent ones, and is rebuilt rather than refreshed.
+  const digest = useMutation({
+    mutationFn: (id: string) => settle().then(() => generateDigest(projectId, id)),
+    onMutate: () => onError(null),
+    onSuccess: (res, id) => {
+      patchDocument(id, { digest: res.digest });
+      resetDigestEdit();
+      onUsage(res.usage);
+      void qc.invalidateQueries({ queryKey: ['summary-context', projectId] });
+    },
+    onError: (e: Error) => onError(e.message),
+  });
+
   return {
-    sources: sources.data?.previous ?? [],
+    context: sources.data ?? null,
     generating: mutation.isPending,
     generate: () => {
       if (documentId) mutation.mutate(documentId);
+    },
+    digestStatus: sources.data?.digest?.status ?? 'empty',
+    digestCovers: sources.data?.digest?.covers ?? [],
+    digestGenerating: digest.isPending,
+    generateDigest: () => {
+      if (documentId) digest.mutate(documentId);
     },
   };
 }

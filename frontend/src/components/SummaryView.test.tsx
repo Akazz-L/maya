@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { SummaryStatus } from '../api/types';
 import { SummaryView } from './SummaryView';
 
 function Controlled({
+  children,
   initial = '',
   status = 'current',
   generating = false,
@@ -14,6 +15,7 @@ function Controlled({
   onChange,
   onGenerate = () => {},
 }: {
+  children?: ReactNode;
   initial?: string;
   status?: SummaryStatus;
   generating?: boolean;
@@ -35,7 +37,9 @@ function Controlled({
         onChange?.(v);
       }}
       onGenerate={onGenerate}
-    />
+    >
+      {children}
+    </SummaryView>
   );
 }
 
@@ -44,9 +48,19 @@ const field = () => screen.getByLabelText('Chapter summary');
 describe('SummaryView', () => {
   it('says the summary is what later chapters are written from', () => {
     render(<Controlled initial="Elena left home." />);
-    expect(screen.getByRole('heading', { name: 'Summary' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Memory' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /this chapter, summarized/i })).toBeInTheDocument();
     expect(screen.getByText(/written from this summary, not/i)).toBeInTheDocument();
-    expect(screen.getByText(/read by the next chapter's chat/i)).toBeInTheDocument();
+    expect(screen.getByText(/folded into their story so far/i)).toBeInTheDocument();
+  });
+
+  it('shows the story before this chapter beneath it', () => {
+    render(
+      <Controlled initial="Elena left home.">
+        <p>The story so far goes here.</p>
+      </Controlled>,
+    );
+    expect(screen.getByText('The story so far goes here.')).toBeInTheDocument();
   });
 
   it('shows the summary and reports every edit', async () => {

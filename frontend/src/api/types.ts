@@ -52,6 +52,12 @@ export interface DocumentDetail extends DocumentSummary {
    */
   summary: string | null;
   summary_status: SummaryStatus;
+  /**
+   * Chapter only — "the story so far": every chapter before the recent ones,
+   * folded into one running record. Held per chapter because it is a prefix:
+   * the record read while revising chapter 6 must not contain chapter 30.
+   */
+  digest: string | null;
 }
 
 /** One preceding chapter an AI call on this chapter reads, as a summary. */
@@ -59,6 +65,25 @@ export interface SummarySource {
   id: string;
   title: string;
   summary_status: SummaryStatus;
+}
+
+/** The story so far, and which chapters it covers. */
+export interface DigestSource {
+  status: SummaryStatus;
+  covers: string[];
+}
+
+/**
+ * What the AI reads of the story before this chapter.
+ *
+ * `prose` while the project is short enough that the chapters themselves fit
+ * in the budget summaries exist to protect — then nothing is summarized at all
+ * and `previous` names the chapters that are sent in full.
+ */
+export interface SummaryContext {
+  mode: 'prose' | 'summaries';
+  previous: SummarySource[];
+  digest: DigestSource | null;
 }
 
 /** A project in the list, from GET /projects. */

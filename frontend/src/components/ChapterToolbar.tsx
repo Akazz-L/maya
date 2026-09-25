@@ -14,7 +14,7 @@ interface ChapterToolbarProps {
 const VIEWS = [
   { id: 'write', label: 'Write', Icon: PenLine },
   { id: 'plan', label: 'Plan', Icon: ListTree },
-  { id: 'summary', label: 'Summary', Icon: ScrollText },
+  { id: 'summary', label: 'Memory', Icon: ScrollText },
 ] as const satisfies readonly { id: ChapterView; label: string; Icon: unknown }[];
 
 export function ChapterToolbar({

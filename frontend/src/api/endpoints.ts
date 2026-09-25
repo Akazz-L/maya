@@ -15,7 +15,7 @@ import type {
   ProjectSummary,
   ProposalOutcome,
   ScenePlan,
-  SummarySource,
+  SummaryContext,
   SummaryStatus,
   UsageSnapshot,
 } from './types';
@@ -77,7 +77,7 @@ export const createDocument = (
   });
 
 export type DocumentPatch = Partial<
-  Pick<DocumentDetail, 'title' | 'body' | 'brief' | 'plan' | 'kind' | 'summary'>
+  Pick<DocumentDetail, 'title' | 'body' | 'brief' | 'plan' | 'kind' | 'summary' | 'digest'>
 >;
 
 export const updateDocument = (
@@ -118,10 +118,20 @@ export const generateSummary = (projectId: string, documentId: string) =>
     { method: 'POST' },
   );
 
-/** The preceding chapters this chapter's AI calls read, as summaries. Free to ask. */
+/** What the AI reads of the story before this chapter. Free to ask. */
 export const getSummaryContext = (projectId: string, documentId: string) =>
-  request<{ previous: SummarySource[] }>(
-    `/projects/${projectId}/documents/${documentId}/summary-context`,
+  request<SummaryContext>(`/projects/${projectId}/documents/${documentId}/summary-context`);
+
+/**
+ * Build this chapter's story so far now, summarizing whatever it needs.
+ *
+ * The one call allowed to summarize a backlog: everywhere else a large one is
+ * refused, because it is a bill the writer should see coming.
+ */
+export const generateDigest = (projectId: string, documentId: string) =>
+  request<{ digest: string; digest_status: SummaryStatus; usage: UsageSnapshot }>(
+    `/projects/${projectId}/documents/${documentId}/story-so-far`,
+    { method: 'POST' },
   );
 
 /** SSE stream URLs, read by stream.ts. */

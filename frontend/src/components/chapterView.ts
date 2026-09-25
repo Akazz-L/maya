@@ -1,5 +1,6 @@
-/** Which pane fills the chapter workspace: the prose, its plan, or the summary
- *  later chapters read in place of the prose.
+/** Which pane fills the chapter workspace: the prose, its plan, or what the AI
+ *  remembers here — the story before this chapter, and the summary later
+ *  chapters read in place of it.
  *  A review's findings are not a pane — they are drawn in the prose itself. */
 export type ChapterView = 'write' | 'plan' | 'summary';
 

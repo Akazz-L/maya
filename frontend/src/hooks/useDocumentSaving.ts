@@ -18,7 +18,7 @@ type SaveTo = (id: string, patch: DocumentPatch) => unknown;
  * document it was typed in even if the writer has since opened another.
  */
 function useDebouncedField(
-  field: 'brief' | 'summary',
+  field: 'brief' | 'summary' | 'digest',
   documentId: string | undefined,
   serverValue: string,
   saveTo: SaveTo,
@@ -68,13 +68,15 @@ function useDebouncedField(
  * the chapter context's and the summary's own debounces, and `settle`, which a
  * request that reads the document server-side awaits first.
  *
- * `serverContext` and `serverSummary` are those fields as the server last sent them.
+ * `serverContext`, `serverSummary` and `serverDigest` are those fields as the
+ * server last sent them.
  */
 export function useDocumentSaving(
   projectId: string,
   documentId: string | undefined,
   serverContext: string,
   serverSummary: string,
+  serverDigest: string,
 ) {
   const qc = useQueryClient();
   const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -127,6 +129,7 @@ export function useDocumentSaving(
 
   const context = useDebouncedField('brief', documentId, serverContext, saveTo);
   const summary = useDebouncedField('summary', documentId, serverSummary, saveTo);
+  const digest = useDebouncedField('digest', documentId, serverDigest, saveTo);
 
   /**
    * Put everything the writer has typed on the server before a request reads it
@@ -137,11 +140,12 @@ export function useDocumentSaving(
     editorFlush.current?.();
     context.flush();
     summary.flush();
+    digest.flush();
     await pendingSave.current;
     if (saveFailed.current) {
       throw new Error('Your last changes could not be saved, so this would work from older text.');
     }
-  }, [context, summary]);
+  }, [context, summary, digest]);
 
   return {
     saveState,
@@ -155,5 +159,8 @@ export function useDocumentSaving(
     changeSummary: summary.change,
     /** After a regenerate: show the model's summary rather than the last edit. */
     resetSummary: summary.reset,
+    digest: digest.value,
+    changeDigest: digest.change,
+    resetDigest: digest.reset,
   };
 }

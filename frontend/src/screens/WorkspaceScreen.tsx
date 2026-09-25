@@ -13,6 +13,7 @@ import { DocumentSidebar } from '../components/DocumentSidebar';
 import { ModelPicker } from '../components/ModelPicker';
 import { PlanView } from '../components/PlanView';
 import { SummarySources } from '../components/SummarySources';
+import { StorySoFar } from '../components/StorySoFar';
 import { SummaryView } from '../components/SummaryView';
 import { UsageMeter } from '../components/UsageMeter';
 import { Button } from '../components/ui/button';
@@ -108,7 +109,13 @@ function Workspace({ projectId }: { projectId: string }) {
   const doc = document.data;
   const isChapter = doc?.kind === 'chapter';
 
-  const saving = useDocumentSaving(projectId, documentId, doc?.brief ?? '', doc?.summary ?? '');
+  const saving = useDocumentSaving(
+    projectId,
+    documentId,
+    doc?.brief ?? '',
+    doc?.summary ?? '',
+    doc?.digest ?? '',
+  );
   const plan = useChapterPlan({
     projectId,
     documentId,
@@ -127,6 +134,7 @@ function Workspace({ projectId }: { projectId: string }) {
     enabled: isChapter,
     settle: saving.settle,
     resetEdit: saving.resetSummary,
+    resetDigestEdit: saving.resetDigest,
     onUsage: applyUsage,
     onError: (message) => {
       setError(message);
@@ -379,7 +387,11 @@ function Workspace({ projectId }: { projectId: string }) {
                   onContextChange={saving.changeContext}
                   contextNote={
                     isChapter ? (
-                      <SummarySources sources={summary.sources} onOpen={openSummary} />
+                      <SummarySources
+                        context={summary.context}
+                        onOpen={openSummary}
+                        onOpenStory={() => setView('summary')}
+                      />
                     ) : null
                   }
                 />
@@ -395,7 +407,18 @@ function Workspace({ projectId }: { projectId: string }) {
                     aiBlocked={aiBlocked}
                     onChange={saving.changeSummary}
                     onGenerate={summary.generate}
-                  />
+                  >
+                    <StorySoFar
+                      digest={saving.digest}
+                      status={summary.digestStatus}
+                      covers={summary.digestCovers}
+                      generating={summary.digestGenerating}
+                      busy={busy}
+                      aiBlocked={aiBlocked}
+                      onChange={saving.changeDigest}
+                      onGenerate={summary.generateDigest}
+                    />
+                  </SummaryView>
                 </div>
               )}
 

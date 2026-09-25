@@ -27,12 +27,12 @@ describe('ChapterToolbar', () => {
     expect(p.onViewChange).toHaveBeenCalledWith('write');
   });
 
-  it('has a Write, a Plan and a Summary view, and nothing else', () => {
+  it('has a Write, a Plan and a Memory view, and nothing else', () => {
     render(<ChapterToolbar {...props()} />);
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
       'Write',
       'Plan',
-      'Summary',
+      'Memory',
     ]);
   });
 

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { RotateCcw, Sparkles } from 'lucide-react';
 import type { SummaryStatus } from '../api/types';
 import { cn } from '../lib/utils';
@@ -19,6 +19,8 @@ interface SummaryViewProps {
   aiBlocked: boolean;
   onChange: (value: string) => void;
   onGenerate: () => void;
+  /** The story so far, shown beneath: what the AI remembers arriving here. */
+  children?: ReactNode;
 }
 
 /** What each status tells the writer, and whether it needs their attention. */
@@ -64,6 +66,7 @@ export function SummaryView({
   aiBlocked,
   onChange,
   onGenerate,
+  children,
 }: SummaryViewProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [confirming, setConfirming] = useState(false);
@@ -90,11 +93,11 @@ export function SummaryView({
             id="chapter-summary-title"
             className="font-serif text-2xl font-semibold tracking-[-0.01em] sm:text-[28px]"
           >
-            Summary
+            Memory
           </h2>
           <p className="mt-1 text-sm text-ink-subtle">
-            What the AI remembers of this chapter. Later chapters are written from this summary, not
-            from the chapter itself.
+            What the AI remembers here: this chapter as later ones will read it, and the story
+            before it.
           </p>
         </div>
         {written && (
@@ -111,6 +114,10 @@ export function SummaryView({
 
       {written ? (
         <div className="mx-auto w-full max-w-page px-6 pb-16">
+          <h3 className="font-serif text-xl font-semibold">This chapter, summarized</h3>
+          <p className="mt-1 mb-3 text-sm text-ink-subtle">
+            Later chapters are written from this summary, not from the chapter itself.
+          </p>
           <p
             role="status"
             className={cn(
@@ -144,9 +151,10 @@ export function SummaryView({
           />
 
           <p id="chapter-summary-reach" className="mt-2 text-xs text-ink-subtle">
-            Read by the next chapter's chat, and by planning and review passes for up to the next ten
-            chapters. Clear it to hand the chapter back to the AI.
+            Read by the next few chapters' chat, planning and review passes; after that it is folded
+            into their story so far. Clear it to hand the chapter back to the AI.
           </p>
+          {children && <div className="mt-10">{children}</div>}
         </div>
       ) : (
         <div className="mx-auto w-full max-w-page px-6 pb-16">
@@ -154,6 +162,7 @@ export function SummaryView({
             {detail} Once there is prose here, the AI summarizes it and later chapters read that
             summary in place of the whole chapter.
           </EmptyState>
+          {children && <div className="mt-10">{children}</div>}
         </div>
       )}
 

@@ -113,7 +113,8 @@ It gains the chapter's whole text and its plan, replacing today's ±4,000 charac
 
 ### Adaptive prose mode
 
-While the prior chapters of a project total **20,000 tokens or fewer**, the chat receives their prose verbatim instead of the digest and summaries.
+While the prior chapters of a project total **20,000 tokens or fewer**, the agents receive their prose verbatim instead of the digest and summaries.
+(The design said "the chat"; it applies to every agent, because a planner reading two real chapters is better informed than one reading two summaries, and because it means a new project never pays a summarizer call at all.)
 That is about five full chapters, or fifteen short ones — the stretch where the voice is being established and where imitating real sentences matters most.
 Cost at the ceiling is about $0.02 per turn on Haiku and $0.10 on Opus, against a prefix that caches well because early chapters are edited less than the one being written.
 
@@ -153,16 +154,18 @@ The bible is assumed at ~1,500 tokens, larger than the demo's 476, since a real 
 
 ### Story digest
 
-One per project, in a new `story_digests` table rather than a `Document`: it is derived state with a writer override, not something the writer authored.
+**Changed during implementation.** The design called for one digest per project, in a `story_digests` table.
+That is wrong, and building it showed why: the digest is a *prefix*.
+What the AI should remember while you write chapter 30 is not what it should remember while you revise chapter 6 — a single project-level row would hand chapter 6's draft everything that happens after it.
+
+So the digest is held **per chapter**, on `documents`: `digest`, `digest_hash`, `digest_edited`, mirroring the summary columns beside them.
+Each chapter's digest covers exactly the chapters before its own window, which also makes folding natural: the next chapter's digest is this one's plus one more chapter.
 
 | Column | Meaning |
 | --- | --- |
-| `project_id` | Unique; one digest per project |
-| `text` | The digest itself |
-| `covers_through_position` | The last chapter position folded in |
-| `source_hash` | Hash of the ordered `(document_id, summary_hash)` pairs folded in; detects a changed or reordered source |
-| `edited` | The writer wrote this text; never regenerated automatically |
-| `updated_at` | |
+| `digest` | The record of everything before this chapter's window |
+| `digest_hash` | Hash of the ordered `(document_id, summary_hash)` pairs it was folded from; detects a changed, reordered or deleted source |
+| `digest_edited` | The writer wrote this text; never regenerated automatically |
 
 Status is derived exactly as `summary_status` is, with the same vocabulary — `missing`, `current`, `stale`, `edited`, `edited_stale` — so one explanation covers both surfaces.
 
@@ -193,12 +196,14 @@ It is not stored, so it can never go stale.
 
 ### Story so far
 
-A pinned entry in the sidebar beneath the Story Bible, opening a view modeled on the chapter Summary view:
+**Changed during implementation**, following the data model above: the record belongs to a chapter, so it is shown on that chapter rather than at project level.
+The Summary tab becomes **Memory** and holds both halves of the same question — what the AI remembers arriving here, and what it will remember of here.
+The story so far sits beneath the chapter's own summary:
 
 - The lead line: "What the AI remembers of the chapters before the recent ones. It reads this in place of them."
 - The digest as editable text, with the same status vocabulary and the same rule that an edit is never overwritten.
 - **Rebuild** (confirmed when the digest is edited), and the chapter range it covers: "Chapters 1–35."
-- The place a large backfill is started. When chapters are waiting to be summarized — an imported novel, or a project that has never generated — the view names how many and what they will cost, and the writer begins it here. This is what the 409 above points at, so a first generation never silently spends a third of the month.
+- The place a large backfill is started. When chapters are waiting to be summarized — an imported novel, or a project that has never generated — **Write it now** summarizes them and folds the record. This is what the 409 above points at, so a first generation never silently spends a third of the month.
 - When a project has fewer chapters than the window, the view says so and offers nothing to build.
 
 ### Write view context line
@@ -225,7 +230,7 @@ Summaries, digest and voice sample move into cached blocks with a 1h TTL, ordere
 Cache effectiveness is asserted in tests through `usage.cache_read_input_tokens`, and the stale comment at `backend/llm.py:11` (which claims nothing caches) is corrected.
 
 **Phase 3 — Story so far.**
-The digest, its table, its folding, its view, and the removal of `MAX_PRIOR_CHAPTERS`.
+The digest, its columns, its folding, its view, and the removal of `MAX_PRIOR_CHAPTERS`.
 Includes the semaphore and the large-backfill confirmation.
 
 **Phase 4 — Adaptive prose mode.**
