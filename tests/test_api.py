@@ -2,44 +2,24 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_register_and_login(db):
-    from httpx import ASGITransport, AsyncClient
-    from backend.main import app
-    from backend.db import get_db
+async def test_first_request_creates_the_user_once(api_client, db):
+    from sqlalchemy import func, select
+    from backend.db_models import User
 
-    async def override_db():
-        yield db
+    api_client.headers["Authorization"] = "Bearer user_new"
+    assert (await api_client.get("/projects")).status_code == 200
+    assert (await api_client.get("/projects")).status_code == 200
 
-    app.dependency_overrides[get_db] = override_db
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/auth/register", json={"email": "new@example.com", "password": "pass"})
-            assert resp.status_code == 201
-
-            resp = await client.post("/auth/token", json={"email": "new@example.com", "password": "pass"})
-            assert resp.status_code == 200
-            assert "access_token" in resp.json()
-    finally:
-        app.dependency_overrides.clear()
+    count = await db.scalar(
+        select(func.count()).select_from(User).where(User.clerk_user_id == "user_new")
+    )
+    assert count == 1
 
 
 @pytest.mark.asyncio
-async def test_register_duplicate_email(db):
-    from httpx import ASGITransport, AsyncClient
-    from backend.main import app
-    from backend.db import get_db
-
-    async def override_db():
-        yield db
-
-    app.dependency_overrides[get_db] = override_db
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            await client.post("/auth/register", json={"email": "dup@example.com", "password": "pass"})
-            resp = await client.post("/auth/register", json={"email": "dup@example.com", "password": "pass"})
-            assert resp.status_code == 409
-    finally:
-        app.dependency_overrides.clear()
+async def test_request_without_a_session_is_refused(api_client):
+    resp = await api_client.get("/projects")
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -73,33 +53,11 @@ async def test_unauthorized_access(authed_client):
 
 
 @pytest.mark.asyncio
-async def test_project_not_accessible_by_other_user(db):
-    from httpx import ASGITransport, AsyncClient
-    from backend.main import app
-    from backend.db import get_db
+async def test_project_not_accessible_by_other_user(api_client):
+    api_client.headers["Authorization"] = "Bearer user_owner"
+    project_id = (await api_client.post("/projects", json={"name": "Owned"})).json()["project_id"]
 
-    async def override_db():
-        yield db
-
-    app.dependency_overrides[get_db] = override_db
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            # Owner creates a project.
-            await client.post("/auth/register", json={"email": "owner@example.com", "password": "pw"})
-            token = (
-                await client.post("/auth/token", json={"email": "owner@example.com", "password": "pw"})
-            ).json()["access_token"]
-            client.headers["Authorization"] = f"Bearer {token}"
-            project_id = (await client.post("/projects", json={"name": "Owned"})).json()["project_id"]
-
-            # A second user must not see it.
-            await client.post("/auth/register", json={"email": "other@example.com", "password": "pw"})
-            other_token = (
-                await client.post("/auth/token", json={"email": "other@example.com", "password": "pw"})
-            ).json()["access_token"]
-            client.headers["Authorization"] = f"Bearer {other_token}"
-
-            assert (await client.get(f"/projects/{project_id}")).status_code == 404
-            assert (await client.get(f"/projects/{project_id}/documents")).status_code == 404
-    finally:
-        app.dependency_overrides.clear()
+    # A second user must not see it.
+    api_client.headers["Authorization"] = "Bearer user_other"
+    assert (await api_client.get(f"/projects/{project_id}")).status_code == 404
+    assert (await api_client.get(f"/projects/{project_id}/documents")).status_code == 404

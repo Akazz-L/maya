@@ -4,8 +4,6 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { WorkspaceScreen } from './WorkspaceScreen';
-import { AuthProvider } from '../auth/AuthContext';
-import { clearToken } from '../auth/token';
 import {
   EMPTY_PLAN,
   type ChatMessage,
@@ -221,12 +219,10 @@ function renderAt(
   return render(
     <MemoryRouter initialEntries={[path]}>
       <QueryClientProvider client={qc}>
-        <AuthProvider>
-          <Routes>
-            <Route path="/p/:projectId" element={<WorkspaceScreen />} />
-            <Route path="/p/:projectId/d/:documentId" element={<WorkspaceScreen />} />
-          </Routes>
-        </AuthProvider>
+        <Routes>
+          <Route path="/p/:projectId" element={<WorkspaceScreen />} />
+          <Route path="/p/:projectId/d/:documentId" element={<WorkspaceScreen />} />
+        </Routes>
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -241,7 +237,6 @@ async function editorReady() {
 const contextToggle = () => screen.getAllByRole('button', { name: /chapter context/i })[0];
 
 afterEach(() => {
-  clearToken();
   // The chat and chapter context remember whether they are open; no test inherits that.
   localStorage.clear();
   vi.restoreAllMocks();
@@ -747,7 +742,10 @@ describe('WorkspaceScreen', () => {
         if (init?.method === 'PATCH') calls.push(`PATCH ${String(init.body)}`);
         if (url.endsWith('/chat/stream')) {
           calls.push('review');
-          return sse([{ type: 'delta', text: 'Nothing to report.' }, { type: 'done', messages: [] }]);
+          return sse([
+            { type: 'delta', text: 'Nothing to report.' },
+            { type: 'done', messages: [] },
+          ]);
         }
         return undefined;
       },

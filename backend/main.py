@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefm
 _logger = logging.getLogger(__name__)
 
 from backend.agents.reviewers import reviewer_options
-from backend.auth import create_access_token, get_current_user, hash_password, verify_password
+from backend.auth import get_current_user
 from backend.bible_markdown import BIBLE_TEMPLATE
 from backend.db import get_db, init_db
 from backend.db_models import Document, Project, User
@@ -22,7 +22,7 @@ from backend.routes import chat as chat_routes
 from backend.routes import documents as documents_routes
 from backend.llm import MODELS
 from backend.routes import generate as generate_routes
-from backend.settings import get_jwt_secret
+from backend.settings import get_clerk_secret_key
 from backend.usage import snapshot as usage_snapshot
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -32,10 +32,10 @@ _INDEX_HTML = _DIST_DIR / "index.html"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Fail the deploy here rather than at the first login attempt: a missing
-    # JWT_SECRET otherwise looks like a healthy service until a user tries to
-    # sign in and gets a 500.
-    get_jwt_secret()
+    # Fail the deploy here rather than at the first request: a missing
+    # CLERK_SECRET_KEY otherwise looks like a healthy service until a signed-in
+    # writer calls the API and gets a 500.
+    get_clerk_secret_key()
     await init_db()
     yield
 
@@ -46,40 +46,6 @@ app = FastAPI(title="Maya", lifespan=lifespan)
 app.mount("/assets", StaticFiles(directory=str(_DIST_DIR / "assets"), check_dir=False), name="assets")
 # Backwards-compatible mount for any /static/* assets referenced directly.
 app.mount("/static", StaticFiles(directory=str(_FRONTEND_DIR), check_dir=False), name="static")
-
-
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
-
-class RegisterRequest(BaseModel):
-    email: str
-    password: str
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-
-@app.post("/auth/register", status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    existing = await db.execute(select(User).where(User.email == body.email))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Email already registered")
-    user = User(email=body.email, hashed_password=hash_password(body.password))
-    db.add(user)
-    await db.commit()
-    return {"user_id": str(user.id)}
-
-
-@app.post("/auth/token", response_model=TokenResponse)
-async def login(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == body.email))
-    user = result.scalar_one_or_none()
-    if not user or not verify_password(body.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    return TokenResponse(access_token=create_access_token(user.id))
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +63,6 @@ class MeResponse(BaseModel):
     # would otherwise warn on every import.
     model_config = ConfigDict(protected_namespaces=())
 
-    email: str
     model_key: str
     #: The catalogue the picker renders. Served from the backend so labels and
     #: relative cost live only in backend/llm.py.
@@ -117,7 +82,6 @@ def _model_options() -> list[ModelOption]:
 
 async def _me(db: AsyncSession, user: User) -> MeResponse:
     return MeResponse(
-        email=user.email,
         model_key=user.model_key,
         models=_model_options(),
         usage=(await usage_snapshot(db, user)).as_dict(),

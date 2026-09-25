@@ -8,6 +8,7 @@ from sqlalchemy import select
 from backend.agents.chat import TextDelta
 from backend.db_models import UsageEvent, User
 from backend.llm import Usage
+from tests.conftest import TEST_CLERK_USER_ID
 
 
 def _parse_sse(text: str) -> list[dict]:
@@ -29,7 +30,7 @@ async def chapter(authed_client):
 
 @pytest_asyncio.fixture
 async def user(db):
-    return (await db.execute(select(User).where(User.email == "test@example.com"))).scalar_one()
+    return (await db.execute(select(User).where(User.clerk_user_id == TEST_CLERK_USER_ID))).scalar_one()
 
 
 async def _spend(db, user, dollars):
@@ -57,7 +58,6 @@ def budget(monkeypatch):
 async def test_me_starts_on_haiku_with_an_untouched_budget(authed_client):
     client, _ = authed_client
     me = (await client.get("/me")).json()
-    assert me["email"] == "test@example.com"
     assert me["model_key"] == "haiku"
     assert me["usage"] == {
         "spent_usd": 0.0,
@@ -94,9 +94,8 @@ async def test_an_unknown_model_is_refused(authed_client):
 
 
 @pytest.mark.asyncio
-async def test_me_requires_auth(authed_client):
-    client, _ = authed_client
-    resp = await client.get("/me", headers={"Authorization": "Bearer nonsense"})
+async def test_me_requires_auth(api_client):
+    resp = await api_client.get("/me")
     assert resp.status_code == 401
 
 

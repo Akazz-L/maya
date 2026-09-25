@@ -12,8 +12,7 @@ erDiagram
 
     USERS {
         uuid id PK
-        string email UK "indexed, unique"
-        text hashed_password "bcrypt"
+        string clerk_user_id UK "Clerk's user id, the token's sub"
         datetime created_at
     }
 

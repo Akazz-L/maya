@@ -22,7 +22,7 @@ DOLLAR = 1_000_000
 
 @pytest_asyncio.fixture
 async def user(db):
-    user = User(email="u@test.com", hashed_password="x")
+    user = User(clerk_user_id="user_u")
     db.add(user)
     await db.commit()
     return user
@@ -73,7 +73,7 @@ async def test_spend_before_this_month_is_not_counted(db, user):
 
 @pytest.mark.asyncio
 async def test_another_users_spend_is_not_counted(db, user):
-    other = User(email="other@test.com", hashed_password="x")
+    other = User(clerk_user_id="user_other")
     db.add(other)
     await db.commit()
     await _spend(db, other, 4 * DOLLAR)

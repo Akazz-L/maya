@@ -10,11 +10,11 @@ graph TB
     end
 
     subgraph server["FastAPI process — backend/"]
-        MAIN["main.py<br/>/auth/* · /me · /agents · /projects<br/>/health · SPA catch-all"]
+        MAIN["main.py<br/>/me · /agents · /projects<br/>/health · SPA catch-all"]
         DOCS["routes/documents.py<br/>/projects/{pid}/documents/*"]
         GEN["routes/generate.py<br/>/plan · /rewrite/stream"]
         CHAT["routes/chat.py<br/>/chat · /chat/stream<br/>/chat/messages/{id}/outcome"]
-        DEPS["routes/deps.py + auth.py<br/>JWT bearer → require_project"]
+        DEPS["routes/deps.py + auth.py<br/>Clerk session token → require_project"]
         STORE["doc_storage.py<br/>document CRUD, ordering"]
         CSTORE["chat_storage.py<br/>chat messages, proposals"]
         CTX["context.py<br/>prior-chapter summaries"]
@@ -25,7 +25,7 @@ graph TB
     ANTHROPIC["Anthropic API<br/>model chosen per writer, backend/llm.py"]
     SQL[("SQLite ./maya.db<br/>or PostgreSQL via DATABASE_URL")]
 
-    SPA -->|"fetch, Bearer JWT"| MAIN
+    SPA -->|"fetch, Bearer Clerk session token"| MAIN
     SPA --> DOCS
     SPA -->|"POST, reads SSE body"| GEN
     SPA -->|"POST, reads SSE body"| CHAT
@@ -56,7 +56,7 @@ graph TB
 ## How to read it
 
 **Every data route is project-scoped and authenticated.**
-`require_project` (`backend/routes/deps.py`) resolves the JWT to a `User`, loads the `Project`, and returns 404 — not 403 — when the caller does not own it, so a project id belonging to someone else is indistinguishable from one that never existed.
+`require_project` (`backend/routes/deps.py`) resolves the Clerk session token to a `User` (created on that Clerk user's first request), loads the `Project`, and returns 404 — not 403 — when the caller does not own it, so a project id belonging to someone else is indistinguishable from one that never existed.
 
 **Only the generation routes — `routes/generate.py` and `routes/chat.py` — talk to the agents.**
 `routes/documents.py` is plain CRUD.
