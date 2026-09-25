@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { PlanView, type PlanUndo } from './PlanView';
+import type { PlanUndo } from '../hooks/useChapterPlan';
+import { PlanView } from './PlanView';
 import { EMPTY_PLAN, type ScenePlan } from '../api/types';
 
 function props(overrides: Partial<React.ComponentProps<typeof PlanView>> = {}) {

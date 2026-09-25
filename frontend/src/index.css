@@ -1,4 +1,92 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/literata/wght.css';
+@import '@fontsource-variable/literata/wght-italic.css';
+
+/*
+ * Design tokens. Every colour in the app comes from here, including the
+ * CodeMirror widgets, which read the same custom properties.
+ *
+ * The palette is a manuscript on a desk: cool paper around a white page,
+ * graphite ink, and one accent — the editor's blue pencil — reserved for what
+ * the AI proposes. Primary actions are ink, so blue always means "suggested".
+ *
+ * `static`: CodeMirror themes read these variables from JavaScript, where
+ * Tailwind cannot see them, so every one is emitted whether a class uses it or not.
+ */
+@theme static {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-serif: 'Literata Variable', 'Iowan Old Style', Georgia, serif;
+
+  --color-canvas: #f3f4f1;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8f9f6;
+  --color-surface-sunken: #eceee9;
+  --color-line: #dee1db;
+  --color-line-strong: #c7cbc3;
+
+  --color-ink: #1d2127;
+  --color-ink-muted: #545b65;
+  --color-ink-subtle: #7d848d;
+  --color-ink-faint: #a7adb3;
+
+  --color-pencil: #2f4fc4;
+  --color-pencil-strong: #243f9f;
+  --color-pencil-soft: #e9edfb;
+  --color-pencil-faint: #f4f6fd;
+  --color-pencil-line: #c3cdf3;
+
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
+  --color-danger-line: #f5c2bd;
+  --color-success: #1f7a4d;
+  --color-warning: #a15c07;
+  --color-warning-soft: #fdf3e2;
+
+  /* Diff marks: a proofreader's red strike and green insert. */
+  --color-diff-del: #b42318;
+  --color-diff-del-bg: #fde8e6;
+  --color-diff-ins: #17663f;
+  --color-diff-ins-bg: #dff3e7;
+
+  /* The manuscript column: ~70 characters of prose plus its side padding. */
+  --container-page: 46rem;
+
+  --radius-control: 6px;
+  --radius-panel: 10px;
+
+  --shadow-float: 0 1px 2px rgb(29 33 39 / 0.06), 0 8px 24px -6px rgb(29 33 39 / 0.16);
+  --shadow-overlay: 0 24px 48px -12px rgb(29 33 39 / 0.28);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-pop: pop 140ms var(--ease-out);
+  --animate-fade: fade 160ms var(--ease-out);
+
+  @keyframes pop {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.98);
+    }
+  }
+  @keyframes fade {
+    from {
+      opacity: 0;
+    }
+  }
+}
+
+/* Stacking layers, named once so nothing escalates z-index by guesswork. */
+@utility z-overlay {
+  z-index: 20;
+}
+@utility z-drawer {
+  z-index: 40;
+}
+@utility z-popover {
+  z-index: 50;
+}
+@utility z-dialog {
+  z-index: 60;
+}
 
 html,
 body,
@@ -6,6 +94,38 @@ body,
   height: 100%;
 }
 
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
 * {
   box-sizing: border-box;
+}
+
+::selection {
+  background: var(--color-pencil-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-pencil);
+  outline-offset: 2px;
+}
+
+dialog::backdrop {
+  background: rgb(29 33 39 / 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }

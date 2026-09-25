@@ -19,6 +19,9 @@ export default defineConfig({
     // A concrete origin (not the opaque about:blank default) so localStorage
     // is available to tests that exercise the token store.
     environmentOptions: { jsdom: { url: 'http://localhost' } },
+    // Node 25+ ships its own global localStorage, which shadows jsdom's and
+    // warns on every access unless given a backing file. Tests want jsdom's.
+    execArgv: ['--no-experimental-webstorage'],
     globals: true,
     setupFiles: './src/test/setup.ts',
   },

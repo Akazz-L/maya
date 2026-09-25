@@ -1,5 +1,8 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef } from 'react';
+import { ChevronRight } from 'lucide-react';
+import { usePersistentFlag } from '../hooks/usePersistentFlag';
 import { cn } from '../lib/utils';
+import { controlClass } from './ui/control';
 
 const OPEN_KEY = 'maya.context.open';
 /** Keeps every mounted copy in step: the Write and Plan views each render one. */
@@ -20,7 +23,7 @@ interface ChapterContextProps {
  * works, not which chapter is open.
  */
 export function ChapterContext({ value, onChange }: ChapterContextProps) {
-  const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
+  const [open, setOpen] = usePersistentFlag(OPEN_KEY, false);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const id = useId();
 
@@ -28,10 +31,9 @@ export function ChapterContext({ value, onChange }: ChapterContextProps) {
     const onShared = (e: Event) => setOpen((e as CustomEvent<boolean>).detail);
     window.addEventListener(OPEN_EVENT, onShared);
     return () => window.removeEventListener(OPEN_EVENT, onShared);
-  }, []);
+  }, [setOpen]);
 
   const remember = (next: boolean) => {
-    localStorage.setItem(OPEN_KEY, next ? '1' : '0');
     window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: next }));
   };
 
@@ -49,45 +51,55 @@ export function ChapterContext({ value, onChange }: ChapterContextProps) {
     .find(Boolean);
 
   return (
-    <section className="border-b border-gray-200 bg-[#fcfcfa]">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={id}
-        onClick={() => remember(!open)}
-        className="flex w-full items-center gap-2 px-6 py-2 text-left text-sm hover:bg-gray-50"
-      >
-        <span
-          aria-hidden
-          className={cn('text-[9px] text-gray-400 transition-transform', open && 'rotate-90')}
+    <section className="mx-auto w-full max-w-page shrink-0 px-6 pb-3">
+      <div className="rounded-panel border border-line bg-surface-muted">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={id}
+          onClick={() => remember(!open)}
+          className="flex h-9 w-full items-center gap-2 rounded-panel px-3 text-left text-sm hover:bg-surface-sunken/60"
         >
-          ▶
-        </span>
-        <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-gray-500">
-          Chapter context
-        </span>
-        {!open && (
-          <span className={cn('min-w-0 truncate', preview ? 'text-gray-600' : 'text-gray-400')}>
-            {preview ?? 'Optional — an outline, a mood, anything the AI should know'}
-          </span>
-        )}
-      </button>
-      {open && (
-        <div id={id} className="px-6 pb-3">
-          <textarea
-            ref={textarea}
-            value={value}
-            rows={2}
-            aria-label="Chapter context"
-            placeholder="What happens, who is in it, the mood, what it should set up… As much or as little as you like."
-            onChange={(e) => onChange(e.target.value)}
-            className="block max-h-[40vh] w-full resize-none overflow-y-auto rounded-md border border-gray-200 bg-white px-3 py-2 text-sm leading-relaxed text-gray-700 outline-none placeholder:text-gray-400 focus:border-blue-300"
+          <ChevronRight
+            aria-hidden
+            className={cn(
+              'size-3.5 shrink-0 text-ink-subtle transition-transform duration-150',
+              open && 'rotate-90',
+            )}
           />
-          <p className="mt-1 text-[11px] text-gray-400">
-            Optional. The chat, Review, and Generate plan read this on every request.
-          </p>
-        </div>
-      )}
+          <span className="shrink-0 text-xs font-medium text-ink-muted">Chapter context</span>
+          {!open && (
+            <span
+              className={cn(
+                'min-w-0 truncate text-[13px]',
+                preview ? 'text-ink-muted' : 'text-ink-faint',
+              )}
+            >
+              {preview ?? 'Optional: an outline, a mood, anything the AI should know'}
+            </span>
+          )}
+        </button>
+        {open && (
+          <div id={id} className="px-3 pb-3">
+            <textarea
+              ref={textarea}
+              value={value}
+              rows={2}
+              aria-label="Chapter context"
+              aria-describedby={`${id}-help`}
+              placeholder="What happens, who is in it, the mood, what it should set up… As much or as little as you like."
+              onChange={(e) => onChange(e.target.value)}
+              className={cn(
+                controlClass,
+                'block max-h-[40vh] resize-none overflow-y-auto py-2 leading-relaxed',
+              )}
+            />
+            <p id={`${id}-help`} className="mt-1.5 text-xs text-ink-subtle">
+              The chat, specialist passes, and Generate plan read this on every request.
+            </p>
+          </div>
+        )}
+      </div>
     </section>
   );
 }

@@ -25,17 +25,31 @@ export interface ProseEditorProps {
 /** Marks transactions that mirror the `value` prop, so they don't echo back through onChange. */
 const external = Annotation.define<boolean>();
 
+// Colours and the page width come from the design tokens in index.css.
 const proseTheme = EditorView.theme({
-  '&': { height: '100%', fontSize: '15px', backgroundColor: 'transparent', color: '#1f2937' },
-  '.cm-scroller': {
-    fontFamily: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
-    lineHeight: '1.8',
-    padding: '24px 0',
+  '&': {
+    height: '100%',
+    fontSize: '17px',
+    backgroundColor: 'transparent',
+    color: 'var(--color-ink)',
   },
-  '.cm-content': { padding: '0 24px', caretColor: '#1f2937' },
+  '.cm-scroller': {
+    fontFamily: 'var(--font-serif)',
+    lineHeight: '1.75',
+    // Room below the last line, so the writer is never typing at the bottom edge.
+    padding: '12px 0 30vh',
+  },
+  // One centred column, the same width as the title above it.
+  '.cm-content': {
+    width: '100%',
+    maxWidth: 'var(--container-page)',
+    margin: '0 auto',
+    padding: '0 24px',
+    caretColor: 'var(--color-ink)',
+  },
   '.cm-line': { padding: '0' },
   '&.cm-focused': { outline: 'none' },
-  '.cm-placeholder': { color: '#9ca3af', fontStyle: 'italic' },
+  '.cm-placeholder': { color: 'var(--color-ink-faint)', fontStyle: 'italic' },
 });
 
 const readOnlyConfig = (readOnly: boolean): Extension => [
@@ -118,7 +132,12 @@ export function ProseEditor({
   }, [readOnly, readOnlyComp]);
 
   return (
-    <div className={cn('relative flex-1 min-h-0', readOnly ? 'bg-gray-50' : 'bg-white')}>
+    <div
+      className={cn(
+        'relative min-h-0 flex-1 transition-colors',
+        readOnly ? 'bg-surface-muted' : 'bg-surface',
+      )}
+    >
       <div ref={host} className="h-full" />
       {children}
     </div>

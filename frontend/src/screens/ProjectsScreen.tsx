@@ -1,76 +1,136 @@
-import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { createProject, listProjects } from '../api/endpoints';
-import { useAuth } from '../auth/AuthContext';
+import { useState, type FormEvent, type ReactNode } from 'react';
+import { BookOpen, Plus } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import type { ProjectSummary } from '../api/types';
+import { AppHeader } from '../components/AppHeader';
 import { Button } from '../components/ui/button';
+import { EmptyState, InlineAlert, Skeleton, Spinner } from '../components/ui/feedback';
 import { Input } from '../components/ui/input';
+import { useCreateProject, useProjects } from '../hooks/queries';
+
+// In the interface's language, so the date reads as part of the sentence around it.
+const formatCreated = (iso: string) =>
+  new Date(iso).toLocaleDateString('en', { year: 'numeric', month: 'long', day: 'numeric' });
+
+/** A project as the title page of its manuscript. */
+function TitlePage({ project }: { project: ProjectSummary }) {
+  return (
+    <Link
+      to={`/p/${project.project_id}`}
+      className="group flex aspect-[4/5] flex-col items-center justify-center gap-4 rounded-panel border border-line bg-surface px-6 text-center shadow-float transition-transform duration-200 hover:-translate-y-1"
+    >
+      <span className="line-clamp-4 font-serif text-xl leading-snug font-semibold text-balance text-ink">
+        {project.name}
+      </span>
+      <span aria-hidden className="h-px w-8 bg-line-strong" />
+      <span className="text-xs text-ink-subtle">Started {formatCreated(project.created_at)}</span>
+    </Link>
+  );
+}
+
+function ProjectGridSkeleton() {
+  return (
+    // The status role sits on the wrapper: on the list itself it would replace
+    // the list semantics the cards rely on.
+    <div role="status" aria-label="Loading projects">
+      <ul className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4">
+        {[0, 1, 2].map((i) => (
+          <li key={i}>
+            <Skeleton className="aspect-[4/5] w-full rounded-panel" />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Empty and error states need the panel the grid does not: alone they have no edges. */
+function Notice({ children }: { children: ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-panel border border-line bg-surface">{children}</div>
+  );
+}
 
 export function ProjectsScreen() {
-  const { logout } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState('');
-
-  const projects = useQuery({ queryKey: ['projects'], queryFn: listProjects });
-
-  const create = useMutation({
-    mutationFn: (projectName: string) => createProject(projectName),
-    onSuccess: (res) => navigate(`/p/${res.project_id}`),
-  });
+  const projects = useProjects();
+  const create = useCreateProject();
 
   const submitNew = (e: FormEvent) => {
     e.preventDefault();
     const trimmed = name.trim();
-    if (trimmed) create.mutate(trimmed);
+    if (trimmed) create.mutate(trimmed, { onSuccess: (res) => navigate(`/p/${res.project_id}`) });
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f5f0]">
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
-        <h1 className="text-base font-semibold text-gray-800">Your projects</h1>
-        <Button variant="secondary" size="sm" onClick={logout}>
-          Log out
-        </Button>
-      </header>
+    <div className="flex min-h-full flex-col">
+      <AppHeader />
 
-      <main className="mx-auto flex max-w-2xl flex-col gap-5 p-6">
-        <form onSubmit={submitNew} className="flex gap-2">
-          <Input
-            placeholder="New project name…"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Button type="submit" disabled={create.isPending || !name.trim()}>
-            {create.isPending ? 'Creating…' : 'Create'}
-          </Button>
-        </form>
-        {create.isError && (
-          <p className="text-xs text-red-700">{(create.error as Error).message}</p>
-        )}
+      <main className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-8 sm:py-14">
+        <div className="mx-auto flex max-w-md flex-col items-center text-center">
+          <h1 className="font-serif text-4xl font-semibold tracking-[-0.01em]">Your projects</h1>
+          <p className="mt-1.5 text-sm text-ink-muted">
+            Each project holds a story bible, its chapters, and your notes.
+          </p>
 
-        {projects.isLoading && <p className="text-sm text-gray-400">Loading projects…</p>}
-        {projects.isError && (
-          <p className="text-sm text-red-700">{(projects.error as Error).message}</p>
-        )}
-        {projects.data && projects.data.length === 0 && (
-          <p className="text-sm text-gray-400">No projects yet — create one to begin.</p>
-        )}
+          <form onSubmit={submitNew} className="mt-8 flex w-full gap-2">
+            <label htmlFor="new-project" className="sr-only">
+              New project name
+            </label>
+            <Input
+              id="new-project"
+              placeholder="Name a new project"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              aria-invalid={create.isError || undefined}
+            />
+            <Button type="submit" size="lg" disabled={create.isPending || !name.trim()}>
+              {create.isPending ? <Spinner /> : <Plus aria-hidden />}
+              <span className="hidden sm:inline">Create project</span>
+              <span className="sm:hidden">Create</span>
+            </Button>
+          </form>
+          {create.isError && (
+            <InlineAlert className="mt-2 w-full rounded-control border">
+              {create.error.message}
+            </InlineAlert>
+          )}
+        </div>
 
-        <ul className="flex flex-col gap-2">
-          {projects.data?.map((p) => (
-            <li key={p.project_id}>
-              <button
-                onClick={() => navigate(`/p/${p.project_id}`)}
-                className="flex w-full items-center justify-between rounded-md border border-gray-200 bg-white px-4 py-3 text-left hover:border-blue-300 hover:bg-blue-50"
+        <section aria-label="Projects" className="mt-12">
+          {projects.isPending ? (
+            <ProjectGridSkeleton />
+          ) : projects.isError ? (
+            <Notice>
+              <EmptyState
+                title="Couldn't load your projects"
+                action={
+                  <Button variant="secondary" onClick={() => void projects.refetch()}>
+                    Try again
+                  </Button>
+                }
               >
-                <span className="font-medium text-gray-800">{p.name}</span>
-                <span className="text-xs text-gray-400">
-                  {new Date(p.created_at).toLocaleDateString()}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+                {projects.error.message}
+              </EmptyState>
+            </Notice>
+          ) : projects.data.length === 0 ? (
+            <Notice>
+              <EmptyState icon={<BookOpen />} title="No projects yet">
+                Name your first one above. It starts with a story bible, ready for your characters
+                and world.
+              </EmptyState>
+            </Notice>
+          ) : (
+            <ul className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4">
+              {projects.data.map((p) => (
+                <li key={p.project_id}>
+                  <TitlePage project={p} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </main>
     </div>
   );

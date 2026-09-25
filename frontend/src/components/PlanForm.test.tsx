@@ -15,7 +15,7 @@ describe('PlanForm', () => {
   it('emits an updated plan when a field changes', async () => {
     const onChange = vi.fn();
     render(<PlanForm plan={EMPTY_PLAN} onChange={onChange} />);
-    await userEvent.type(screen.getByLabelText('POV Character'), 'M');
+    await userEvent.type(screen.getByLabelText('POV character'), 'M');
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ pov_character: 'M' }));
   });
 
@@ -28,7 +28,7 @@ describe('PlanForm', () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ beats: ['first', ''] }));
 
     onChange.mockClear();
-    await userEvent.click(screen.getByTitle('Remove'));
+    await userEvent.click(screen.getByTitle('Remove beat 1'));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ beats: [] }));
   });
 

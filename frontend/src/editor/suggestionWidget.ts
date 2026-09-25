@@ -78,11 +78,11 @@ export class SuggestionWidget extends WidgetType {
     const dot = document.createElement('span');
     dot.className = 'cm-suggestion-dot';
     head.appendChild(dot);
-    head.appendChild(
-      document.createTextNode(
-        `${severity ? SEVERITY_LABEL[severity] : 'Suggestion'} · ${number} of ${total}`,
-      ),
-    );
+    head.appendChild(document.createTextNode(severity ? SEVERITY_LABEL[severity] : 'Suggestion'));
+    const count = document.createElement('span');
+    count.className = 'cm-suggestion-count';
+    count.textContent = `Fix ${number} of ${total}`;
+    head.appendChild(count);
     card.appendChild(head);
 
     const why = document.createElement('span');
@@ -95,12 +95,12 @@ export class SuggestionWidget extends WidgetType {
     // Labelled by number, so a chapter under review has one unambiguous Accept
     // per fix for both a screen reader and a test.
     actions.appendChild(
-      this.button(`✓ Accept`, `Accept fix ${number}`, 'cm-suggestion-accept', () =>
+      this.button('Accept', `Accept fix ${number}`, 'cm-suggestion-accept', () =>
         this.host.current.onAccept(index),
       ),
     );
     actions.appendChild(
-      this.button(`✕ Discard`, `Discard fix ${number}`, 'cm-suggestion-discard', () =>
+      this.button('Discard', `Discard fix ${number}`, 'cm-suggestion-discard', () =>
         this.host.current.onDiscard(index),
       ),
     );
@@ -130,57 +130,76 @@ export class SuggestionWidget extends WidgetType {
   }
 }
 
+// Colours are the design tokens from index.css. The card's left rule carries
+// the severity, so the writer can triage a set at a glance.
 export const suggestionTheme = EditorView.baseTheme({
   '.cm-suggestion': { whiteSpace: 'pre-wrap' },
   '.cm-suggestion-diff': {
     borderRadius: '2px',
-    backgroundColor: '#f5f3ff',
-    boxShadow: '0 0 0 2px #f5f3ff',
+    backgroundColor: 'var(--color-pencil-faint)',
+    boxShadow: '0 0 0 2px var(--color-pencil-faint)',
   },
   '.cm-suggestion-card': {
     display: 'block',
-    margin: '6px 0 10px',
-    padding: '7px 9px',
-    borderRadius: '8px',
-    border: '1px solid #ddd6fe',
-    borderLeft: '3px solid #a78bfa',
-    backgroundColor: '#fbfaff',
-    font: '500 12px/1.45 ui-sans-serif, system-ui, sans-serif',
+    margin: '8px 0 12px',
+    padding: '9px 11px 10px',
+    borderRadius: 'var(--radius-panel)',
+    border: '1px solid var(--color-line)',
+    borderLeft: '3px solid var(--color-pencil)',
+    backgroundColor: 'var(--color-surface)',
+    boxShadow: 'var(--shadow-float)',
+    font: '400 13px/1.5 var(--font-sans)',
+    color: 'var(--color-ink)',
     whiteSpace: 'normal',
     maxWidth: '34rem',
   },
-  '.cm-suggestion-critical': { borderLeftColor: '#f43f5e' },
-  '.cm-suggestion-minor': { borderLeftColor: '#f59e0b' },
-  '.cm-suggestion-style': { borderLeftColor: '#a78bfa' },
+  '.cm-suggestion-critical': { borderLeftColor: 'var(--color-danger)' },
+  '.cm-suggestion-minor': { borderLeftColor: 'var(--color-warning)' },
+  '.cm-suggestion-style': { borderLeftColor: 'var(--color-pencil)' },
   '.cm-suggestion-head': {
     display: 'flex',
     alignItems: 'center',
-    gap: '5px',
-    fontSize: '10.5px',
+    gap: '6px',
+    fontSize: '12px',
     fontWeight: '600',
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase',
-    color: '#6b7280',
+    color: 'var(--color-ink)',
+  },
+  '.cm-suggestion-count': {
+    marginLeft: 'auto',
+    fontWeight: '400',
+    color: 'var(--color-ink-subtle)',
+    fontVariantNumeric: 'tabular-nums',
   },
   '.cm-suggestion-dot': {
-    width: '6px',
-    height: '6px',
+    width: '7px',
+    height: '7px',
     borderRadius: '50%',
-    backgroundColor: '#a78bfa',
+    backgroundColor: 'var(--color-pencil)',
   },
-  '.cm-suggestion-critical .cm-suggestion-dot': { backgroundColor: '#f43f5e' },
-  '.cm-suggestion-minor .cm-suggestion-dot': { backgroundColor: '#f59e0b' },
-  '.cm-suggestion-why': { display: 'block', marginTop: '3px', color: '#374151', fontWeight: '400' },
-  '.cm-suggestion-actions': { display: 'flex', gap: '5px', marginTop: '7px' },
+  '.cm-suggestion-critical .cm-suggestion-dot': { backgroundColor: 'var(--color-danger)' },
+  '.cm-suggestion-minor .cm-suggestion-dot': { backgroundColor: 'var(--color-warning)' },
+  '.cm-suggestion-why': { display: 'block', marginTop: '3px', color: 'var(--color-ink-muted)' },
+  '.cm-suggestion-actions': { display: 'flex', gap: '6px', marginTop: '9px' },
   '.cm-suggestion-actions button': {
-    borderRadius: '6px',
+    height: '26px',
+    borderRadius: 'var(--radius-control)',
     border: '1px solid transparent',
-    padding: '2px 8px',
-    font: '500 11.5px ui-sans-serif, system-ui, sans-serif',
+    padding: '0 10px',
+    font: '500 12px var(--font-sans)',
     cursor: 'pointer',
+    transition: 'background-color 150ms, border-color 150ms',
   },
-  '.cm-suggestion-accept': { backgroundColor: '#7c3aed', color: '#fff' },
-  '.cm-suggestion-accept:hover': { backgroundColor: '#6d28d9' },
-  '.cm-suggestion-discard': { backgroundColor: '#fff', borderColor: '#e5e7eb', color: '#4b5563' },
-  '.cm-suggestion-discard:hover': { backgroundColor: '#f9fafb' },
+  '.cm-suggestion-actions button:focus-visible': {
+    outline: '2px solid var(--color-pencil)',
+    outlineOffset: '2px',
+  },
+  '.cm-suggestion-accept': { backgroundColor: 'var(--color-pencil)', color: '#fff' },
+  '.cm-suggestion-accept:hover': { backgroundColor: 'var(--color-pencil-strong)' },
+  // Scoped like the rule above, which would otherwise win and hide the border.
+  '.cm-suggestion-actions .cm-suggestion-discard': {
+    backgroundColor: 'var(--color-surface)',
+    borderColor: 'var(--color-line)',
+    color: 'var(--color-ink-muted)',
+  },
+  '.cm-suggestion-discard:hover': { backgroundColor: 'var(--color-surface-muted)' },
 });

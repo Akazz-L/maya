@@ -2,6 +2,9 @@ import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createDocument,
+  createProject,
+  getProject,
+  listProjects,
   deleteDocument,
   getDocument,
   getMe,
@@ -9,9 +12,11 @@ import {
   reorderDocuments,
   setModel,
 } from '../api/endpoints';
-import type { DocumentKind, Me, ModelKey, UsageSnapshot } from '../api/types';
+import type { DocumentDetail, DocumentKind, Me, ModelKey, UsageSnapshot } from '../api/types';
 
 export const meKey = ['me'] as const;
+export const projectsKey = ['projects'] as const;
+export const projectKey = (projectId: string) => ['project', projectId] as const;
 export const documentsKey = (projectId: string) => ['documents', projectId] as const;
 export const documentKey = (projectId: string, documentId: string) =>
   ['document', projectId, documentId] as const;
@@ -47,6 +52,22 @@ export function useApplyUsage() {
   );
 }
 
+export function useProjects() {
+  return useQuery({ queryKey: projectsKey, queryFn: listProjects });
+}
+
+export function useProject(projectId: string) {
+  return useQuery({ queryKey: projectKey(projectId), queryFn: () => getProject(projectId) });
+}
+
+export function useCreateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => createProject(name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: projectsKey }),
+  });
+}
+
 export function useDocuments(projectId: string) {
   return useQuery({
     queryKey: documentsKey(projectId),
@@ -60,6 +81,19 @@ export function useDocument(projectId: string, documentId: string | undefined) {
     queryFn: () => getDocument(projectId, documentId!),
     enabled: !!documentId,
   });
+}
+
+/** Update one cached document in place, ahead of (or instead of) a refetch. */
+export function usePatchDocument(projectId: string) {
+  const qc = useQueryClient();
+  return useCallback(
+    (documentId: string, fields: Partial<DocumentDetail>) => {
+      qc.setQueryData(documentKey(projectId, documentId), (old?: DocumentDetail) =>
+        old ? { ...old, ...fields } : old,
+      );
+    },
+    [qc, projectId],
+  );
 }
 
 export function useCreateDocument(projectId: string) {

@@ -18,21 +18,19 @@ interface ModelPickerProps {
  */
 export function ModelPicker({ models, value, onChange, saving = false }: ModelPickerProps) {
   return (
-    <label className="flex items-center gap-1.5">
-      <span className="sr-only">Model</span>
-      <Select
-        aria-label="Model"
-        value={value}
-        disabled={saving}
-        onChange={(e) => onChange(e.target.value as ModelKey)}
-        className="py-1 text-xs"
-      >
-        {models.map((model) => (
-          <option key={model.key} value={model.key}>
-            {model.label} · {model.hint}
-          </option>
-        ))}
-      </Select>
-    </label>
+    <Select
+      aria-label="Model"
+      title="The model the AI writes with"
+      value={value}
+      disabled={saving}
+      onChange={(e) => onChange(e.target.value as ModelKey)}
+      className="w-32 sm:w-auto sm:max-w-64"
+    >
+      {models.map((model) => (
+        <option key={model.key} value={model.key}>
+          {model.label} · {model.hint}
+        </option>
+      ))}
+    </Select>
   );
 }

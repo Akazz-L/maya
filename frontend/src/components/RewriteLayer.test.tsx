@@ -32,7 +32,6 @@ function renderChapter(over: Partial<Parameters<typeof DocumentEditor>[0]> = {})
   const props = {
     document: DOC,
     projectId: 'p1',
-    readOnly: false,
     onSave: vi.fn(),
     saveState: 'idle' as const,
     onBusyChange: vi.fn(),
@@ -67,15 +66,13 @@ describe('selection rewrite flow', () => {
   });
 
   it('streams a suggestion, then accepts it through the editor', async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        sse([
-          { type: 'delta', text: 'She ' },
-          { type: 'delta', text: 'froze.' },
-          { type: 'done', body: 'She froze.' },
-        ]),
-      );
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      sse([
+        { type: 'delta', text: 'She ' },
+        { type: 'delta', text: 'froze.' },
+        { type: 'done', body: 'She froze.' },
+      ]),
+    );
     const props = renderChapter();
 
     const input = await openPrompt();
@@ -266,8 +263,8 @@ describe('selection rewrite flow', () => {
     expect(bar.parentElement).toHaveStyle({ top: '156px', left: '40px' });
   });
 
-  it('does not offer the pill while the editor is read-only', () => {
-    renderChapter({ readOnly: true });
+  it('does not offer the pill while a chat proposal holds the editor', () => {
+    renderChapter({ proposal: { phase: 'streaming', mode: 'append', text: '' } });
     selectRange('Document body', 20, 43);
     expect(screen.queryByRole('button', { name: /rewrite/i })).toBeNull();
   });

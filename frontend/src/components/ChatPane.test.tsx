@@ -149,7 +149,11 @@ describe('ChatPane', () => {
   });
 
   it('explains why sending is unavailable', () => {
-    render(<ChatPane {...props({ disabledReason: 'Accept or discard the suggestions in the chapter first.' })} />);
+    render(
+      <ChatPane
+        {...props({ disabledReason: 'Accept or discard the suggestions in the chapter first.' })}
+      />,
+    );
     expect(screen.getByLabelText('Message')).toBeDisabled();
     expect(
       screen.getByText('Accept or discard the suggestions in the chapter first.'),
@@ -161,7 +165,11 @@ describe('ChatPane', () => {
       <ChatPane
         {...props({
           messages: [],
-          streaming: { pendingUser: 'Continue.', reply: 'Adding a scene', progress: { mode: 'append', text: 'one two' } },
+          streaming: {
+            pendingUser: 'Continue.',
+            reply: 'Adding a scene',
+            progress: { mode: 'append', text: 'one two' },
+          },
         })}
       />,
     );
@@ -179,13 +187,15 @@ describe('ChatPane', () => {
   it('clears the conversation once confirmed', async () => {
     const p = props();
     render(<ChatPane {...p} />);
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    await userEvent.click(screen.getByRole('button', { name: /clear/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^clear$/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(p.onClear).not.toHaveBeenCalled();
 
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    await userEvent.click(screen.getByRole('button', { name: /clear/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^clear$/i }));
+    expect(screen.getByRole('dialog', { name: /clear this conversation/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Clear conversation' }));
     expect(p.onClear).toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('hides itself', async () => {

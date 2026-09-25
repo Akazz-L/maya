@@ -1,22 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Menu as MenuIcon } from 'lucide-react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { generatePlan, getProject, updateDocument, type DocumentPatch } from '../api/endpoints';
-import type { DocumentDetail, ProposalOutcome, ScenePlan } from '../api/types';
-import { useAuth } from '../auth/AuthContext';
+import { updateDocument } from '../api/endpoints';
+import type { ProposalOutcome } from '../api/types';
+import { AppHeader } from '../components/AppHeader';
 import { ChapterToolbar } from '../components/ChapterToolbar';
 import { chapterPanelId, chapterTabId, type ChapterView } from '../components/chapterView';
 import { ChatPane } from '../components/ChatPane';
-import { ModelPicker } from '../components/ModelPicker';
-import { UsageMeter } from '../components/UsageMeter';
-import { AUTOSAVE_MS, DocumentEditor, type SaveState } from '../components/DocumentEditor';
+import { DocumentEditor } from '../components/DocumentEditor';
 import { DocumentSidebar } from '../components/DocumentSidebar';
-import { PlanView, type PlanUndo } from '../components/PlanView';
-import type { ProposalView } from '../components/ProposalLayer';
+import { ModelPicker } from '../components/ModelPicker';
+import { PlanView } from '../components/PlanView';
+import { UsageMeter } from '../components/UsageMeter';
 import { Button } from '../components/ui/button';
+import { EmptyState, InlineAlert, Skeleton } from '../components/ui/feedback';
+import { useChapterPlan } from '../hooks/useChapterPlan';
 import { useChat } from '../hooks/useChat';
+import { useDocumentSaving } from '../hooks/useDocumentSaving';
+import { useFocusReturn } from '../hooks/useFocusReturn';
+import { CHAT_DOCKS, SIDEBAR_DOCKS, useMediaQuery } from '../hooks/useMediaQuery';
+import { usePersistentFlag } from '../hooks/usePersistentFlag';
 import {
-  documentKey,
   documentsKey,
   useApplyUsage,
   useCreateDocument,
@@ -24,9 +29,12 @@ import {
   useDocument,
   useDocuments,
   useMe,
+  useProject,
   useReorderDocuments,
   useSetModel,
 } from '../hooks/queries';
+import { toProposalView } from '../lib/proposalView';
+import { cn } from '../lib/utils';
 
 const COLLAPSE_KEY = 'maya.sidebar.collapsed';
 const CHAT_KEY = 'maya.chat.open';
@@ -34,25 +42,92 @@ const CHAT_KEY = 'maya.chat.open';
 /** What the Plan view's Draft from plan asks the chat; the agent reads the saved plan. */
 const DRAFT_FROM_PLAN = 'Draft this chapter from the scene plan.';
 
+/** The page's shape while the open document loads. */
+function EditorSkeleton() {
+  return (
+    <div role="status" aria-label="Loading document" className="flex-1 bg-surface">
+      <div className="mx-auto flex max-w-page flex-col gap-3 px-6 pt-8">
+        <Skeleton className="mb-4 h-8 w-2/5" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-11/12" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-3/4" />
+      </div>
+    </div>
+  );
+}
+
 export function WorkspaceScreen() {
-  const { projectId, documentId } = useParams<{ projectId: string; documentId?: string }>();
-  const { logout } = useAuth();
+  const { projectId } = useParams<{ projectId: string }>();
+  if (!projectId) return <Navigate to="/" replace />;
+  // Keyed, so nothing held for one project (an undo, a draft) leaks into the next.
+  return <Workspace key={projectId} projectId={projectId} />;
+}
+
+function Workspace({ projectId }: { projectId: string }) {
+  const { documentId } = useParams<{ documentId?: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1');
-  const [chatOpen, setChatOpen] = useState(() => localStorage.getItem(CHAT_KEY) !== '0');
+  // Beside the page on a wide screen; over it, on demand, on a narrow one.
+  const sidebarDocked = useMediaQuery(SIDEBAR_DOCKS, true);
+  const chatDocked = useMediaQuery(CHAT_DOCKS, true);
+  const [collapsed, setCollapsed] = usePersistentFlag(COLLAPSE_KEY, false);
+  const [chatPref, setChatPref] = usePersistentFlag(CHAT_KEY, true);
+  const [navOpen, setNavOpen] = useState(false);
+  // The chat as a sheet over the page starts closed each visit: on a phone it
+  // would otherwise cover the chapter every time one is opened.
+  const [chatSheetOpen, setChatSheetOpen] = useState(false);
+  const chatOpen = chatDocked ? chatPref : chatSheetOpen;
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+
   const [chapterView, setView] = useState<ChapterView>('write');
-  // Tagged with its document, because a regenerate can finish after the writer moved on.
-  const [undoState, setUndoState] = useState<{
-    id: string;
-    plan: ScenePlan;
-    reason: PlanUndo;
-  } | null>(null);
-  // The chapter context as the writer is typing it. It lives here rather than in
-  // the editor because the Plan view edits the same text; tagged with its
-  // document, so switching documents falls back to what the server sent.
-  const [contextEdit, setContextEdit] = useState<{ id: string; value: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [rewriteBusy, setRewriteBusy] = useState(false);
+  // Whether a chat proposal was on screen last render; see where it is compared.
+  const [proposalShown, setProposalShown] = useState(false);
+
+  const project = useProject(projectId);
+  const documents = useDocuments(projectId);
+  const document = useDocument(projectId, documentId);
+  const createDoc = useCreateDocument(projectId);
+  const deleteDoc = useDeleteDocument(projectId);
+  const reorderDocs = useReorderDocuments(projectId);
+  const me = useMe();
+  const setModel = useSetModel();
+  const applyUsage = useApplyUsage();
+
+  const doc = document.data;
+  const isChapter = doc?.kind === 'chapter';
+
+  const saving = useDocumentSaving(projectId, documentId, doc?.brief ?? '');
+  const plan = useChapterPlan({
+    projectId,
+    documentId,
+    plan: doc?.plan ?? null,
+    settle: saving.settle,
+    save: saving.save,
+    onUsage: applyUsage,
+    onError: (message) => {
+      setError(message);
+      if (message) void me.refetch();
+    },
+  });
+  const chat = useChat({
+    projectId,
+    documentId,
+    enabled: isChapter,
+    beforeSend: saving.settle,
+    onUsage: applyUsage,
+    onFailure: () => void me.refetch(),
+  });
+
+  const drawerOpen = !sidebarDocked && navOpen;
+  const sheetOpen = isChapter && !chatDocked && chatSheetOpen;
+  useFocusReturn(drawerOpen, drawerRef);
+  useFocusReturn(sheetOpen, sheetRef);
+
   // Opening a document, or coming back to one, starts on the prose with no undo
   // pending. Reset during render rather than in an effect, so the previous
   // document's view never paints over the new one.
@@ -60,37 +135,8 @@ export function WorkspaceScreen() {
   if (viewedDocId !== documentId) {
     setViewedDocId(documentId);
     setView('write');
-    setUndoState(null);
+    plan.clearUndo();
   }
-  // Whether a chat proposal was on screen last render; see where it is compared.
-  const [proposalShown, setProposalShown] = useState(false);
-  const [saveState, setSaveState] = useState<SaveState>('idle');
-  const [rewriteBusy, setRewriteBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Holds the in-flight autosaves so a request that reads the document
-  // server-side can wait for them to land. Without this the server works from a
-  // stale body and the writer's last keystrokes vanish.
-  const pendingSave = useRef<Promise<unknown>>(Promise.resolve());
-  // Filled by the editor: saves a title or body edit still inside the debounce.
-  const editorFlush = useRef<(() => void) | null>(null);
-  // The chapter context edit waiting out its own debounce, with the document it belongs to.
-  const contextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const contextPending = useRef<{ id: string; value: string } | null>(null);
-
-  const project = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: () => getProject(projectId!),
-    enabled: !!projectId,
-  });
-  const documents = useDocuments(projectId!);
-  const document = useDocument(projectId!, documentId);
-  const createDoc = useCreateDocument(projectId!);
-  const deleteDoc = useDeleteDocument(projectId!);
-  const reorderDocs = useReorderDocuments(projectId!);
-  const me = useMe();
-  const setModel = useSetModel();
-  const applyUsage = useApplyUsage();
 
   // With no document in the route, open the bible.
   useEffect(() => {
@@ -100,128 +146,14 @@ export function WorkspaceScreen() {
     }
   }, [documentId, documents.data, navigate, projectId]);
 
-  const patchDocument = useCallback(
-    (id: string, fields: Partial<DocumentDetail>) => {
-      qc.setQueryData(documentKey(projectId!, id), (old?: DocumentDetail) =>
-        old ? { ...old, ...fields } : old,
-      );
-    },
-    [qc, projectId],
-  );
-  const patchCache = useCallback(
-    (fields: Partial<DocumentDetail>) => patchDocument(documentId!, fields),
-    [patchDocument, documentId],
-  );
-
-  /** Saves to one named document, so a late flush lands where it was typed. */
-  const saveTo = useCallback(
-    (id: string, patch: DocumentPatch) => {
-      setSaveState('saving');
-      const promise = updateDocument(projectId!, id, patch)
-        .then((saved) => {
-          qc.setQueryData(documentKey(projectId!, id), saved);
-          if (patch.title !== undefined) {
-            qc.invalidateQueries({ queryKey: documentsKey(projectId!) });
-          }
-          setSaveState('saved');
-        })
-        .catch(() => setSaveState('error'));
-      // Chained rather than replaced: a context save and a body save can be in
-      // flight at once, and a request that reads the document must await both.
-      pendingSave.current = Promise.all([pendingSave.current, promise]);
-      return promise;
-    },
-    [projectId, qc],
-  );
-
-  const save = useCallback(
-    (patch: DocumentPatch) => (documentId ? saveTo(documentId, patch) : Promise.resolve()),
-    [documentId, saveTo],
-  );
-
-  const flushContext = useCallback(() => {
-    const patch = contextPending.current;
-    contextPending.current = null;
-    if (contextTimer.current) {
-      clearTimeout(contextTimer.current);
-      contextTimer.current = null;
-    }
-    if (patch) saveTo(patch.id, { brief: patch.value });
-  }, [saveTo]);
-
-  // Switching documents mid-debounce must save rather than drop the edit; the
-  // pending record carries its own document id, so it still lands correctly.
-  useEffect(() => () => flushContext(), [documentId, flushContext]);
-
-  /**
-   * Put everything the writer has typed on the server before a request reads it
-   * there. Awaiting only the in-flight saves is not enough: an edit still inside
-   * a debounce has not been sent at all.
-   */
-  const settle = useCallback(async () => {
-    editorFlush.current?.();
-    flushContext();
-    await pendingSave.current;
-  }, [flushContext]);
-
-  // Plan and review take the document id as their variable rather than reading
-  // the route: a result that lands after the writer has switched documents
-  // belongs to the document it was asked for, not the one now open.
-  const planMut = useMutation({
-    // The planner reads the saved chapter context. Plan edits save immediately
-    // too, and a late one could otherwise land after the new plan and restore
-    // the old one.
-    mutationFn: (id: string) => settle().then(() => generatePlan(projectId!, id)),
-    onMutate: () => setError(null),
-    onSuccess: (res, id) => {
-      patchDocument(id, { plan: res.plan });
-      applyUsage(res.usage);
-    },
-    onError: (e: Error) => {
-      setError(e.message);
-      me.refetch();
-    },
-  });
-
-  const chat = useChat({
-    projectId: projectId!,
-    documentId,
-    enabled: document.data?.kind === 'chapter',
-    beforeSend: settle,
-    onUsage: applyUsage,
-    onFailure: () => void me.refetch(),
-  });
-
-  /** Generate a plan, keeping the one it replaces so the writer can undo. */
-  const generatePlanFor = () => {
-    const id = documentId!;
-    const previous = document.data?.plan ?? null;
-    setUndoState(null);
-    planMut.mutate(id, {
-      onSuccess: () => {
-        if (previous) setUndoState({ id, plan: previous, reason: 'regenerated' });
-      },
-    });
-  };
-
-  const setPlan = (plan: ScenePlan | null) => {
-    patchCache({ plan });
-    save({ plan });
-  };
-
   const openChat = () => {
-    localStorage.setItem(CHAT_KEY, '1');
-    setChatOpen(true);
+    // On a narrow screen the chat would cover the chapter the work streams into.
+    if (chatDocked) setChatPref(true);
   };
-
-  const toggleChat = () =>
-    setChatOpen((open) => {
-      localStorage.setItem(CHAT_KEY, open ? '0' : '1');
-      return !open;
-    });
+  const toggleChat = () => (chatDocked ? setChatPref(!chatPref) : setChatSheetOpen((o) => !o));
 
   const draftFromPlan = () => {
-    setUndoState(null);
+    plan.clearUndo();
     setView('write'); // the draft streams into the editor and is reviewed there
     openChat();
     void chat.send(DRAFT_FROM_PLAN);
@@ -235,21 +167,19 @@ export function WorkspaceScreen() {
     void chat.run(key);
   };
 
-  if (!projectId) return <Navigate to="/" replace />;
-  if (project.isError) return <Navigate to="/" replace />;
-
-  const doc = document.data;
-  const isChapter = doc?.kind === 'chapter';
-  const context =
-    contextEdit && contextEdit.id === documentId ? contextEdit.value : (doc?.brief ?? '');
-
-  const changeContext = (value: string) => {
-    const id = documentId!;
-    setContextEdit({ id, value });
-    contextPending.current = { id, value };
-    if (contextTimer.current) clearTimeout(contextTimer.current);
-    contextTimer.current = setTimeout(flushContext, AUTOSAVE_MS);
+  // Opening the Plan view calls no model: a chapter without a plan gets an empty
+  // form, to fill in by hand or to generate on request.
+  const changeView = (next: ChapterView) => {
+    setView(next);
+    if (next !== 'plan') plan.clearUndo();
   };
+
+  const selectDocument = (id: string) => {
+    setNavOpen(false);
+    navigate(`/p/${projectId}/d/${id}`);
+  };
+
+  if (project.isError) return <Navigate to="/" replace />;
 
   // The server refuses generation once the budget is spent (402). Kept apart
   // from `busy`, which is transient in-flight state: being out of budget
@@ -259,26 +189,7 @@ export function WorkspaceScreen() {
   const pending = chat.pendingProposal;
   // While a proposal streams or waits for review, the editor is read-only and
   // every other generation waits: each would change the text it is drawn against.
-  const proposal: ProposalView | null = chat.streaming?.progress
-    ? { phase: 'streaming', mode: chat.streaming.progress.mode, text: chat.streaming.progress.text }
-    : pending?.proposal.kind === 'suggestions'
-      ? {
-          phase: 'reviewing',
-          kind: 'suggestions',
-          suggestions: pending.proposal.suggestions,
-          baseHash: pending.proposal.base_hash,
-          label: chat.agents.find((a) => a.key === pending.agent)?.label,
-        }
-      : pending?.proposal.kind === 'write' && pending.proposal.proposed_body !== null
-        ? {
-            phase: 'reviewing',
-            kind: 'write',
-            proposed: pending.proposal.proposed_body,
-            baseHash: pending.proposal.base_hash,
-            // A new draft shown against the old one is noise.
-            showDiff: false,
-          }
-        : null;
+  const proposal = toProposalView(chat.streaming, pending, chat.agents);
   // A proposal is reviewed in the editor, so when one appears the Write view
   // comes forward. Only on its arrival: the writer can still switch away.
   const proposalOnScreen = isChapter && proposal !== null;
@@ -289,8 +200,7 @@ export function WorkspaceScreen() {
   const view: ChapterView = isChapter ? chapterView : 'write';
 
   const chatBusy = chat.streaming !== null || pending !== null;
-  const busy = planMut.isPending || deleteDoc.isPending || rewriteBusy || chatBusy;
-  const planForThisDoc = planMut.variables === documentId;
+  const busy = plan.pending || deleteDoc.isPending || rewriteBusy || chatBusy;
 
   const chatDisabledReason = aiBlocked
     ? 'AI budget used — chat is paused.'
@@ -304,80 +214,105 @@ export function WorkspaceScreen() {
     if (pending) void chat.resolve(pending.messageId, outcome, indexes);
   };
 
-  // Opening the Plan view calls no model: a chapter without a plan gets an empty
-  // form, to fill in by hand or to generate on request.
-  const changeView = (next: ChapterView) => {
-    setView(next);
-    if (next !== 'plan') setUndoState(null);
-  };
-
   const tabPanel = (panel: ChapterView) =>
     isChapter
       ? { role: 'tabpanel', id: chapterPanelId(panel), 'aria-labelledby': chapterTabId(panel) }
       : {};
 
+  // A drawer or sheet over the page: the page behind it is out of reach until it closes.
+  const pageInert = drawerOpen || sheetOpen;
+
+  // Escape closes the panel it was pressed in, and goes no further: over a
+  // proposal under review it must not also discard the proposal.
+  const closeOnEscape = (close: () => void) => (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    close();
+  };
+
   return (
-    <div className="flex h-screen flex-col bg-[#f5f5f0]">
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
-        <div className="flex items-center gap-3">
-          <Button variant="secondary" size="sm" onClick={() => navigate('/')}>
-            ← Projects
-          </Button>
-          <h1 className="text-base font-semibold text-gray-800">{project.data?.name ?? '…'}</h1>
-        </div>
-        <div className="flex items-center gap-4">
-          {me.data && (
-            <>
-              <ModelPicker
-                models={me.data.models}
-                value={me.data.model_key}
-                saving={setModel.isPending}
-                onChange={(key) => setModel.mutate(key)}
-              />
-              <UsageMeter usage={me.data.usage} />
-            </>
+    <div className="flex h-full flex-col">
+      <AppHeader
+        leading={
+          !sidebarDocked && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Open documents"
+              aria-expanded={navOpen}
+              onClick={() => setNavOpen(true)}
+            >
+              <MenuIcon aria-hidden />
+            </Button>
+          )
+        }
+        title={project.data?.name ?? <Skeleton className="h-4 w-32" />}
+      >
+        {me.data && (
+          <>
+            <ModelPicker
+              models={me.data.models}
+              value={me.data.model_key}
+              saving={setModel.isPending}
+              onChange={(key) => setModel.mutate(key)}
+            />
+            <UsageMeter usage={me.data.usage} />
+          </>
+        )}
+      </AppHeader>
+
+      <div className="relative flex min-h-0 flex-1">
+        {(drawerOpen || sheetOpen) && (
+          <div
+            aria-hidden
+            onClick={() => (drawerOpen ? setNavOpen(false) : setChatSheetOpen(false))}
+            className="fixed inset-0 z-drawer bg-ink/40 animate-fade"
+          />
+        )}
+
+        <div
+          className={cn(
+            sidebarDocked
+              ? 'flex'
+              : 'fixed inset-y-0 left-0 z-drawer flex shadow-overlay transition-transform duration-200 ease-out',
+            !sidebarDocked && !navOpen && '-translate-x-full shadow-none',
           )}
-          <Button variant="secondary" size="sm" onClick={logout}>
-            Log out
-          </Button>
+          // Off-screen, it must be out of the tab order and the accessibility tree.
+          ref={drawerRef}
+          inert={!sidebarDocked && !navOpen}
+          onKeyDown={drawerOpen ? closeOnEscape(() => setNavOpen(false)) : undefined}
+        >
+          <DocumentSidebar
+            documents={documents.data ?? []}
+            activeId={documentId}
+            collapsed={collapsed}
+            onToggleCollapsed={() => setCollapsed(!collapsed)}
+            onClose={sidebarDocked ? undefined : () => setNavOpen(false)}
+            onSelect={selectDocument}
+            onCreate={(kind) =>
+              createDoc.mutate(
+                { title: kind === 'note' ? 'Untitled note' : 'Untitled', kind },
+                { onSuccess: (d) => selectDocument(d.id) },
+              )
+            }
+            onRename={(id, title) =>
+              updateDocument(projectId, id, { title })
+                .then(() => qc.invalidateQueries({ queryKey: documentsKey(projectId) }))
+                .catch((e: Error) => setError(e.message))
+            }
+            onDelete={(id) =>
+              deleteDoc.mutate(id, {
+                onSuccess: () => {
+                  if (id === documentId) navigate(`/p/${projectId}`, { replace: true });
+                },
+                onError: (e: Error) => setError(e.message),
+              })
+            }
+            onReorder={(ids) => reorderDocs.mutate(ids)}
+          />
         </div>
-      </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        <DocumentSidebar
-          documents={documents.data ?? []}
-          activeId={documentId}
-          collapsed={collapsed}
-          onToggleCollapsed={() =>
-            setCollapsed((c) => {
-              localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1');
-              return !c;
-            })
-          }
-          onSelect={(id) => navigate(`/p/${projectId}/d/${id}`)}
-          onCreate={(kind) =>
-            createDoc.mutate(
-              { title: kind === 'note' ? 'Untitled note' : 'Untitled', kind },
-              { onSuccess: (d) => navigate(`/p/${projectId}/d/${d.id}`) },
-            )
-          }
-          onRename={(id, title) =>
-            updateDocument(projectId, id, { title })
-              .then(() => qc.invalidateQueries({ queryKey: documentsKey(projectId) }))
-              .catch((e: Error) => setError(e.message))
-          }
-          onDelete={(id) =>
-            deleteDoc.mutate(id, {
-              onSuccess: () => {
-                if (id === documentId) navigate(`/p/${projectId}`, { replace: true });
-              },
-              onError: (e: Error) => setError(e.message),
-            })
-          }
-          onReorder={(ids) => reorderDocs.mutate(ids)}
-        />
-
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <main inert={pageInert} className="flex min-w-0 flex-1 flex-col">
           {isChapter && (
             <ChapterToolbar
               view={view}
@@ -389,89 +324,92 @@ export function WorkspaceScreen() {
 
           {doc ? (
             <>
-              {/* Hidden rather than unmounted behind the Plan and Issues views, so the
+              {/* Hidden rather than unmounted behind the Plan view, so the
                   editor keeps its undo history, scroll and selection. */}
               <div
                 hidden={view !== 'write'}
-                className="flex flex-1 flex-col overflow-hidden"
+                className="flex min-h-0 flex-1 flex-col"
                 {...tabPanel('write')}
               >
                 <DocumentEditor
                   key={doc.id}
                   document={doc}
                   projectId={projectId}
-                  readOnly={false}
-                  onSave={save}
-                  saveState={saveState}
+                  onSave={saving.save}
+                  saveState={saving.saveState}
                   onBusyChange={setRewriteBusy}
                   aiBlocked={aiBlocked}
                   onUsage={applyUsage}
                   proposal={isChapter ? proposal : null}
                   onProposalResolve={resolveProposal}
-                  flushRef={editorFlush}
-                  context={context}
-                  onContextChange={changeContext}
+                  flushRef={saving.editorFlush}
+                  context={saving.context}
+                  onContextChange={saving.changeContext}
                 />
               </div>
 
               {view === 'plan' && (
-                <div className="flex flex-1 flex-col overflow-hidden" {...tabPanel('plan')}>
+                <div className="flex min-h-0 flex-1 flex-col" {...tabPanel('plan')}>
                   <PlanView
                     plan={doc.plan}
-                    context={context}
-                    onContextChange={changeContext}
-                    generating={planMut.isPending && planForThisDoc}
-                    undo={undoState && undoState.id === documentId ? undoState.reason : null}
+                    context={saving.context}
+                    onContextChange={saving.changeContext}
+                    generating={plan.generating}
+                    undo={plan.undoReason}
                     busy={busy}
                     aiBlocked={aiBlocked}
-                    onChange={(plan) => {
-                      setUndoState(null);
-                      setPlan(plan);
-                    }}
-                    onGenerate={generatePlanFor}
-                    onRemove={() => {
-                      // Planning is optional: a stale or empty plan would otherwise
-                      // keep steering every chat draft and review.
-                      if (!doc.plan) return;
-                      setUndoState({ id: documentId!, plan: doc.plan, reason: 'removed' });
-                      setPlan(null);
-                    }}
-                    onUndo={() => {
-                      if (!undoState) return;
-                      setUndoState(null);
-                      setPlan(undoState.plan);
-                    }}
+                    onChange={plan.edit}
+                    onGenerate={plan.generate}
+                    onRemove={plan.remove}
+                    onUndo={plan.undo}
                     onGenerateDraft={draftFromPlan}
                   />
                 </div>
               )}
             </>
+          ) : documents.isLoading || document.isLoading ? (
+            <EditorSkeleton />
+          ) : document.isError ? (
+            <EmptyState title="This document couldn't be opened" className="my-auto">
+              {document.error.message}
+            </EmptyState>
           ) : (
-            <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
-              {documents.isLoading || document.isLoading ? 'Loading…' : 'Select a document.'}
-            </div>
+            <EmptyState title="Select a document" className="my-auto">
+              Choose one from the list, or start a new chapter.
+            </EmptyState>
           )}
 
           {error && (
-            <p className="border-t border-red-200 bg-red-50 px-6 py-1.5 text-xs text-red-700">
+            <InlineAlert className="border-t" onDismiss={() => setError(null)}>
               {error}
-            </p>
+            </InlineAlert>
           )}
-        </div>
+        </main>
 
         {isChapter && chatOpen && (
-          <ChatPane
-            messages={chat.messages}
-            loading={chat.loading}
-            streaming={chat.streaming}
-            error={chat.error}
-            disabledReason={chatDisabledReason}
-            onSend={chat.send}
-            agents={chat.agents}
-            onRunAgent={runAgent}
-            onClear={() => void chat.clear()}
-            onClose={toggleChat}
-          />
+          <div
+            ref={sheetRef}
+            className="contents"
+            onKeyDown={sheetOpen ? closeOnEscape(() => setChatSheetOpen(false)) : undefined}
+          >
+            <ChatPane
+              className={
+                chatDocked
+                  ? 'w-[22rem] shrink-0 xl:w-[24rem]'
+                  : 'fixed inset-y-0 right-0 z-drawer w-full max-w-md shadow-overlay animate-pop'
+              }
+              messages={chat.messages}
+              loading={chat.loading}
+              streaming={chat.streaming}
+              error={chat.error}
+              disabledReason={chatDisabledReason}
+              onSend={chat.send}
+              agents={chat.agents}
+              onRunAgent={runAgent}
+              onClear={() => void chat.clear()}
+              onClose={toggleChat}
+            />
+          </div>
         )}
       </div>
     </div>
