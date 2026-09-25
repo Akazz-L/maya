@@ -7,13 +7,27 @@ Defined in `backend/db_models.py`; the schema itself is owned by Alembic (`alemb
 ```mermaid
 erDiagram
     USERS ||--o{ PROJECTS : owns
+    USERS ||--o{ SUBSCRIPTIONS : "pays through"
     PROJECTS ||--o{ DOCUMENTS : contains
     DOCUMENTS ||--o{ CHAT_MESSAGES : "chat"
 
     USERS {
         uuid id PK
         string clerk_user_id UK "Clerk's user id, the token's sub"
+        string stripe_customer_id UK "nullable, set on first checkout"
         datetime created_at
+    }
+
+    SUBSCRIPTIONS {
+        uuid id PK
+        uuid user_id FK "→ users.id, ON DELETE CASCADE"
+        string stripe_subscription_id UK
+        string stripe_price_id "which paid plan"
+        string status "Stripe's: active, past_due, canceled, …"
+        datetime current_period_start "the budget period"
+        datetime current_period_end
+        datetime cancel_at "nullable: when it stops renewing"
+        datetime updated_at
     }
 
     PROJECTS {

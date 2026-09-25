@@ -3,8 +3,10 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.responses import FileResponse
+from datetime import datetime
+
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
@@ -15,14 +17,17 @@ _logger = logging.getLogger(__name__)
 
 from backend.agents.reviewers import reviewer_options
 from backend.auth import get_current_user
+from backend.billing import BillingDisabled
 from backend.bible_markdown import BIBLE_TEMPLATE
 from backend.db import get_db, init_db
 from backend.db_models import Document, Project, User
+from backend.routes import billing as billing_routes
 from backend.routes import chat as chat_routes
 from backend.routes import documents as documents_routes
 from backend.llm import MODELS
 from backend.routes import generate as generate_routes
 from backend.settings import get_clerk_secret_key
+from backend.usage import entitlement
 from backend.usage import snapshot as usage_snapshot
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -48,14 +53,26 @@ app.mount("/assets", StaticFiles(directory=str(_DIST_DIR / "assets"), check_dir=
 app.mount("/static", StaticFiles(directory=str(_FRONTEND_DIR), check_dir=False), name="static")
 
 
+@app.exception_handler(BillingDisabled)
+async def billing_disabled(request: Request, exc: BillingDisabled):
+    return JSONResponse(status_code=503, content={"detail": "Billing is not enabled."})
+
+
 # ---------------------------------------------------------------------------
-# Account: model choice and AI budget
+# Account: model choice, plan and AI budget
 # ---------------------------------------------------------------------------
 
 class ModelOption(BaseModel):
     key: str
     label: str
     hint: str
+
+
+class CurrentPlan(BaseModel):
+    key: str
+    label: str
+    #: When a paid plan stops renewing, if it has been cancelled.
+    ends_at: datetime | None
 
 
 class MeResponse(BaseModel):
@@ -67,6 +84,7 @@ class MeResponse(BaseModel):
     #: The catalogue the picker renders. Served from the backend so labels and
     #: relative cost live only in backend/llm.py.
     models: list[ModelOption]
+    plan: CurrentPlan
     usage: dict
 
 
@@ -81,10 +99,12 @@ def _model_options() -> list[ModelOption]:
 
 
 async def _me(db: AsyncSession, user: User) -> MeResponse:
+    current = await entitlement(db, user)
     return MeResponse(
         model_key=user.model_key,
         models=_model_options(),
-        usage=(await usage_snapshot(db, user)).as_dict(),
+        plan=CurrentPlan(key=current.plan.key, label=current.plan.label, ends_at=current.ends_at),
+        usage=(await usage_snapshot(db, user, current=current)).as_dict(),
     )
 
 
@@ -194,6 +214,7 @@ async def get_project(
 app.include_router(documents_routes.router)
 app.include_router(generate_routes.router)
 app.include_router(chat_routes.router)
+app.include_router(billing_routes.router)
 
 
 # ---------------------------------------------------------------------------
