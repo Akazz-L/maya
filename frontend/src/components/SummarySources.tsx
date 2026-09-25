@@ -35,8 +35,10 @@ export function SummarySources({ sources, onOpen }: SummarySourcesProps) {
           </span>
         ) : (
           <>
-            <span>The AI reads the story bible, this chapter, and, in place of the earlier</span>
-            <span>chapters, their summaries:</span>
+            <span>
+              The AI reads the story bible, this chapter, and, in place of the earlier chapters,
+              their summaries:
+            </span>
             {sources.map((source) => {
               const pending = PENDING[source.summary_status];
               // Named for what the button does, since the sidebar carries the
@@ -66,10 +68,7 @@ export function SummarySources({ sources, onOpen }: SummarySourcesProps) {
             })}
             {/* The chat drafts from the chapter immediately before this one;
                 the planner and the review passes read the whole window. */}
-            <span>
-              The chat reads only {sources[sources.length - 1].title}
-              {"'"}s.
-            </span>
+            <span>The chat reads only the last of these.</span>
           </>
         )}
       </p>
