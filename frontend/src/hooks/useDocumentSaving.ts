@@ -30,7 +30,11 @@ export function useDocumentSaving(
   // Holds the in-flight autosaves so a request that reads the document
   // server-side can wait for them to land. Without this the server works from a
   // stale body and the writer's last keystrokes vanish.
-  const pendingSave = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingSave = useRef<Promise<void>>(Promise.resolve());
+  // Whether the server's copy is known to be behind: set when a save fails,
+  // cleared when one succeeds. `settle` refuses on it, because waiting for a
+  // save that failed leaves the document just as stale as not waiting at all.
+  const saveFailed = useRef(false);
   // Filled by the editor: saves a title or body edit still inside the debounce.
   const editorFlush = useRef<(() => void) | null>(null);
   // The chapter context edit waiting out its own debounce, with the document it belongs to.
@@ -41,25 +45,34 @@ export function useDocumentSaving(
   const saveTo = useCallback(
     (id: string, patch: DocumentPatch) => {
       setSaveState('saving');
+      // Resolves to whether the write landed. It never rejects: most saves are
+      // fire-and-forget, and a rejection nobody awaits is an unhandled one.
       const promise = updateDocument(projectId, id, patch)
         .then((saved) => {
           qc.setQueryData(documentKey(projectId, id), saved);
           if (patch.title !== undefined) {
             qc.invalidateQueries({ queryKey: documentsKey(projectId) });
           }
+          saveFailed.current = false;
           setSaveState('saved');
+          return true;
         })
-        .catch(() => setSaveState('error'));
+        .catch(() => {
+          saveFailed.current = true;
+          setSaveState('error');
+          return false;
+        });
       // Chained rather than replaced: a context save and a body save can be in
       // flight at once, and a request that reads the document must await both.
-      pendingSave.current = Promise.all([pendingSave.current, promise]);
+      // Collapsed to void so the chain does not carry every past result.
+      pendingSave.current = Promise.all([pendingSave.current, promise]).then(() => undefined);
       return promise;
     },
     [projectId, qc],
   );
 
   const save = useCallback(
-    (patch: DocumentPatch) => (documentId ? saveTo(documentId, patch) : Promise.resolve()),
+    (patch: DocumentPatch) => (documentId ? saveTo(documentId, patch) : Promise.resolve(false)),
     [documentId, saveTo],
   );
 
@@ -70,7 +83,17 @@ export function useDocumentSaving(
       clearTimeout(contextTimer.current);
       contextTimer.current = null;
     }
-    if (patch) saveTo(patch.id, { brief: patch.value });
+    if (!patch) return;
+    void saveTo(patch.id, { brief: patch.value }).then((ok) => {
+      // Once the server holds this text, stop shadowing it, so a later change
+      // from elsewhere — an AI edit, another tab — is visible again. Only if it
+      // is still what the writer typed: newer keystrokes must not be discarded,
+      // and a failed save must keep showing the text that did not reach the server.
+      if (!ok) return;
+      setContextEdit((current) =>
+        current && current.id === patch.id && current.value === patch.value ? null : current,
+      );
+    });
   }, [saveTo]);
 
   // Switching documents mid-debounce must save rather than drop the edit; the
@@ -86,6 +109,9 @@ export function useDocumentSaving(
     editorFlush.current?.();
     flushContext();
     await pendingSave.current;
+    if (saveFailed.current) {
+      throw new Error('Your last changes could not be saved, so this would work from older text.');
+    }
   }, [flushContext]);
 
   const context = contextEdit && contextEdit.id === documentId ? contextEdit.value : serverContext;

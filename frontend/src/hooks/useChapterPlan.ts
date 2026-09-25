@@ -87,8 +87,11 @@ export function useChapterPlan({
     setPlan(null);
   };
 
+  // `setPlan` writes to the open document, so this only acts while that is still
+  // the one the undo belongs to. The bar is hidden otherwise; the guard covers
+  // the click that lands just after a switch.
   const undo = () => {
-    if (!undoState) return;
+    if (!undoState || undoState.id !== documentId) return;
     setUndoState(null);
     setPlan(undoState.plan);
   };

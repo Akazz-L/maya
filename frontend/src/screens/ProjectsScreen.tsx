@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { BookOpen, Plus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { ProjectSummary } from '../api/types';
@@ -8,8 +8,9 @@ import { EmptyState, InlineAlert, Skeleton, Spinner } from '../components/ui/fee
 import { Input } from '../components/ui/input';
 import { useCreateProject, useProjects } from '../hooks/queries';
 
+// In the interface's language, so the date reads as part of the sentence around it.
 const formatCreated = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  new Date(iso).toLocaleDateString('en', { year: 'numeric', month: 'long', day: 'numeric' });
 
 /** A project as the title page of its manuscript. */
 function TitlePage({ project }: { project: ProjectSummary }) {
@@ -29,17 +30,24 @@ function TitlePage({ project }: { project: ProjectSummary }) {
 
 function ProjectGridSkeleton() {
   return (
-    <ul
-      role="status"
-      aria-label="Loading projects"
-      className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4"
-    >
-      {[0, 1, 2].map((i) => (
-        <li key={i}>
-          <Skeleton className="aspect-[4/5] w-full rounded-panel" />
-        </li>
-      ))}
-    </ul>
+    // The status role sits on the wrapper: on the list itself it would replace
+    // the list semantics the cards rely on.
+    <div role="status" aria-label="Loading projects">
+      <ul className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4">
+        {[0, 1, 2].map((i) => (
+          <li key={i}>
+            <Skeleton className="aspect-[4/5] w-full rounded-panel" />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Empty and error states need the panel the grid does not: alone they have no edges. */
+function Notice({ children }: { children: ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-panel border border-line bg-surface">{children}</div>
   );
 }
 
@@ -94,21 +102,25 @@ export function ProjectsScreen() {
           {projects.isPending ? (
             <ProjectGridSkeleton />
           ) : projects.isError ? (
-            <EmptyState
-              title="Couldn't load your projects"
-              action={
-                <Button variant="secondary" onClick={() => void projects.refetch()}>
-                  Try again
-                </Button>
-              }
-            >
-              {projects.error.message}
-            </EmptyState>
+            <Notice>
+              <EmptyState
+                title="Couldn't load your projects"
+                action={
+                  <Button variant="secondary" onClick={() => void projects.refetch()}>
+                    Try again
+                  </Button>
+                }
+              >
+                {projects.error.message}
+              </EmptyState>
+            </Notice>
           ) : projects.data.length === 0 ? (
-            <EmptyState icon={<BookOpen />} title="No projects yet">
-              Name your first one above. It starts with a story bible, ready for your characters and
-              world.
-            </EmptyState>
+            <Notice>
+              <EmptyState icon={<BookOpen />} title="No projects yet">
+                Name your first one above. It starts with a story bible, ready for your characters
+                and world.
+              </EmptyState>
+            </Notice>
           ) : (
             <ul className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4">
               {projects.data.map((p) => (
