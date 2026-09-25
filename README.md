@@ -159,10 +159,10 @@ A writer therefore never loses a draft mid-stream.
 The check reserves nothing, and a call's cost is recorded only when it finishes, so every request that starts under the cap goes through.
 Overshoot is bounded by how many requests a writer has in flight at once, not by a single call.
 
-To raise one writer's cap without moving everyone's:
+To raise one writer's cap without moving everyone's, find their user id (`user_...`) in the Clerk dashboard, then:
 
 ```sql
-UPDATE users SET monthly_budget_micro_usd = 20000000 WHERE email = 'them@example.com';
+UPDATE users SET monthly_budget_micro_usd = 20000000 WHERE clerk_user_id = 'user_...';
 ```
 
 The column is in micro-dollars — the same unit the ledger counts in, so a cap and a
