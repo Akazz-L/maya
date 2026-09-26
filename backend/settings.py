@@ -45,12 +45,26 @@ def _normalize_async_url(url: str) -> str:
     return url
 
 
-def get_jwt_secret() -> str:
-    secret = os.getenv("JWT_SECRET")
-    if not secret:
-        raise RuntimeError("JWT_SECRET environment variable is not set")
-    return secret
+def get_clerk_secret_key() -> str:
+    key = os.getenv("CLERK_SECRET_KEY")
+    if not key:
+        raise RuntimeError("CLERK_SECRET_KEY environment variable is not set")
+    return key
 
 
-def get_jwt_expire_minutes() -> int:
-    return int(os.getenv("JWT_EXPIRE_MINUTES", "10080"))
+def get_clerk_jwt_key() -> str | None:
+    """PEM public key from Clerk's API Keys page. When set, session tokens are
+    verified without fetching Clerk's JWKS."""
+    return os.getenv("CLERK_JWT_KEY") or None
+
+
+_DEFAULT_AUTHORIZED_PARTIES = "http://localhost:5173,http://localhost:8000"
+
+
+def get_clerk_authorized_parties() -> list[str]:
+    """Origins a session token may have been minted for (its `azp` claim).
+
+    A token issued to any other site on the same Clerk instance is refused.
+    """
+    raw = os.getenv("CLERK_AUTHORIZED_PARTIES", _DEFAULT_AUTHORIZED_PARTIES)
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]

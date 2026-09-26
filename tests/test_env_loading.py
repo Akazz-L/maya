@@ -26,7 +26,7 @@ PROBE = textwrap.dedent(
 
 
 def test_importing_an_agent_first_still_finds_the_key(tmp_path):
-    (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-from-dotenv\nJWT_SECRET=x\n")
+    (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-from-dotenv\n")
     result = subprocess.run(
         [sys.executable, "-c", PROBE],
         cwd=tmp_path,  # load_dotenv() searches from the working directory

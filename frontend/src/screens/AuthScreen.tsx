@@ -1,31 +1,7 @@
-import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { SignIn, SignUp } from '@clerk/react';
 import { Wordmark } from '../components/Wordmark';
-import { Button } from '../components/ui/button';
-import { InlineAlert, Spinner } from '../components/ui/feedback';
-import { Field } from '../components/ui/field';
-import { Input } from '../components/ui/input';
 
-type Mode = 'login' | 'register';
-
-const COPY: Record<
-  Mode,
-  { title: string; submit: string; switchPrompt: string; switchTo: string }
-> = {
-  login: {
-    title: 'Sign in',
-    submit: 'Sign in',
-    switchPrompt: 'New to Maya?',
-    switchTo: 'Create an account',
-  },
-  register: {
-    title: 'Create your account',
-    submit: 'Create account',
-    switchPrompt: 'Already have an account?',
-    switchTo: 'Sign in',
-  },
-};
+type Mode = 'sign-in' | 'sign-up';
 
 /**
  * What working in Maya looks like, drawn from the product itself: a line of
@@ -62,36 +38,8 @@ function ManuscriptSample() {
   );
 }
 
-export function AuthScreen() {
-  const { login, register } = useAuth();
-  const navigate = useNavigate();
-  const [mode, setMode] = useState<Mode>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const copy = COPY[mode];
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setBusy(true);
-    try {
-      if (mode === 'login') await login(email, password);
-      else await register(email, password);
-      navigate('/');
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const toggle = () => {
-    setMode((m) => (m === 'login' ? 'register' : 'login'));
-    setError(null);
-  };
-
+/** The sign-in and sign-up pages: Maya's pitch on the left, Clerk's form on the right. */
+export function AuthScreen({ mode }: { mode: Mode }) {
   return (
     <div className="grid min-h-full lg:grid-cols-[1.1fr_1fr]">
       <section className="relative hidden flex-col justify-between overflow-hidden bg-canvas p-12 lg:flex">
@@ -105,64 +53,13 @@ export function AuthScreen() {
         </p>
       </section>
 
-      <main className="flex items-center justify-center bg-surface px-4 py-12">
-        <div className="flex w-full max-w-sm flex-col gap-8">
-          <Wordmark className="text-2xl lg:hidden" />
-
-          <form onSubmit={submit} aria-labelledby="auth-title" className="flex flex-col gap-4">
-            <h1
-              id="auth-title"
-              className="font-serif text-3xl font-semibold tracking-[-0.01em] text-ink"
-            >
-              {copy.title}
-            </h1>
-
-            <Field label="Email">
-              {(control) => (
-                <Input
-                  {...control}
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoFocus
-                />
-              )}
-            </Field>
-
-            <Field label="Password">
-              {(control) => (
-                <Input
-                  {...control}
-                  type="password"
-                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              )}
-            </Field>
-
-            {error && <InlineAlert className="rounded-control border">{error}</InlineAlert>}
-
-            <Button type="submit" size="lg" disabled={busy} className="mt-2 w-full">
-              {busy && <Spinner />}
-              {copy.submit}
-            </Button>
-          </form>
-
-          <p className="text-sm text-ink-subtle">
-            {copy.switchPrompt}{' '}
-            <button
-              type="button"
-              onClick={toggle}
-              className="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink"
-            >
-              {copy.switchTo}
-            </button>
-          </p>
-        </div>
+      <main className="flex flex-col items-center justify-center gap-8 bg-surface px-4 py-12">
+        <Wordmark className="text-2xl lg:hidden" />
+        {mode === 'sign-in' ? (
+          <SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" />
+        ) : (
+          <SignUp routing="path" path="/sign-up" signInUrl="/sign-in" />
+        )}
       </main>
     </div>
   );

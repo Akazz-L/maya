@@ -19,8 +19,9 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
+    # Clerk owns identity (email, password, sessions); this row holds only what
+    # Maya needs per writer, keyed by the `sub` of their Clerk session token.
+    clerk_user_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     # Which of backend.llm.MODELS this writer generates with. A key, not a model
     # ID, so retargeting "opus" at a newer model never touches user rows.
     model_key: Mapped[str] = mapped_column(

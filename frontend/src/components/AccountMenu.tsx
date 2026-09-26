@@ -1,15 +1,14 @@
-import { LogOut } from 'lucide-react';
-import { useAuth } from '../auth/AuthContext';
-import { useMe } from '../hooks/queries';
+import { useClerk, useUser } from '@clerk/react';
+import { LogOut, UserRound } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Menu, MenuItem, MenuLabel } from './ui/menu';
 
-/** The signed-in writer's initial, opening a menu with who they are and Log out. */
+/** The signed-in writer's initial, opening a menu with who they are, their account and Log out. */
 export function AccountMenu() {
-  const { logout } = useAuth();
-  const me = useMe();
+  const { openUserProfile, signOut } = useClerk();
+  const { user } = useUser();
 
-  const email = me.data?.email ?? null;
+  const email = user?.primaryEmailAddress?.emailAddress ?? null;
   // Before the account loads there is no letter to show, so stand in with a dot.
   const initial = email?.[0]?.toUpperCase() ?? '·';
 
@@ -35,7 +34,10 @@ export function AccountMenu() {
       )}
     >
       {email && <MenuLabel>{email}</MenuLabel>}
-      <MenuItem icon={<LogOut aria-hidden />} onSelect={logout}>
+      <MenuItem icon={<UserRound aria-hidden />} onSelect={() => openUserProfile()}>
+        Manage account
+      </MenuItem>
+      <MenuItem icon={<LogOut aria-hidden />} onSelect={() => void signOut()}>
         Log out
       </MenuItem>
     </Menu>

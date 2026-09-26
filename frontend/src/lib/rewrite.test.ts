@@ -6,7 +6,8 @@ describe('wordDiff on texts that differ almost everywhere', () => {
     // A new draft of a long chapter against the old one. The two share common
     // words in different orders, which is the expensive case: uncapped, the
     // diff takes about a second and yields thousands of fragments.
-    const vocabulary = 'the a she he it was of and to in on at by with her his rain door hall light'.split(' ');
+    const vocabulary =
+      'the a she he it was of and to in on at by with her his rain door hall light'.split(' ');
     const prose = (seed: number) => {
       let x = seed;
       return Array.from({ length: 5000 }, () => {
@@ -101,6 +102,8 @@ describe('wordDiff', () => {
     const parts = wordDiff('She waited by the door.', 'She froze by the door.');
     expect(parts.find((p) => p.removed)?.value).toBe('waited');
     expect(parts.find((p) => p.added)?.value).toBe('froze');
-    expect(parts.every((p) => typeof p.added === 'boolean' && typeof p.removed === 'boolean')).toBe(true);
+    expect(parts.every((p) => typeof p.added === 'boolean' && typeof p.removed === 'boolean')).toBe(
+      true,
+    );
   });
 });

@@ -4,12 +4,12 @@ import {
   createProject,
   generatePlan,
   listProjects,
-  login,
   reorderDocuments,
   resolveProposal,
   updateDocument,
 } from './endpoints';
-import { clearToken, setToken } from '../auth/token';
+import { setUnauthorizedHandler } from '../auth/session';
+import { clerk } from '../test/clerk';
 
 function jsonResponse(data: unknown, status = 200): Response {
   // A 204 must have a null body — an empty string still counts as a body.
@@ -20,13 +20,13 @@ function jsonResponse(data: unknown, status = 200): Response {
 }
 
 afterEach(() => {
-  clearToken();
+  setUnauthorizedHandler(null);
   vi.restoreAllMocks();
 });
 
 describe('endpoints', () => {
-  it('attaches a Bearer header to authed requests and scopes URLs by project', async () => {
-    setToken('jwt123');
+  it("attaches the Clerk session's Bearer token and scopes URLs by project", async () => {
+    clerk.token = 'jwt123';
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ plan: null }));
 
     await generatePlan('proj-1', 'doc-3');
@@ -36,17 +36,24 @@ describe('endpoints', () => {
     expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer jwt123');
   });
 
-  it('does not attach a token to login (unauthenticated) requests', async () => {
-    setToken('should-not-be-sent');
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(jsonResponse({ access_token: 't', token_type: 'bearer' }));
+  it('sends no Authorization header when signed out', async () => {
+    clerk.isSignedIn = false;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse([]));
 
-    await login('a@b.com', 'pw');
+    await listProjects();
 
-    const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe('/auth/token');
-    expect((init?.headers as Record<string, string>).Authorization).toBeUndefined();
+    expect(
+      (fetchSpy.mock.calls[0][1]?.headers as Record<string, string>).Authorization,
+    ).toBeUndefined();
+  });
+
+  it('hands a 401 to the unauthorized handler', async () => {
+    const onUnauthorized = vi.fn();
+    setUnauthorizedHandler(onUnauthorized);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ detail: 'no' }, 401));
+
+    await expect(listProjects()).rejects.toThrow(/sign in again/);
+    expect(onUnauthorized).toHaveBeenCalledOnce();
   });
 
   it('hits the project collection routes', async () => {
@@ -78,9 +85,7 @@ describe('document endpoints', () => {
   });
 
   it('patches only the fields it is given', async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(jsonResponse({ id: 'd1' }));
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ id: 'd1' }));
 
     await updateDocument('p1', 'd1', { body: 'text' });
 
@@ -91,9 +96,7 @@ describe('document endpoints', () => {
   });
 
   it('sends an explicit null when dropping a plan', async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(jsonResponse({ id: 'd1' }));
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ id: 'd1' }));
 
     await updateDocument('p1', 'd1', { plan: null });
 
@@ -102,9 +105,7 @@ describe('document endpoints', () => {
   });
 
   it('sends the id order when reordering', async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(jsonResponse(null, 204));
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(null, 204));
 
     await reorderDocuments('p1', ['b', 'a']);
 
@@ -117,7 +118,6 @@ describe('document endpoints', () => {
 
 describe('resolveProposal', () => {
   it('names the fixes it resolves, and omits them to mean "all the rest"', async () => {
-    setToken('jwt123');
     // A fresh Response per call: a body can only be read once.
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse({}));
 

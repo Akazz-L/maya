@@ -18,21 +18,6 @@ import type {
   UsageSnapshot,
 } from './types';
 
-// ── auth (unauthenticated) ───────────────────────────────────────────────────
-export const login = (email: string, password: string) =>
-  request<{ access_token: string; token_type: string }>('/auth/token', {
-    method: 'POST',
-    body: { email, password },
-    authed: false,
-  });
-
-export const register = (email: string, password: string) =>
-  request<{ user_id: string }>('/auth/register', {
-    method: 'POST',
-    body: { email, password },
-    authed: false,
-  });
-
 // ── account: model choice and AI budget ──────────────────────────────────────
 export const getMe = () => request<Me>('/me');
 
@@ -54,8 +39,7 @@ export const createProject = (name: string) =>
     body: { name },
   });
 
-export const getProject = (projectId: string) =>
-  request<ProjectDetail>(`/projects/${projectId}`);
+export const getProject = (projectId: string) => request<ProjectDetail>(`/projects/${projectId}`);
 
 // ── documents ────────────────────────────────────────────────────────────────
 export const listDocuments = (projectId: string) =>
@@ -64,11 +48,7 @@ export const listDocuments = (projectId: string) =>
 export const getDocument = (projectId: string, documentId: string) =>
   request<DocumentDetail>(`/projects/${projectId}/documents/${documentId}`);
 
-export const createDocument = (
-  projectId: string,
-  title?: string,
-  kind: DocumentKind = 'chapter',
-) =>
+export const createDocument = (projectId: string, title?: string, kind: DocumentKind = 'chapter') =>
   request<DocumentDetail>(`/projects/${projectId}/documents`, {
     method: 'POST',
     body: { title, kind },
@@ -78,11 +58,7 @@ export type DocumentPatch = Partial<
   Pick<DocumentDetail, 'title' | 'body' | 'brief' | 'plan' | 'kind'>
 >;
 
-export const updateDocument = (
-  projectId: string,
-  documentId: string,
-  patch: DocumentPatch,
-) =>
+export const updateDocument = (projectId: string, documentId: string, patch: DocumentPatch) =>
   request<DocumentDetail>(`/projects/${projectId}/documents/${documentId}`, {
     method: 'PATCH',
     body: patch,

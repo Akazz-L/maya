@@ -40,14 +40,17 @@ FastAPI + SQLAlchemy backend, React + Vite frontend.
 ## Setup
 
 ```bash
-cp .env.example .env      # then fill in the two required values
+cp .env.example .env      # then fill in the three required values
 make install              # uv sync + npm install
 ```
 
 `.env` needs:
 
 - `ANTHROPIC_API_KEY` — the app boots without it, but every generation call fails at request time.
-- `JWT_SECRET` — generate with `openssl rand -hex 32`. Changing it invalidates existing sessions.
+- `CLERK_SECRET_KEY` and `VITE_CLERK_PUBLISHABLE_KEY` — from the API Keys page of a [Clerk](https://clerk.com) application.
+  Clerk handles sign-up, sign-in and sessions; the backend verifies Clerk's session tokens and creates a writer's row on their first request.
+  A free development instance is enough for local work.
+  In production, also set `CLERK_AUTHORIZED_PARTIES` to the public URL the app is served from.
 
 `MONTHLY_BUDGET_USD` is optional and defaults to `5.00`. It is the AI budget each
 writer gets per calendar month (UTC).
@@ -66,7 +69,7 @@ Then open **http://localhost:5173**.
 This applies migrations, then starts the backend on `:8000` (with `--reload`) and
 the Vite dev server on `:5173`. Ctrl-C stops both.
 
-Both servers need to be up: Vite proxies `/auth`, `/projects`, and `/static` to the
+Both servers need to be up: Vite proxies `/me`, `/agents`, `/projects`, and `/static` to the
 backend, so `:5173` is the URL you want — `:8000` serves the API but not the dev UI.
 
 To run just one side: `make backend` or `make frontend`.
@@ -77,7 +80,7 @@ To run just one side: `make backend` or `make frontend`.
 make seed
 ```
 
-Creates a demo account — **demo@maya.local** / **demo1234** — owning one project,
+Creates a demo account in Clerk — **demo+clerk_test@example.com** / **salt-road-weighing-house** — owning one project,
 `Demo — The Salt Road`, whose documents are each left in a different state so
 every toolbar action has something to act on:
 
@@ -95,7 +98,10 @@ Re-running replaces the demo project and resets the demo password, leaving any
 other project on the account untouched.
 Pass `--email`, `--password`, or `--project` to `scripts/seed_demo.py` to seed a
 different account.
+Clerk checks the password, and refuses one that is too short or found in a known breach.
+The `+clerk_test` address is a Clerk test address: on a development instance, any email code Clerk asks for when signing in to it is `424242`.
 
+Seeding needs `CLERK_SECRET_KEY`, since the account lives in Clerk.
 Generation itself still needs `ANTHROPIC_API_KEY` in `.env`; seeding does not.
 
 ## Tests
@@ -155,10 +161,10 @@ A writer therefore never loses a draft mid-stream.
 The check reserves nothing, and a call's cost is recorded only when it finishes, so every request that starts under the cap goes through.
 Overshoot is bounded by how many requests a writer has in flight at once, not by a single call.
 
-To raise one writer's cap without moving everyone's:
+To raise one writer's cap without moving everyone's, find their user id (`user_...`) in the Clerk dashboard, then:
 
 ```sql
-UPDATE users SET monthly_budget_micro_usd = 20000000 WHERE email = 'them@example.com';
+UPDATE users SET monthly_budget_micro_usd = 20000000 WHERE clerk_user_id = 'user_...';
 ```
 
 The column is in micro-dollars — the same unit the ledger counts in, so a cap and a
