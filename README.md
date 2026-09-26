@@ -80,7 +80,7 @@ To run just one side: `make backend` or `make frontend`.
 make seed
 ```
 
-Creates a demo account in Clerk — **demo@example.com** / **demo1234** — owning one project,
+Creates a demo account in Clerk — **demo+clerk_test@example.com** / **salt-road-weighing-house** — owning one project,
 `Demo — The Salt Road`, whose documents are each left in a different state so
 every toolbar action has something to act on:
 
@@ -98,6 +98,8 @@ Re-running replaces the demo project and resets the demo password, leaving any
 other project on the account untouched.
 Pass `--email`, `--password`, or `--project` to `scripts/seed_demo.py` to seed a
 different account.
+Clerk checks the password, and refuses one that is too short or found in a known breach.
+The `+clerk_test` address is a Clerk test address: on a development instance, any email code Clerk asks for when signing in to it is `424242`.
 
 Seeding needs `CLERK_SECRET_KEY`, since the account lives in Clerk.
 Generation itself still needs `ANTHROPIC_API_KEY` in `.env`; seeding does not.
