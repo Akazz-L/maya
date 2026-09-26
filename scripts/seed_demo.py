@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 from clerk_backend_api import Clerk
+from clerk_backend_api.models import ClerkErrors
 from dotenv import load_dotenv
 from sqlalchemy import select
 
@@ -39,8 +40,12 @@ from backend.db_models import Document, Project  # noqa: E402
 from backend.doc_storage import body_hash  # noqa: E402
 from backend.settings import get_clerk_secret_key  # noqa: E402
 
-DEFAULT_EMAIL = "demo@example.com"
-DEFAULT_PASSWORD = "demo1234"
+# "+clerk_test" makes this a Clerk test address: on a development instance any
+# email code it is asked for (a new-device check, say) is 424242.
+DEFAULT_EMAIL = "demo+clerk_test@example.com"
+# Clerk refuses passwords found in known breaches at sign-in, even when an
+# account was created with the checks skipped, so the demo needs one that isn't.
+DEFAULT_PASSWORD = "salt-road-weighing-house"
 DEFAULT_PROJECT = "Demo — The Salt Road"
 
 BIBLE = """## Characters
@@ -258,12 +263,12 @@ async def _clerk_user_id(email: str, password: str) -> str:
         if found:
             user = found[0]
             await clerk.users.update_async(
-                user_id=user.id, password=password, skip_password_checks=True
+                user_id=user.id, password=password
             )
             print(f"Reusing Clerk user {email} (password reset)")
             return user.id
         user = await clerk.users.create_async(
-            email_address=[email], password=password, skip_password_checks=True
+            email_address=[email], password=password
         )
         print(f"Created Clerk user {email}")
         return user.id
@@ -310,6 +315,8 @@ async def seed(email: str, password: str, project_name: str) -> None:
         print(f"  [{document.position}] {document.title} ({document.kind}, {state})")
 
     print(f"\nSign in at http://localhost:5173 with {email} / {password}")
+    if "+clerk_test" in email:
+        print("If Clerk asks for an email code, it is 424242.")
     print("Then: Chapter 3 tests Generate Plan and the chat, Chapter 2 tests drafting")
     print("from a saved plan, and Chapter 1 tests Check. Generation needs ANTHROPIC_API_KEY in .env.")
 
@@ -320,4 +327,7 @@ if __name__ == "__main__":
     parser.add_argument("--password", default=DEFAULT_PASSWORD)
     parser.add_argument("--project", default=DEFAULT_PROJECT)
     args = parser.parse_args()
-    asyncio.run(seed(args.email, args.password, args.project))
+    try:
+        asyncio.run(seed(args.email, args.password, args.project))
+    except ClerkErrors as e:
+        raise SystemExit(f"Clerk refused: {'; '.join(err.message for err in e.data.errors)}")
