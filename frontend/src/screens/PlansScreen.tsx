@@ -178,7 +178,12 @@ export function PlansScreen() {
             </EmptyState>
           ) : (
             <ul
-              className={cn('grid gap-4 sm:grid-cols-2', plans.data.length > 2 && 'lg:grid-cols-4')}
+              className={cn(
+                'grid gap-4',
+                // Free alone, while billing is off, sits centred rather than in a half-empty row.
+                plans.data.length === 1 ? 'mx-auto max-w-sm' : 'sm:grid-cols-2',
+                plans.data.length > 2 && 'lg:grid-cols-4',
+              )}
             >
               {plans.data.map((plan) => (
                 <PlanCard
