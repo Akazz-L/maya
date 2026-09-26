@@ -303,18 +303,74 @@ def state(base_state, sample_scene_plan):
     return {
         **base_state,
         "scene_plan": sample_scene_plan,
-        "previous_summaries": ["Elena crossed the Wastes alone."],
+        "previous_summaries": [("Chapter 1", "Elena crossed the Wastes alone.")],
+        "digest": "Elena left home. The Citadel taxes salt.",
+        "previous_prose": [],
+        "voice_sample": ("Chapter 1", "The Wastes gave nothing back."),
         "draft": "Elena stood at the gates.",
         "history": [],
         "message": "Make the ending darker.",
     }
 
 
+def test_the_story_so_far_is_a_cached_block_of_its_own(state):
+    """Facts change when an earlier chapter changes, which is rarely. Held in
+    its own cached block, editing the open chapter does not re-bill them."""
+    system, _ = build_turn(state)
+    facts = system[1]
+    assert "THE STORY SO FAR" in facts["text"]
+    assert "Elena left home." in facts["text"]
+    assert "Chapter 1 — summary:\nElena crossed the Wastes alone." in facts["text"]
+    assert facts["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+
+
+def test_the_drafter_is_given_the_previous_chapter_s_own_prose(state):
+    """The summarizer is told to discard style, so without this the drafter has
+    never read a sentence the author wrote outside the open chapter."""
+    system, _ = build_turn(state)
+    voice = system[2]
+    assert "The Wastes gave nothing back." in voice["text"]
+    assert "CHAPTER 1 ENDS" in voice["text"]
+    assert voice["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+
+
+def test_a_short_project_sends_the_chapters_instead_of_summaries(state):
+    state.update(
+        digest=None,
+        previous_summaries=[],
+        voice_sample=None,
+        previous_prose=[("Chapter 1", "Elena crossed the Wastes alone, and said so.")],
+    )
+    system, _ = build_turn(state)
+    assert "EARLIER CHAPTERS, IN FULL" in system[1]["text"]
+    assert "and said so." in system[1]["text"]
+
+
+def test_the_cached_blocks_stay_within_the_four_breakpoint_limit(state):
+    """tools -> system -> messages, four `cache_control` marks at most. The
+    layers here are rules+bible, the story so far, the voice sample, and the
+    last history turn."""
+    state["history"] = [
+        {"role": "user", "content": "Draft it.", "proposal": None},
+        {"role": "assistant", "content": "Done.", "proposal": None},
+    ]
+    system, messages = build_turn(state)
+    marks = sum("cache_control" in block for block in system)
+    marks += sum(
+        1
+        for m in messages
+        if isinstance(m["content"], list)
+        for block in m["content"]
+        if "cache_control" in block
+    )
+    assert marks <= 4
+
+
 def test_the_system_prompt_carries_the_bible_and_is_cached(state):
     system, _ = build_turn(state)
     assert "adverbs ending in -ly" in system[0]["text"]
     assert "write_draft" in system[0]["text"] and "suggest_fixes" in system[0]["text"]
-    assert system[0]["cache_control"] == {"type": "ephemeral"}
+    assert system[0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
 
 
 def test_the_new_message_carries_the_chapter_as_it_stands(state):
@@ -325,17 +381,24 @@ def test_the_new_message_carries_the_chapter_as_it_stands(state):
         "Elena arrives at the Citadel gates",
         "Establish Elena's arrival",
         "Gatekeeper blocks her",
-        "Elena crossed the Wastes alone.",
         "Elena stood at the gates.",
         "Make the ending darker.",
     ):
         assert expected in content
+    # The story so far rides in a cached block instead, not in every turn.
+    assert "Elena crossed the Wastes alone." not in content
 
 
 def test_a_first_chapter_without_a_plan_says_so(state):
-    state.update(previous_summaries=[], scene_plan={}, draft="")
-    content = build_turn(state)[1][-1]["content"]
-    assert "This is the first chapter." in content
+    state.update(
+        previous_summaries=[], digest=None, voice_sample=None, scene_plan={}, draft=""
+    )
+    system, messages = build_turn(state)
+    content = messages[-1]["content"]
+    assert "No scene plan." in content
+    assert "(The chapter is empty.)" in content
+    # Nothing behind it, so there is no story-so-far block at all.
+    assert len(system) == 1
     assert "No scene plan." in content
     assert "The chapter is empty." in content
 
@@ -352,7 +415,7 @@ def test_the_last_outcome_reaches_the_new_message_and_history_is_cached(state):
     _, messages = build_turn(state)
     assert len(messages) == 3
     assert "The writer accepted your last proposal" in messages[-1]["content"]
-    assert messages[1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert messages[1]["content"][-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
 
 
 # ---------------------------------------------------------------------------

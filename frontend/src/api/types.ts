@@ -28,12 +28,62 @@ export interface DocumentSummary {
   updated_at: string;
 }
 
+/**
+ * How a chapter's summary stands against its body.
+ *
+ * - `empty` — nothing written, so nothing to summarize.
+ * - `missing` — never summarized; the next AI request that reads it pays for one.
+ * - `current` — generated, and describes the body as it stands.
+ * - `stale` — the body moved on; the next AI request that reads it refreshes it.
+ * - `edited` — the writer's own, describing this body.
+ * - `edited_stale` — the writer's own, and the chapter has changed since.
+ */
+export type SummaryStatus = 'empty' | 'missing' | 'current' | 'stale' | 'edited' | 'edited_stale';
+
 /** A single open document, from GET /projects/{id}/documents/{did}. */
 export interface DocumentDetail extends DocumentSummary {
   body: string;
   /** Chapter only — the writer's optional chapter notes, read by the planner and the chat. Empty on bible and note documents. */
   brief: string;
   plan: ScenePlan | null;
+  /**
+   * Chapter only — what later chapters read of this one, in place of its body.
+   * Null until something summarizes it.
+   */
+  summary: string | null;
+  summary_status: SummaryStatus;
+  /**
+   * Chapter only — "the story so far": every chapter before the recent ones,
+   * folded into one running record. Held per chapter because it is a prefix:
+   * the record read while revising chapter 6 must not contain chapter 30.
+   */
+  digest: string | null;
+}
+
+/** One preceding chapter an AI call on this chapter reads, as a summary. */
+export interface SummarySource {
+  id: string;
+  title: string;
+  summary_status: SummaryStatus;
+}
+
+/** The story so far, and which chapters it covers. */
+export interface DigestSource {
+  status: SummaryStatus;
+  covers: string[];
+}
+
+/**
+ * What the AI reads of the story before this chapter.
+ *
+ * `prose` while the project is short enough that the chapters themselves fit
+ * in the budget summaries exist to protect — then nothing is summarized at all
+ * and `previous` names the chapters that are sent in full.
+ */
+export interface SummaryContext {
+  mode: 'prose' | 'summaries';
+  previous: SummarySource[];
+  digest: DigestSource | null;
 }
 
 /** A project in the list, from GET /projects. */

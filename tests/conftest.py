@@ -54,6 +54,13 @@ async def authed_client(db):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture
+def summaries_mode(monkeypatch):
+    """Force the compressed context path on test chapters, which are a few
+    words long and would otherwise all qualify for prose mode."""
+    monkeypatch.setattr("backend.context.PROSE_BUDGET_TOKENS", 0)
+
+
 # ---------------------------------------------------------------------------
 # Shared data fixtures
 # ---------------------------------------------------------------------------

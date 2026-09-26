@@ -27,9 +27,13 @@ describe('ChapterToolbar', () => {
     expect(p.onViewChange).toHaveBeenCalledWith('write');
   });
 
-  it('has a Write and a Plan view, and nothing else', () => {
+  it('has a Write, a Plan and a Memory view, and nothing else', () => {
     render(<ChapterToolbar {...props()} />);
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Write', 'Plan']);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      'Write',
+      'Plan',
+      'Memory',
+    ]);
   });
 
   it('no longer carries an Issues view: a review draws its findings in the prose', () => {

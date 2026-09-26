@@ -54,6 +54,11 @@ interface DocumentEditorProps {
    */
   context?: string;
   onContextChange?: (value: string) => void;
+  /**
+   * Chapters only: the line naming what the AI reads of the story so far. Passed
+   * in rather than built here, because it is fetched per chapter.
+   */
+  contextNote?: ReactNode;
 }
 
 const noop = () => {};
@@ -104,6 +109,7 @@ export function DocumentEditor({
   flushRef,
   context = '',
   onContextChange,
+  contextNote,
 }: DocumentEditorProps) {
   const [title, setTitle] = useState(document.title);
   const [body, setBody] = useState(document.body);
@@ -203,7 +209,10 @@ export function DocumentEditor({
       </div>
 
       {isChapter && (
-        <ChapterContext value={context} onChange={(value) => onContextChange?.(value)} />
+        <>
+          <ChapterContext value={context} onChange={(value) => onContextChange?.(value)} />
+          {contextNote}
+        </>
       )}
 
       <ProseEditor

@@ -15,6 +15,83 @@ def body_hash(body: str) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
+#: Distinguishes "the caller did not send a summary" from an explicit null.
+_UNSET = object()
+
+
+def set_summary(document: Document, text: str | None) -> None:
+    """Store a summary the writer wrote, against the body it describes.
+
+    Blank text hands the chapter back to the summarizer: the next AI request
+    that reads it writes a fresh one.
+    """
+    if text is None or not text.strip():
+        document.summary = None
+        document.summary_hash = None
+        document.summary_edited = False
+        return
+    document.summary = text
+    document.summary_hash = body_hash(document.body)
+    document.summary_edited = True
+
+
+def set_generated_summary(document: Document, text: str) -> None:
+    """Store a summary the model wrote. It replaces the writer's own, so only
+    an explicit regenerate reaches this."""
+    document.summary = text
+    document.summary_hash = body_hash(document.body)
+    document.summary_edited = False
+
+
+def set_digest(document: Document, text: str | None) -> None:
+    """Store a digest the writer wrote. Blank hands it back to the model.
+
+    The caller stamps `digest_hash` with the chapters it was written against;
+    this only records the text and whose it is.
+    """
+    if text is None or not text.strip():
+        document.digest = None
+        document.digest_hash = None
+        document.digest_edited = False
+        return
+    document.digest = text
+    document.digest_edited = True
+
+
+def digest_status(document: Document, expected_hash: str | None) -> str:
+    """How the Story so far view describes this chapter's digest.
+
+    `expected_hash` identifies the chapters it should cover, or None when there
+    are none — a chapter with nothing but the window behind it.
+    """
+    if expected_hash is None:
+        return "empty"
+    if document.digest is None:
+        return "missing"
+    fresh = document.digest_hash == expected_hash
+    if document.digest_edited:
+        return "edited" if fresh else "edited_stale"
+    return "current" if fresh else "stale"
+
+
+def summary_status(document: Document) -> str:
+    """How the Summary view describes this chapter's summary.
+
+    One of: empty (nothing to summarize), missing (never summarized), current,
+    stale (the body moved on; the next AI request that reads it pays to
+    refresh), edited (the writer's own, describing this body), edited_stale
+    (the writer's own, and the body has changed since).
+    """
+    if not document.body:
+        return "empty"
+    if document.summary is None:
+        return "missing"
+    fresh = document.summary_hash == body_hash(document.body)
+    if document.summary_edited:
+        return "edited" if fresh else "edited_stale"
+    return "current" if fresh else "stale"
+
+
 async def list_documents(db: AsyncSession, project_id: uuid.UUID) -> list[Document]:
     result = await db.execute(
         select(Document).where(Document.project_id == project_id).order_by(Document.position)
@@ -62,10 +139,17 @@ async def update_document(db: AsyncSession, document: Document, **fields) -> Doc
         raise HTTPException(status_code=400, detail=f"Invalid kind: {fields['kind']}")
     # `plan: None` is meaningful — it is how the UI drops a plan — so only skip
     # keys the caller did not send at all.
+    summary = fields.pop("summary", _UNSET)
+    digest = fields.pop("digest", _UNSET)
     for key, value in fields.items():
         setattr(document, key, value)
     if "body" in fields:
         document.summary_hash = None  # body changed; the cached summary is stale
+    # After the body, so a summary saved alongside one describes the new text.
+    if summary is not _UNSET:
+        set_summary(document, summary)
+    if digest is not _UNSET:
+        set_digest(document, digest)
     await db.commit()
     await db.refresh(document)
     return document

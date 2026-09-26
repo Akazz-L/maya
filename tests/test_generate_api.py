@@ -112,7 +112,7 @@ async def test_the_check_and_revise_routes_are_gone(chapter, path):
 
 
 @pytest.mark.asyncio
-async def test_generation_uses_preceding_chapter_summaries(chapter, sample_scene_plan):
+async def test_generation_uses_preceding_chapter_summaries(chapter, sample_scene_plan, summaries_mode):
     client, project_id, doc_id = chapter
     # A chapter before this one, with prose to summarize.
     earlier = (
@@ -139,7 +139,43 @@ async def test_generation_uses_preceding_chapter_summaries(chapter, sample_scene
     ):
         await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
 
-    assert planner.call_args.args[0]["previous_summaries"] == ["Elena departed."]
+    assert planner.call_args.args[0]["previous_summaries"] == [("Chapter 0", "Elena departed.")]
+
+
+@pytest.mark.asyncio
+async def test_a_short_project_is_planned_from_the_chapters_themselves(chapter, sample_scene_plan):
+    """Under the prose budget nothing is summarized: compressing two short
+    chapters costs a model call each and loses what they actually say."""
+    client, project_id, doc_id = chapter
+    earlier = (
+        await client.post(f"/projects/{project_id}/documents", json={"title": "Chapter 0"})
+    ).json()["id"]
+    await client.patch(
+        f"/projects/{project_id}/documents/{earlier}", json={"body": "Elena left home."}
+    )
+    await client.put(
+        f"/projects/{project_id}/documents/order",
+        json={
+            "document_ids": [
+                (await client.get(f"/projects/{project_id}/documents")).json()[0]["id"],
+                earlier,
+                doc_id,
+            ]
+        },
+    )
+
+    planner = AsyncMock(return_value={"scene_plan": sample_scene_plan, "usage": Usage()})
+    summarizer = AsyncMock(return_value=("Elena departed.", Usage()))
+    with (
+        patch("backend.context.summarize_node", new=summarizer),
+        patch("backend.routes.generate.planner_node", new=planner),
+    ):
+        await client.post(f"/projects/{project_id}/documents/{doc_id}/plan")
+
+    state = planner.call_args.args[0]
+    assert state["previous_prose"] == [("Chapter 0", "Elena left home.")]
+    assert state["previous_summaries"] == []
+    summarizer.assert_not_awaited()
 
 
 @pytest.mark.asyncio

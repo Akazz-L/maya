@@ -22,7 +22,7 @@ def state(base_state, sample_scene_plan):
     return {
         **base_state,
         "scene_plan": sample_scene_plan,
-        "previous_summaries": ["Elena crossed the Wastes alone."],
+        "previous_summaries": [("Chapter 1", "Elena crossed the Wastes alone.")],
         "draft": DRAFT,
     }
 

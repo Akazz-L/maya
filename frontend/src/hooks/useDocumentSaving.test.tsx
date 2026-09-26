@@ -17,6 +17,9 @@ const saved: DocumentDetail = {
   body: 'text',
   brief: '',
   plan: null,
+  summary: null,
+  summary_status: 'empty',
+  digest: null,
 };
 const offline = () => Promise.reject(new Error('offline'));
 
@@ -25,7 +28,7 @@ function render() {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
-  return renderHook(() => useDocumentSaving('p1', 'd1', ''), { wrapper });
+  return renderHook(() => useDocumentSaving('p1', 'd1', '', '', ''), { wrapper });
 }
 
 beforeEach(() => vi.mocked(updateDocument).mockReset());

@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react';
-import { ListTree, MessageSquare, PenLine } from 'lucide-react';
+import { ListTree, MessageSquare, PenLine, ScrollText } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { chapterPanelId, chapterTabId, type ChapterView } from './chapterView';
 import { Button } from './ui/button';
@@ -14,6 +14,7 @@ interface ChapterToolbarProps {
 const VIEWS = [
   { id: 'write', label: 'Write', Icon: PenLine },
   { id: 'plan', label: 'Plan', Icon: ListTree },
+  { id: 'summary', label: 'Memory', Icon: ScrollText },
 ] as const satisfies readonly { id: ChapterView; label: string; Icon: unknown }[];
 
 export function ChapterToolbar({

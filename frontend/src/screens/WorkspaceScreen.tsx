@@ -12,10 +12,14 @@ import { DocumentEditor } from '../components/DocumentEditor';
 import { DocumentSidebar } from '../components/DocumentSidebar';
 import { ModelPicker } from '../components/ModelPicker';
 import { PlanView } from '../components/PlanView';
+import { SummarySources } from '../components/SummarySources';
+import { StorySoFar } from '../components/StorySoFar';
+import { SummaryView } from '../components/SummaryView';
 import { UsageMeter } from '../components/UsageMeter';
 import { Button } from '../components/ui/button';
 import { EmptyState, InlineAlert, Skeleton } from '../components/ui/feedback';
 import { useChapterPlan } from '../hooks/useChapterPlan';
+import { useChapterSummary } from '../hooks/useChapterSummary';
 import { useChat } from '../hooks/useChat';
 import { useDocumentSaving } from '../hooks/useDocumentSaving';
 import { useFocusReturn } from '../hooks/useFocusReturn';
@@ -83,6 +87,10 @@ function Workspace({ projectId }: { projectId: string }) {
   const sheetRef = useRef<HTMLDivElement>(null);
 
   const [chapterView, setView] = useState<ChapterView>('write');
+  // The view to open the next chapter on, set when a summary is opened from
+  // another chapter's Write view. State, not a ref: it is read while rendering
+  // the document it belongs to.
+  const [pendingView, setPendingView] = useState<ChapterView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rewriteBusy, setRewriteBusy] = useState(false);
   // Whether a chat proposal was on screen last render; see where it is compared.
@@ -101,13 +109,32 @@ function Workspace({ projectId }: { projectId: string }) {
   const doc = document.data;
   const isChapter = doc?.kind === 'chapter';
 
-  const saving = useDocumentSaving(projectId, documentId, doc?.brief ?? '');
+  const saving = useDocumentSaving(
+    projectId,
+    documentId,
+    doc?.brief ?? '',
+    doc?.summary ?? '',
+    doc?.digest ?? '',
+  );
   const plan = useChapterPlan({
     projectId,
     documentId,
     plan: doc?.plan ?? null,
     settle: saving.settle,
     save: saving.save,
+    onUsage: applyUsage,
+    onError: (message) => {
+      setError(message);
+      if (message) void me.refetch();
+    },
+  });
+  const summary = useChapterSummary({
+    projectId,
+    documentId,
+    enabled: isChapter,
+    settle: saving.settle,
+    resetEdit: saving.resetSummary,
+    resetDigestEdit: saving.resetDigest,
     onUsage: applyUsage,
     onError: (message) => {
       setError(message);
@@ -134,7 +161,10 @@ function Workspace({ projectId }: { projectId: string }) {
   const [viewedDocId, setViewedDocId] = useState(documentId);
   if (viewedDocId !== documentId) {
     setViewedDocId(documentId);
-    setView('write');
+    // Unless the writer asked for another chapter's summary, in which case that
+    // is the view they asked to land on.
+    setView(pendingView ?? 'write');
+    setPendingView(null);
     plan.clearUndo();
   }
 
@@ -172,6 +202,16 @@ function Workspace({ projectId }: { projectId: string }) {
   const changeView = (next: ChapterView) => {
     setView(next);
     if (next !== 'plan') plan.clearUndo();
+  };
+
+  /** Open one chapter's summary — this chapter's, or a preceding one's. */
+  const openSummary = (id: string) => {
+    if (id === documentId) {
+      setView('summary');
+      return;
+    }
+    setPendingView('summary');
+    selectDocument(id);
   };
 
   const selectDocument = (id: string) => {
@@ -345,8 +385,42 @@ function Workspace({ projectId }: { projectId: string }) {
                   flushRef={saving.editorFlush}
                   context={saving.context}
                   onContextChange={saving.changeContext}
+                  contextNote={
+                    isChapter ? (
+                      <SummarySources
+                        context={summary.context}
+                        onOpen={openSummary}
+                        onOpenStory={() => setView('summary')}
+                      />
+                    ) : null
+                  }
                 />
               </div>
+
+              {view === 'summary' && (
+                <div className="flex min-h-0 flex-1 flex-col" {...tabPanel('summary')}>
+                  <SummaryView
+                    summary={saving.summary}
+                    status={doc.summary_status}
+                    generating={summary.generating}
+                    busy={busy}
+                    aiBlocked={aiBlocked}
+                    onChange={saving.changeSummary}
+                    onGenerate={summary.generate}
+                  >
+                    <StorySoFar
+                      digest={saving.digest}
+                      status={summary.digestStatus}
+                      covers={summary.digestCovers}
+                      generating={summary.digestGenerating}
+                      busy={busy}
+                      aiBlocked={aiBlocked}
+                      onChange={saving.changeDigest}
+                      onGenerate={summary.generateDigest}
+                    />
+                  </SummaryView>
+                </div>
+              )}
 
               {view === 'plan' && (
                 <div className="flex min-h-0 flex-1 flex-col" {...tabPanel('plan')}>

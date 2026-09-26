@@ -15,6 +15,8 @@ import type {
   ProjectSummary,
   ProposalOutcome,
   ScenePlan,
+  SummaryContext,
+  SummaryStatus,
   UsageSnapshot,
 } from './types';
 
@@ -75,7 +77,7 @@ export const createDocument = (
   });
 
 export type DocumentPatch = Partial<
-  Pick<DocumentDetail, 'title' | 'body' | 'brief' | 'plan' | 'kind'>
+  Pick<DocumentDetail, 'title' | 'body' | 'brief' | 'plan' | 'kind' | 'summary' | 'digest'>
 >;
 
 export const updateDocument = (
@@ -104,6 +106,32 @@ export const generatePlan = (projectId: string, documentId: string) =>
     {
       method: 'POST',
     },
+  );
+
+/**
+ * Summarize this chapter now, replacing any summary it had — including one the
+ * writer wrote, which is why the view confirms first. Costs a model call.
+ */
+export const generateSummary = (projectId: string, documentId: string) =>
+  request<{ summary: string; summary_status: SummaryStatus; usage: UsageSnapshot }>(
+    `/projects/${projectId}/documents/${documentId}/summary`,
+    { method: 'POST' },
+  );
+
+/** What the AI reads of the story before this chapter. Free to ask. */
+export const getSummaryContext = (projectId: string, documentId: string) =>
+  request<SummaryContext>(`/projects/${projectId}/documents/${documentId}/summary-context`);
+
+/**
+ * Build this chapter's story so far now, summarizing whatever it needs.
+ *
+ * The one call allowed to summarize a backlog: everywhere else a large one is
+ * refused, because it is a bill the writer should see coming.
+ */
+export const generateDigest = (projectId: string, documentId: string) =>
+  request<{ digest: string; digest_status: SummaryStatus; usage: UsageSnapshot }>(
+    `/projects/${projectId}/documents/${documentId}/story-so-far`,
+    { method: 'POST' },
   );
 
 /** SSE stream URLs, read by stream.ts. */
