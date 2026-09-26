@@ -1,8 +1,9 @@
-"""Monthly spend accounting and the budget gate.
+"""Spend accounting, the plan in effect, and the budget gate.
 
-Spend is summed over the current calendar month in UTC. A calendar month is
-what the meter in the editor shows, and unlike a rolling window it gives the
-writer a reset date to read.
+Spend is summed over the current budget period. On Free that is the calendar
+month in UTC; on a paid plan it is the Stripe billing period, so the budget
+resets on the day the writer is charged. Either way the writer has a reset
+date to read, which a rolling window would not give them.
 """
 
 import uuid
@@ -18,9 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth import get_current_user
 from backend.db import get_db
-from backend.db_models import UsageEvent, User
+from backend.db_models import Subscription, UsageEvent, User
 from backend.llm import Usage, cost_usd
-from backend.settings import get_monthly_budget_micro_usd
+from backend.plans import Plan, free_plan, paid_plans, plan_for_price
 
 _MICRO = Decimal(1_000_000)
 
@@ -38,13 +39,73 @@ def next_month_start(now: datetime) -> datetime:
     return start.replace(month=start.month + 1)
 
 
+def _utc(moment: datetime) -> datetime:
+    """SQLite hands timestamps back without their zone; every one stored is UTC."""
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+#: Stripe statuses that pay for the plan. A cancelled subscription stays
+#: "active" until its period ends, so it keeps its budget until then. A failed
+#: renewal turns it "past_due", which counts as Free: the payment that failed
+#: was for the period just starting.
+PAID_STATUSES = ("active", "trialing")
+
+
+@dataclass(frozen=True)
+class Entitlement:
+    """The plan in effect and the budget period it sets."""
+
+    plan: Plan
+    budget_micro_usd: int
+    period_start: datetime
+    period_end: datetime
+    #: When a paid plan stops renewing; None while it renews, and on Free.
+    ends_at: datetime | None = None
+
+
+async def entitlement(db: AsyncSession, user: User, now: datetime | None = None) -> Entitlement:
+    now = now or datetime.now(timezone.utc)
+    result = await db.execute(
+        select(Subscription).where(
+            Subscription.user_id == user.id,
+            Subscription.status.in_(PAID_STATUSES),
+            Subscription.current_period_start <= now,
+            Subscription.current_period_end > now,
+        )
+    )
+    paying = [
+        (plan, sub)
+        for sub in result.scalars()
+        if (plan := plan_for_price(sub.stripe_price_id)) is not None
+    ]
+    # A per-user override replaces the plan's budget, whatever the plan.
+    override = user.monthly_budget_micro_usd
+    if paying:
+        plan, sub = max(paying, key=lambda pair: pair[0].budget_micro_usd)
+        return Entitlement(
+            plan=plan,
+            budget_micro_usd=plan.budget_micro_usd if override is None else override,
+            period_start=_utc(sub.current_period_start),
+            period_end=_utc(sub.current_period_end),
+            ends_at=_utc(sub.cancel_at) if sub.cancel_at else None,
+        )
+    plan = free_plan()
+    return Entitlement(
+        plan=plan,
+        budget_micro_usd=plan.budget_micro_usd if override is None else override,
+        period_start=month_start(now),
+        period_end=next_month_start(now),
+    )
+
+
 @dataclass(frozen=True)
 class UsageSnapshot:
     spent_usd: Decimal
     budget_usd: Decimal
     percent: float
     blocked: bool
-    #: When the meter resets — the first instant of next month, UTC.
+    #: When the meter resets: the next billing date on a paid plan, or the
+    #: first instant of next month (UTC) on Free.
     period_end: datetime
 
     def as_dict(self) -> dict:
@@ -69,26 +130,26 @@ def format_usd(amount: Decimal) -> str:
     return f"${amount:.2f}"
 
 
-def budget_micro_usd(user: User) -> int:
-    budget = user.monthly_budget_micro_usd
-    return get_monthly_budget_micro_usd() if budget is None else budget
-
-
-async def spent_micro_usd(db: AsyncSession, user_id: uuid.UUID, now: datetime | None = None) -> int:
-    now = now or datetime.now(timezone.utc)
+async def spent_micro_usd(db: AsyncSession, user_id: uuid.UUID, since: datetime) -> int:
     result = await db.execute(
         select(func.coalesce(func.sum(UsageEvent.cost_micro_usd), 0)).where(
             UsageEvent.user_id == user_id,
-            UsageEvent.created_at >= month_start(now),
+            UsageEvent.created_at >= since,
         )
     )
     return int(result.scalar_one())
 
 
-async def snapshot(db: AsyncSession, user: User, now: datetime | None = None) -> UsageSnapshot:
+async def snapshot(
+    db: AsyncSession,
+    user: User,
+    now: datetime | None = None,
+    current: Entitlement | None = None,
+) -> UsageSnapshot:
     now = now or datetime.now(timezone.utc)
-    spent = await spent_micro_usd(db, user.id, now)
-    budget = budget_micro_usd(user)
+    current = current or await entitlement(db, user, now)
+    spent = await spent_micro_usd(db, user.id, current.period_start)
+    budget = current.budget_micro_usd
     # A zero or negative budget means no AI at all, rather than a division by zero.
     percent = round(spent / budget * 100, 1) if budget > 0 else 100.0
     return UsageSnapshot(
@@ -96,7 +157,7 @@ async def snapshot(db: AsyncSession, user: User, now: datetime | None = None) ->
         budget_usd=Decimal(budget) / _MICRO,
         percent=percent,
         blocked=spent >= budget,
-        period_end=next_month_start(now),
+        period_end=current.period_end,
     )
 
 
@@ -172,7 +233,7 @@ async def require_ai_budget(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Refuse to start any generation once the month's budget is spent.
+    """Refuse to start any generation once the period's budget is spent.
 
     Pre-flight only: a call already under way always runs to completion, so a
     writer never loses a draft mid-stream. The check reads the ledger without
@@ -186,12 +247,12 @@ async def require_ai_budget(
     """
     current = await snapshot(db, current_user)
     if current.blocked:
-        raise HTTPException(
-            status_code=402,
-            detail=(
-                f"AI budget for this month is used up "
-                f"({format_usd(current.spent_usd)} of {format_usd(current.budget_usd)}). "
-                f"It resets on {current.period_end:%b %-d}."
-            ),
+        detail = (
+            f"AI budget for this period is used up "
+            f"({format_usd(current.spent_usd)} of {format_usd(current.budget_usd)}). "
+            f"It resets on {current.period_end:%b %-d}."
         )
+        if any(p.budget_micro_usd > current.budget_usd * _MICRO for p in paid_plans()):
+            detail += " Upgrade your plan to keep going now."
+        raise HTTPException(status_code=402, detail=detail)
     return current_user

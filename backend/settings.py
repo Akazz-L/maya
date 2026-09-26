@@ -68,3 +68,17 @@ def get_clerk_authorized_parties() -> list[str]:
     """
     raw = os.getenv("CLERK_AUTHORIZED_PARTIES", _DEFAULT_AUTHORIZED_PARTIES)
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+def get_app_url() -> str:
+    """Public URL of the app, where Stripe sends a writer back after checkout."""
+    return os.getenv("APP_URL", "http://localhost:5173").rstrip("/")
+
+
+def get_stripe_secret_key() -> str | None:
+    """Unset, billing is off: every writer is on the free plan."""
+    return os.getenv("STRIPE_SECRET_KEY") or None
+
+
+def get_stripe_webhook_secret() -> str | None:
+    return os.getenv("STRIPE_WEBHOOK_SECRET") or None

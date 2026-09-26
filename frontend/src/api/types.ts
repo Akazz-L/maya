@@ -71,7 +71,7 @@ export interface ModelOption {
   hint: string;
 }
 
-/** Spend against this month's AI budget, from GET /me and every AI response. */
+/** Spend against this period's AI budget, from GET /me and every AI response. */
 export interface UsageSnapshot {
   spent_usd: number;
   budget_usd: number;
@@ -82,10 +82,30 @@ export interface UsageSnapshot {
   period_end: string;
 }
 
+// ── plans and billing ────────────────────────────────────────────────────────
+
+/** One plan a writer can be on, from GET /billing/plans. Free comes first. */
+export interface PlanOption {
+  key: string;
+  label: string;
+  price_usd: number;
+  /** The AI spend the plan includes each period. */
+  budget_usd: number;
+}
+
+/** The plan in effect for the signed-in writer. */
+export interface CurrentPlan {
+  key: string;
+  label: string;
+  /** ISO timestamp a cancelled paid plan stops at; null while it renews. */
+  ends_at: string | null;
+}
+
 /** The signed-in writer, from GET /me. */
 export interface Me {
   model_key: ModelKey;
   models: ModelOption[];
+  plan: CurrentPlan;
   usage: UsageSnapshot;
 }
 
