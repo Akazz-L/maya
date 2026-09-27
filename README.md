@@ -127,6 +127,10 @@ Frontend extras: `npm run test:watch`, `npm run typecheck`, `npm run lint`,
 | `make seed` | Demo account + sample novel (safe to re-run) |
 | `make help` | List all targets |
 
+## How it works
+
+- [`docs/auth.md`](docs/auth.md): authentication with Clerk, from the sign-in form to the user row, with configuration, local development, tests and operations.
+
 ## Diagrams
 
 [`docs/diagrams/`](docs/diagrams/) holds mermaid diagrams of the architecture — the
