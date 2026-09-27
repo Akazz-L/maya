@@ -130,6 +130,7 @@ Frontend extras: `npm run test:watch`, `npm run typecheck`, `npm run lint`,
 ## How it works
 
 - [`docs/auth.md`](docs/auth.md): authentication with Clerk, from the sign-in form to the user row, with configuration, local development, tests and operations.
+- [`docs/billing.md`](docs/billing.md): plans and Stripe billing: which plan a writer is on and why, checkout, the portal, webhooks, setup and known limits.
 
 ## Diagrams
 
@@ -185,6 +186,7 @@ running total compare without any float in the path.
 | Studio | $100 / month | `PLAN_STUDIO_BUDGET_USD`, $50 |
 
 Every plan has every feature and every model; plans differ only in budget.
+[`docs/billing.md`](docs/billing.md) explains how it works in full.
 Each budget is its own setting, not the price, so the margin can be tuned without a deploy.
 
 Paid plans go through Stripe and are off until `STRIPE_SECRET_KEY` is set; without it every writer is on Free.
