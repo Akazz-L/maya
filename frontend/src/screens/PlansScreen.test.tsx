@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -56,22 +57,25 @@ function Location() {
 
 function renderAt(path = '/plans') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // StrictMode as in main.tsx: its double mount is what strands an effect-started mutation.
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <QueryClientProvider client={qc}>
-        <Routes>
-          <Route
-            path="/plans"
-            element={
-              <>
-                <PlansScreen />
-                <Location />
-              </>
-            }
-          />
-        </Routes>
-      </QueryClientProvider>
-    </MemoryRouter>,
+    <StrictMode>
+      <MemoryRouter initialEntries={[path]}>
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/plans"
+              element={
+                <>
+                  <PlansScreen />
+                  <Location />
+                </>
+              }
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>
+    </StrictMode>,
   );
 }
 

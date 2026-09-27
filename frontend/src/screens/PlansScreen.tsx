@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { openBillingPortal, startCheckout, syncBilling } from '../api/endpoints';
@@ -106,19 +106,31 @@ export function PlansScreen() {
   });
 
   // Back from checkout, the webhook may not have landed yet: ask Stripe directly.
+  // A query rather than a mutation fired from an effect: StrictMode's double
+  // mount detaches a mutation's observer, which then never sees it settle.
   const returning = params.get('checkout') === 'success';
-  const synced = useRef(false);
-  const sync = useMutation({
-    mutationFn: syncBilling,
-    onSettled: () => qc.invalidateQueries({ queryKey: meKey }),
+  const sync = useQuery({
+    queryKey: ['billing', 'sync'],
+    queryFn: async () => {
+      // A failed sync needs nothing from the writer: the webhook catches up.
+      await syncBilling().catch(() => null);
+      // An invalidation joins a first load already in flight, which began before
+      // the sync and would bring back the old plan; cancel it so this one refetches.
+      await qc.cancelQueries({ queryKey: meKey });
+      await qc.invalidateQueries({ queryKey: meKey });
+      return true;
+    },
+    enabled: returning,
+    staleTime: Infinity,
+    retry: false,
   });
+  // Dropping the query string keeps a reload from syncing again.
   useEffect(() => {
-    if (!returning || synced.current) return;
-    synced.current = true;
-    sync.mutate(undefined, { onSettled: () => navigate('/plans', { replace: true }) });
-  }, [returning, sync, navigate]);
+    if (returning && sync.isSuccess) navigate('/plans', { replace: true });
+  }, [returning, sync.isSuccess, navigate]);
 
-  const busy = redirect.isPending || sync.isPending;
+  const syncing = returning && !sync.isSuccess;
+  const busy = redirect.isPending || syncing;
   const upgraded = sync.isSuccess && me.data && me.data.plan.key !== 'free';
 
   return (
@@ -135,7 +147,7 @@ export function PlansScreen() {
         </div>
 
         <div className="mx-auto mt-6 max-w-lg" aria-live="polite">
-          {sync.isPending && (
+          {syncing && (
             <p className="flex items-center justify-center gap-2 text-sm text-ink-muted">
               <Spinner /> Confirming your subscription…
             </p>
