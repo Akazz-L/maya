@@ -70,6 +70,18 @@ async def authed_client(api_client):
     return api_client, project_id
 
 
+@pytest.fixture
+def billing(monkeypatch):
+    """Stripe configured with the three paid plans at their default budgets:
+    Starter $10, Pro $25, Studio $50."""
+    monkeypatch.setenv("MONTHLY_BUDGET_USD", "5.00")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_unit_tests_only")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_unit_tests_only")
+    for key in ("starter", "pro", "studio"):
+        monkeypatch.setenv(f"STRIPE_PRICE_{key.upper()}", f"price_{key}")
+        monkeypatch.delenv(f"PLAN_{key.upper()}_BUDGET_USD", raising=False)
+
+
 # ---------------------------------------------------------------------------
 # Shared data fixtures
 # ---------------------------------------------------------------------------

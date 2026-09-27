@@ -27,11 +27,13 @@ class User(Base):
     model_key: Mapped[str] = mapped_column(
         String(16), nullable=False, default=DEFAULT_MODEL_KEY, server_default=DEFAULT_MODEL_KEY
     )
-    # Per-user override of MONTHLY_BUDGET_USD; NULL means "use the global default".
-    # Micro-dollars, the same unit UsageEvent.cost_micro_usd counts in, so a cap
+    # Per-user override of the plan's budget, whatever the plan; NULL means "use
+    # the plan's". Micro-dollars, the same unit UsageEvent.cost_micro_usd counts in, so a cap
     # and a running total are compared without any float in the path. $5 is
     # 5_000_000 here.
     monthly_budget_micro_usd: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Created the first time this writer starts a checkout.
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     projects: Mapped[list["Project"]] = relationship("Project", back_populates="owner", cascade="all, delete-orphan")
@@ -180,3 +182,28 @@ class UsageEvent(Base):
     cache_creation_input_tokens: Mapped[int] = mapped_column(default=0)
     #: Dollars x 1,000,000. An integer so a month's SUM is exact on every backend.
     cost_micro_usd: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+
+
+class Subscription(Base):
+    """A Stripe subscription, mirrored as Stripe last reported it.
+
+    Every row is rewritten from Stripe's current state rather than patched from
+    an event, so webhooks arriving late or out of order cannot leave it stale.
+    One row per Stripe subscription, not per user: a writer who somehow ends up
+    with two is still billed for both, and the plan in effect is chosen from all
+    of them.
+    """
+
+    __tablename__ = "subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    stripe_subscription_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    stripe_price_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: Stripe's status: active, trialing, past_due, canceled, unpaid, ...
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    current_period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    current_period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: When a cancellation takes effect; NULL while the subscription renews.
+    cancel_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)

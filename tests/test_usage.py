@@ -5,11 +5,11 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import event
 
-from backend.db_models import UsageEvent, User
+from backend.db_models import Subscription, UsageEvent, User
 from backend.llm import Usage
 from backend.usage import (
     Meter,
-    budget_micro_usd,
+    entitlement,
     format_usd,
     month_start,
     next_month_start,
@@ -18,6 +18,8 @@ from backend.usage import (
 )
 
 DOLLAR = 1_000_000
+#: Before any spend a test writes, so a sum from here counts all of it.
+EPOCH = datetime(2000, 1, 1, tzinfo=timezone.utc)
 
 
 @pytest_asyncio.fixture
@@ -68,7 +70,7 @@ async def test_spend_before_this_month_is_not_counted(db, user):
     now = datetime(2026, 9, 6, tzinfo=timezone.utc)
     await _spend(db, user, 3 * DOLLAR, at=datetime(2026, 8, 31, 23, 59, tzinfo=timezone.utc))
     await _spend(db, user, 1 * DOLLAR, at=datetime(2026, 9, 1, 0, 1, tzinfo=timezone.utc))
-    assert await spent_micro_usd(db, user.id, now) == 1 * DOLLAR
+    assert await spent_micro_usd(db, user.id, month_start(now)) == 1 * DOLLAR
 
 
 @pytest.mark.asyncio
@@ -77,22 +79,109 @@ async def test_another_users_spend_is_not_counted(db, user):
     db.add(other)
     await db.commit()
     await _spend(db, other, 4 * DOLLAR)
-    assert await spent_micro_usd(db, user.id) == 0
+    assert await spent_micro_usd(db, user.id, EPOCH) == 0
 
 
 # ---------------------------------------------------------------------------
-# Budget resolution
+# The plan in effect
 # ---------------------------------------------------------------------------
 
-def test_budget_falls_back_to_the_global_default(user, monkeypatch):
-    monkeypatch.setenv("MONTHLY_BUDGET_USD", "5.00")
-    assert budget_micro_usd(user) == 5 * DOLLAR
+NOW = datetime(2026, 9, 20, 12, tzinfo=timezone.utc)
+PERIOD_START = datetime(2026, 9, 14, tzinfo=timezone.utc)
+PERIOD_END = datetime(2026, 10, 14, tzinfo=timezone.utc)
 
 
-def test_a_per_user_budget_overrides_the_default(user, monkeypatch):
+async def _subscribe(db, user, price="price_pro", status="active", **fields):
+    values = {
+        "current_period_start": PERIOD_START,
+        "current_period_end": PERIOD_END,
+        **fields,
+    }
+    db.add(
+        Subscription(
+            user_id=user.id,
+            stripe_subscription_id=f"sub_{price}_{status}",
+            stripe_price_id=price,
+            status=status,
+            **values,
+        )
+    )
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_free_budget_runs_over_the_calendar_month(db, user, monkeypatch):
     monkeypatch.setenv("MONTHLY_BUDGET_USD", "5.00")
+    current = await entitlement(db, user, NOW)
+    assert current.plan.key == "free"
+    assert current.budget_micro_usd == 5 * DOLLAR
+    assert (current.period_start, current.period_end) == (
+        datetime(2026, 9, 1, tzinfo=timezone.utc),
+        datetime(2026, 10, 1, tzinfo=timezone.utc),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_per_user_budget_overrides_the_plan(db, user, billing):
     user.monthly_budget_micro_usd = 20 * DOLLAR
-    assert budget_micro_usd(user) == 20 * DOLLAR
+    assert (await entitlement(db, user, NOW)).budget_micro_usd == 20 * DOLLAR
+    await _subscribe(db, user)
+    assert (await entitlement(db, user, NOW)).budget_micro_usd == 20 * DOLLAR
+
+
+@pytest.mark.asyncio
+async def test_an_active_subscription_sets_the_budget_and_billing_period(db, user, billing):
+    await _subscribe(db, user, "price_pro")
+    current = await entitlement(db, user, NOW)
+    assert current.plan.key == "pro"
+    assert current.budget_micro_usd == 25 * DOLLAR
+    assert (current.period_start, current.period_end) == (PERIOD_START, PERIOD_END)
+    assert current.ends_at is None
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_plan_keeps_its_budget_until_the_period_ends(db, user, billing):
+    await _subscribe(db, user, cancel_at=PERIOD_END)
+    current = await entitlement(db, user, NOW)
+    assert current.plan.key == "pro"
+    assert current.ends_at == PERIOD_END
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["past_due", "canceled", "unpaid", "incomplete", "paused"])
+async def test_a_subscription_that_is_not_paid_up_counts_as_free(db, user, billing, status):
+    await _subscribe(db, user, status=status)
+    assert (await entitlement(db, user, NOW)).plan.key == "free"
+
+
+@pytest.mark.asyncio
+async def test_a_period_that_has_ended_counts_as_free(db, user, billing):
+    """Until Stripe reports the renewal, the old period is all there is."""
+    await _subscribe(db, user)
+    assert (await entitlement(db, user, PERIOD_END)).plan.key == "free"
+
+
+@pytest.mark.asyncio
+async def test_a_price_no_longer_on_offer_counts_as_free(db, user, billing):
+    await _subscribe(db, user, price="price_retired")
+    assert (await entitlement(db, user, NOW)).plan.key == "free"
+
+
+@pytest.mark.asyncio
+async def test_two_live_subscriptions_give_the_larger_budget(db, user, billing):
+    await _subscribe(db, user, "price_starter")
+    await _subscribe(db, user, "price_studio")
+    assert (await entitlement(db, user, NOW)).plan.key == "studio"
+
+
+@pytest.mark.asyncio
+async def test_a_paid_plan_counts_spend_from_its_billing_date(db, user, billing):
+    await _subscribe(db, user)
+    await _spend(db, user, 3 * DOLLAR, at=PERIOD_START - timedelta(minutes=1))
+    await _spend(db, user, 1 * DOLLAR, at=PERIOD_START + timedelta(minutes=1))
+    current = await snapshot(db, user, NOW)
+    assert current.spent_usd == Decimal("1")
+    assert current.period_end == PERIOD_END
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +254,7 @@ async def test_meter_writes_one_row_per_call_priced_at_the_chosen_model(db, user
     rows = (await db.execute(UsageEvent.__table__.select())).all()
     assert sorted(r.operation for r in rows) == ["draft", "summarize"]
     # $5/MTok in + $25/MTok out on opus.
-    assert await spent_micro_usd(db, user.id) == 30 * DOLLAR
+    assert await spent_micro_usd(db, user.id, EPOCH) == 30 * DOLLAR
 
 
 @pytest.mark.asyncio
@@ -186,7 +275,7 @@ async def test_meter_does_not_double_write_on_a_second_flush(db, user):
     meter.add("plan", Usage(input_tokens=1_000_000))
     await meter.flush()
     await meter.flush()
-    assert await spent_micro_usd(db, user.id) == 1 * DOLLAR
+    assert await spent_micro_usd(db, user.id, EPOCH) == 1 * DOLLAR
 
 
 @pytest.mark.asyncio
@@ -216,4 +305,4 @@ async def test_a_failed_commit_keeps_the_usage_for_the_next_flush(db, user):
     finally:
         event.remove(engine, "before_cursor_execute", fail_first_insert)
 
-    assert await spent_micro_usd(db, user_id) == 1 * DOLLAR
+    assert await spent_micro_usd(db, user_id, EPOCH) == 1 * DOLLAR

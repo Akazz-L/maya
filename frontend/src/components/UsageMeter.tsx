@@ -1,7 +1,8 @@
+import { Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import type { UsageSnapshot } from '../api/types';
 
-/** Amber once most of the month's budget is gone, so the wall isn't a surprise. */
+/** Amber once most of the period's budget is gone, so the wall isn't a surprise. */
 const WARN_AT = 80;
 
 function formatUsd(amount: number): string {
@@ -20,7 +21,7 @@ export function UsageMeter({ usage }: { usage: UsageSnapshot }) {
   const spent = `${formatUsd(usage.spent_usd)} / ${formatUsd(usage.budget_usd)} · ${Math.round(percent)}%`;
   const summary = blocked
     ? `AI is paused until the budget resets on ${reset}.`
-    : `${formatUsd(usage.spent_usd)} of ${formatUsd(usage.budget_usd)} used this month. Resets ${reset}.`;
+    : `${formatUsd(usage.spent_usd)} of ${formatUsd(usage.budget_usd)} used. Resets ${reset}.`;
 
   return (
     <div className="flex items-center gap-2" title={summary}>
@@ -44,9 +45,12 @@ export function UsageMeter({ usage }: { usage: UsageSnapshot }) {
       </div>
       {/* The bar and its value text carry the reading on a narrow screen. */}
       {blocked ? (
-        <span className="hidden text-xs font-medium text-danger md:inline">
-          Budget used — AI paused until {reset}
-        </span>
+        <Link
+          to="/plans"
+          className="text-xs font-medium text-danger underline decoration-danger/40 underline-offset-4 hover:decoration-danger"
+        >
+          <span className="hidden md:inline">Budget used · </span>Upgrade
+        </Link>
       ) : (
         <span
           className={cn(
