@@ -31,6 +31,30 @@ Inside a chapter, select any passage and press ⌘K (or click the Rewrite pill) 
 for a targeted rewrite; the suggestion streams in place and shows as a diff you can
 accept or discard.
 
+## Context management
+
+When drafting a new chapter, the AI is given the story so far along with recent chapter context.
+The system automatically switches between two modes based on project size:
+
+**Prose mode** (< 20,000 tokens total)
+Early in a project, all prior chapters fit comfortably in the token budget without summarization.
+The AI reads full chapter text directly.
+No digests are generated.
+
+**Summary mode** (≥ 20,000 tokens total)
+As the project grows, full chapters become expensive to re-read on every request (especially after edits, which invalidate prefix caching).
+The system automatically switches to compression:
+- Chapters outside a sliding 5-chapter window are compressed into a **digest**: a folded summary that reads like running narrative.
+- The 5 most recent chapters are sent as individual **summaries**, kept precise since they're close enough to matter.
+- The final chapter's closing prose (≈400 words) is sent verbatim as a **voice sample**, so the AI preserves the writer's voice.
+
+The digest itself is lazy — only generated when an AI agent needs context.
+Once generated, it is re-used and re-folded as the project grows forward, one chapter per call.
+If a writer edits their own summary or digest, the AI keeps it and never overwrites it unless asked.
+
+Each writer also has a **chapter context** field (optional: an outline, a mood, intent, or nothing) that every AI call reads.
+The story bible is included in every request as well.
+
 Each writer picks their own model — Haiku, Sonnet, or Opus — from the editor header,
 and the meter beside it shows what they have spent against their plan's budget.
 Generation is refused once the budget is reached, and the meter offers an upgrade.
