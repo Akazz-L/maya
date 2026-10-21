@@ -17,7 +17,7 @@ from tests.conftest import MODEL_KEY, stub_usage
 async def project(db):
     from backend.db_models import Project, User
 
-    user = User(email="digest@test.com", hashed_password="x")
+    user = User(clerk_user_id="user_digest")
     db.add(user)
     await db.flush()
     project = Project(user_id=user.id, name="P")
