@@ -43,7 +43,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
     <div className="grid min-h-full lg:grid-cols-[1.1fr_1fr]">
       <section className="relative hidden flex-col justify-between overflow-hidden bg-canvas p-12 lg:flex">
         <img src="/logo-wordmark-bubble.svg" alt="Maya" className="mt-10 h-56 w-auto self-center" />
-        <div className="flex flex-1 items-center py-12">
+        <div className="flex flex-1 items-start pt-6 pb-12">
           <ManuscriptSample />
         </div>
         <p className="max-w-sm text-[15px] leading-relaxed text-ink-muted">
