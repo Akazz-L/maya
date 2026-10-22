@@ -94,3 +94,23 @@ async def test_the_token_subject_decides_whose_projects_are_listed(client):
 
     assert [p["name"] for p in (await client.get("/projects", headers=mine)).json()] == ["A's novel"]
     assert (await client.get("/projects", headers=theirs)).json() == []
+
+
+def test_a_live_key_without_authorized_parties_is_refused_at_startup(monkeypatch):
+    from backend.settings import get_clerk_authorized_parties
+
+    monkeypatch.delenv("CLERK_AUTHORIZED_PARTIES", raising=False)
+    monkeypatch.setenv("CLERK_SECRET_KEY", "sk_live_x")
+    with pytest.raises(RuntimeError, match="CLERK_AUTHORIZED_PARTIES"):
+        get_clerk_authorized_parties()
+
+    monkeypatch.setenv("CLERK_AUTHORIZED_PARTIES", "https://app.example.com")
+    assert get_clerk_authorized_parties() == ["https://app.example.com"]
+
+
+def test_a_dev_key_falls_back_to_localhost(monkeypatch):
+    from backend.settings import get_clerk_authorized_parties
+
+    monkeypatch.delenv("CLERK_AUTHORIZED_PARTIES", raising=False)
+    monkeypatch.setenv("CLERK_SECRET_KEY", "sk_test_x")
+    assert "http://localhost:5173" in get_clerk_authorized_parties()

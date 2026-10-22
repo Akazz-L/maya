@@ -66,5 +66,10 @@ def get_clerk_authorized_parties() -> list[str]:
 
     A token issued to any other site on the same Clerk instance is refused.
     """
-    raw = os.getenv("CLERK_AUTHORIZED_PARTIES", _DEFAULT_AUTHORIZED_PARTIES)
+    raw = os.getenv("CLERK_AUTHORIZED_PARTIES")
+    if raw is None:
+        # The localhost default would refuse every real writer's token.
+        if get_clerk_secret_key().startswith("sk_live_"):
+            raise RuntimeError("CLERK_AUTHORIZED_PARTIES must be set with a production Clerk key")
+        raw = _DEFAULT_AUTHORIZED_PARTIES
     return [origin.strip() for origin in raw.split(",") if origin.strip()]

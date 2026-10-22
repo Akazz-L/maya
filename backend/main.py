@@ -22,7 +22,7 @@ from backend.routes import chat as chat_routes
 from backend.routes import documents as documents_routes
 from backend.llm import MODELS
 from backend.routes import generate as generate_routes
-from backend.settings import get_clerk_secret_key
+from backend.settings import get_clerk_authorized_parties, get_clerk_secret_key
 from backend.usage import snapshot as usage_snapshot
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -34,8 +34,10 @@ _INDEX_HTML = _DIST_DIR / "index.html"
 async def lifespan(app: FastAPI):
     # Fail the deploy here rather than at the first request: a missing
     # CLERK_SECRET_KEY otherwise looks like a healthy service until a signed-in
-    # writer calls the API and gets a 500.
+    # writer calls the API and gets a 500. The same goes for a live key with no
+    # CLERK_AUTHORIZED_PARTIES, which refuses every token.
     get_clerk_secret_key()
+    get_clerk_authorized_parties()
     await init_db()
     yield
 

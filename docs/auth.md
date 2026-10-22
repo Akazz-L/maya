@@ -91,7 +91,7 @@ A copy would go stale the moment a writer changed their address in Clerk.
 |---|---|---|---|
 | `CLERK_SECRET_KEY` | backend | yes | Fetches the JWKS; calls Clerk's API. The backend refuses to start without it. |
 | `VITE_CLERK_PUBLISHABLE_KEY` | frontend | yes | Loads Clerk in the browser. Public by design. |
-| `CLERK_AUTHORIZED_PARTIES` | backend | in production | Comma-separated origins tokens may come from. Defaults to `http://localhost:5173,http://localhost:8000`. |
+| `CLERK_AUTHORIZED_PARTIES` | backend | in production | Comma-separated origins tokens may come from. Defaults to `http://localhost:5173,http://localhost:8000`, except with an `sk_live_` key, where leaving it unset stops the backend at startup. |
 | `CLERK_JWT_KEY` | backend | no | PEM public key; verifies tokens without fetching the JWKS. |
 
 All of them live in the one `.env` at the repo root: Vite reads it too (`envDir: '..'`) and exposes only the `VITE_*` keys to the browser.
