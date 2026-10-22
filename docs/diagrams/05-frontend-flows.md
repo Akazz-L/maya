@@ -4,48 +4,42 @@ The main paths through the app, from the user's first click to the database.
 
 ## Auth and session expiry
 
+Clerk owns sign-up, sign-in and the session.
+Maya renders Clerk's `<SignIn>` and `<SignUp>` on `/sign-in` and `/sign-up`, and never sees a password.
+
 ```mermaid
 sequenceDiagram
     autonumber
     participant U as User
-    participant AS as AuthScreen
-    participant AC as AuthContext
-    participant EP as api/endpoints
-    participant TK as auth/token.ts
-    participant BE as Backend
+    participant CL as Clerk (SignIn / SignUp)
+    participant API as api/client.ts · stream.ts
+    participant SE as auth/session.ts
+    participant BE as Backend (auth.py)
+    participant DB as Database
 
-    U->>AS: submit email + password
-    alt register
-        AS->>AC: register()
-        AC->>EP: POST /auth/register  (authed: false)
-        EP->>BE: create user
-        Note over AC: then auto-login, so a new<br/>user lands straight in the app
+    U->>CL: sign up or sign in
+    CL-->>U: session established, redirect to /
+    API->>SE: authHeaders()
+    SE->>CL: getToken(), short-lived, refreshed by Clerk
+    API->>BE: request with Bearer token
+    BE->>BE: verify signature, expiry and azp (origin)
+    alt first request from this Clerk user
+        BE->>DB: insert users row keyed by clerk_user_id
     end
-    AS->>AC: login()
-    AC->>EP: POST /auth/token  (authed: false)
-    EP->>BE: verify password
-    alt bad credentials
-        BE-->>AS: 401 → shown on the form, no logout
-    end
-    BE-->>AC: {access_token}
-    AC->>TK: setToken() → localStorage['maya.token']
-    AC->>AC: setTokenState → isAuthenticated = true
-    Note over AS: /login redirects to / once authenticated
+    BE-->>API: response
 ```
 
-The login and register calls pass `authed: false` for one reason: their 401 means "wrong password", not "session expired", and must surface on the form rather than triggering a logout.
-
-Every other request goes through the shared 401 path:
+Every request goes through the shared 401 path:
 
 ```mermaid
 stateDiagram-v2
     [*] --> SignedOut
-    SignedOut --> SignedIn : login / register succeeds
-    SignedIn --> SignedOut : user clicks Log out
-    SignedIn --> SignedOut : any authed request returns 401
+    SignedOut --> SignedIn : Clerk sign-in / sign-up succeeds
+    SignedIn --> SignedOut : Log out, or signed out in another tab
+    SignedIn --> SignedOut : any request returns 401
 
     state SignedOut {
-        [*] --> AtLogin : RequireAuth redirects\nprotected routes to /login
+        [*] --> AtSignIn : RequireAuth redirects\nprotected routes to /sign-in
     }
     state SignedIn {
         [*] --> Projects
@@ -56,9 +50,10 @@ stateDiagram-v2
 ```
 
 The 401 path has an indirection worth understanding.
-`api/client.ts` is not a React component, so it cannot navigate.
-Instead it calls `handleUnauthorized()`, which clears the token and invokes whatever handler was registered — and `AuthProvider` registers one, in an effect, that drops the token from state and navigates to `/login`.
-That is the whole job of `setUnauthorizedHandler` in `auth/token.ts`: it lets the transport layer log the app out without importing React.
+`api/client.ts` is not a React component, so it cannot sign out through Clerk's hooks.
+Instead it calls `handleUnauthorized()`, which invokes whatever handler was registered, and `RequireAuth` registers one, in an effect, that calls Clerk's `signOut()`.
+That is the whole job of `setUnauthorizedHandler` in `auth/session.ts`: it lets the transport layer end the session without importing React.
+When the signed-in account changes, `App` clears the React Query cache so one account's data is never shown to the next.
 
 ## Opening and editing a document
 

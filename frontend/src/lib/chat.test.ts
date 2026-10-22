@@ -106,7 +106,6 @@ describe('describeProposal', () => {
   });
 });
 
-
 describe('isPending', () => {
   const set = (...outcomes: (ProposalOutcome | null)[]): ChatProposal => ({
     base_hash: 'h',
@@ -121,7 +120,13 @@ describe('isPending', () => {
   });
 
   it('is the whole thing for a draft', () => {
-    const draft = { base_hash: 'h', proposed_body: 'x', kind: 'write', mode: 'replace', text: 'x' } as const;
+    const draft = {
+      base_hash: 'h',
+      proposed_body: 'x',
+      kind: 'write',
+      mode: 'replace',
+      text: 'x',
+    } as const;
     expect(isPending({ ...draft, outcome: null })).toBe(true);
     expect(isPending({ ...draft, outcome: 'accepted' })).toBe(false);
   });
@@ -129,7 +134,9 @@ describe('isPending', () => {
 
 describe('liveFixes', () => {
   it('keeps the unreviewed fixes and remembers where each sits in the set', () => {
-    expect(liveFixes([fix(0, 'accepted'), fix(1), fix(2, 'discarded'), fix(3)]).map((f) => f.index)).toEqual([1, 3]);
+    expect(
+      liveFixes([fix(0, 'accepted'), fix(1), fix(2, 'discarded'), fix(3)]).map((f) => f.index),
+    ).toEqual([1, 3]);
   });
 
   it('carries the span, the prose and the reason, and nothing else', () => {
@@ -160,7 +167,11 @@ describe('shiftFixes', () => {
 
   it('moves the fixes after the accepted span by what the splice changed', () => {
     // 5 characters become 8: everything after 20 slides three to the right.
-    const after = shiftFixes([live(0, 0, 5), live(1, 30, 35)], { from: 15, to: 20, insert: '12345678' });
+    const after = shiftFixes([live(0, 0, 5), live(1, 30, 35)], {
+      from: 15,
+      to: 20,
+      insert: '12345678',
+    });
     expect(after.map((f) => [f.from, f.to])).toEqual([
       [0, 5],
       [33, 38],

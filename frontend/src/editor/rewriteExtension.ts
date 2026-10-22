@@ -46,22 +46,25 @@ export const rewriteOverlayField = StateField.define<RewriteOverlay | null>({
 
 const selectionMark = Decoration.mark({ class: 'cm-rewrite-selection' });
 
-const decorations = EditorView.decorations.compute([rewriteOverlayField], (state): DecorationSet => {
-  const o = state.field(rewriteOverlayField);
-  if (!o || o.range.from >= o.range.to) return Decoration.none;
-  // An errored review shows the untouched text, so the writer sees exactly
-  // what Retry will act on.
-  if (o.phase === 'prompting' || o.error) {
-    return Decoration.set(selectionMark.range(o.range.from, o.range.to));
-  }
-  const widget = new DiffWidget({
-    phase: o.phase,
-    original: o.original,
-    replacement: o.replacement,
-    showDiff: o.showDiff,
-  });
-  return Decoration.set(Decoration.replace({ widget }).range(o.range.from, o.range.to));
-});
+const decorations = EditorView.decorations.compute(
+  [rewriteOverlayField],
+  (state): DecorationSet => {
+    const o = state.field(rewriteOverlayField);
+    if (!o || o.range.from >= o.range.to) return Decoration.none;
+    // An errored review shows the untouched text, so the writer sees exactly
+    // what Retry will act on.
+    if (o.phase === 'prompting' || o.error) {
+      return Decoration.set(selectionMark.range(o.range.from, o.range.to));
+    }
+    const widget = new DiffWidget({
+      phase: o.phase,
+      original: o.original,
+      replacement: o.replacement,
+      showDiff: o.showDiff,
+    });
+    return Decoration.set(Decoration.replace({ widget }).range(o.range.from, o.range.to));
+  },
+);
 
 function currentRange(view: EditorView): TextRange | null {
   const { from, to } = view.state.selection.main;

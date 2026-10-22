@@ -40,16 +40,32 @@ export type RewriteAction =
 export function rewriteReducer(state: RewriteState, action: RewriteAction): RewriteState {
   switch (action.type) {
     case 'open':
-      return { ...initialRewriteState, phase: 'prompting', range: action.range, original: action.original };
+      return {
+        ...initialRewriteState,
+        phase: 'prompting',
+        range: action.range,
+        original: action.original,
+      };
     case 'submit':
-      return { ...state, phase: 'streaming', instruction: action.instruction, replacement: '', error: null };
+      return {
+        ...state,
+        phase: 'streaming',
+        instruction: action.instruction,
+        replacement: '',
+        error: null,
+      };
     case 'delta':
       if (state.phase !== 'streaming') return state;
       return { ...state, replacement: state.replacement + action.text };
     case 'done': {
       if (state.phase !== 'streaming') return state;
       if (!action.text.trim()) {
-        return { ...state, phase: 'reviewing', replacement: '', error: 'The model returned an empty rewrite.' };
+        return {
+          ...state,
+          phase: 'reviewing',
+          replacement: '',
+          error: 'The model returned an empty rewrite.',
+        };
       }
       return {
         ...state,

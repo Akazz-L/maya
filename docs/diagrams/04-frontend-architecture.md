@@ -9,13 +9,13 @@ Source lives in `frontend/src/`.
 graph TD
     ROOT["main.tsx — createRoot"] --> SM["StrictMode"]
     SM --> BR["BrowserRouter"]
-    BR --> QCP["QueryClientProvider<br/>refetchOnWindowFocus: false · retry: false"]
-    QCP --> AP["AuthProvider<br/>token · login · register · logout"]
-    AP --> APP["App — route table"]
+    BR --> CP["ClerkWithRouter<br/>ClerkProvider, navigating through the router"]
+    CP --> QCP["QueryClientProvider<br/>refetchOnWindowFocus: false · retry: false"]
+    QCP --> APP["App — route table<br/>clears the cache when the account changes"]
 
-    APP --> LOGIN["/login → AuthScreen"]
-    APP --> GUARD["RequireAuth<br/>no token → redirect to /login"]
-    APP --> CATCH["* → / or /login"]
+    APP --> LOGIN["/sign-in/* · /sign-up/* → AuthScreen<br/>Clerk's SignIn / SignUp"]
+    APP --> GUARD["RequireAuth<br/>no session → redirect to /sign-in"]
+    APP --> CATCH["* → / or /sign-in"]
 
     GUARD --> PROJ["/ → ProjectsScreen"]
     GUARD --> WS1["/p/:projectId → WorkspaceScreen"]
@@ -39,7 +39,7 @@ graph TD
     class LOGIN,PROJ,WS1,WS2,WS screen
 ```
 
-`AuthProvider` sits **inside** `BrowserRouter` on purpose: it calls `useNavigate` to redirect on logout, which is only legal beneath a router.
+`ClerkWithRouter` sits **inside** `BrowserRouter` on purpose: it hands Clerk `useNavigate` so Clerk's redirects stay client-side, which is only legal beneath a router.
 
 `ChapterToolbar`, `PlanView`, and `ChatPane` render only when the open document has `kind === 'chapter'`.
 The toolbar's Write / Plan switcher decides which view fills the main pane, and the chat stays beside both; see [05](05-frontend-flows.md#chapter-views).
@@ -83,11 +83,10 @@ graph TD
     end
 
     subgraph auth["auth/"]
-        AC["AuthContext.tsx"]
-        TK["token.ts<br/>localStorage + unauthorized hook"]
+        CWR["ClerkWithRouter.tsx"]
+        TK["session.ts<br/>Clerk getToken() + unauthorized hook"]
     end
 
-    AS --> AC
     PS --> EP
     WSS --> Q
     WSS --> DS
@@ -103,8 +102,6 @@ graph TD
     EP --> CL
     CL --> TK
     ST --> TK
-    AC --> EP
-    AC --> TK
     EP -.-> TY
     CMP -.-> TY
 
@@ -130,8 +127,8 @@ graph LR
         K5["chatKey → ['chat', projectId, documentId]"]
     end
 
-    subgraph ctx["AuthContext — session"]
-        T["token · isAuthenticated"]
+    subgraph ctx["Clerk — session"]
+        T["isSignedIn · userId · getToken()"]
     end
 
     subgraph local["WorkspaceScreen — ephemeral UI"]
@@ -148,13 +145,11 @@ graph LR
     end
 
     subgraph ls["localStorage"]
-        S1["maya.token"]
         S2["maya.sidebar.collapsed"]
         S4["maya.chat.open"]
         S5["maya.context.open"]
     end
 
-    T -.->|mirrored| S1
     L1 -.->|mirrored| S2
     L6 -.->|mirrored| S4
 ```

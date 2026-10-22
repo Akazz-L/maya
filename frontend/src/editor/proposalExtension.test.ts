@@ -54,7 +54,9 @@ function fixes(...list: Partial<OverlayFix>[]): SuggestionsOverlay {
 describe('proposalExtension', () => {
   it('hides the changed span behind the streamed text, leaving the document alone', () => {
     const view = makeView();
-    view.dispatch({ effects: setProposalOverlay.of(overlay({ phase: 'streaming', replacement: 'down' })) });
+    view.dispatch({
+      effects: setProposalOverlay.of(overlay({ phase: 'streaming', replacement: 'down' })),
+    });
     expect(view.contentDOM.querySelector('.cm-rewrite-stream')?.textContent).toContain('down');
     expect(view.contentDOM.textContent).not.toContain('rain');
     expect(view.state.doc.toString()).toBe(TEXT);
@@ -91,7 +93,14 @@ describe('proposalExtension', () => {
       effects: setProposalOverlay.of(
         fixes(
           { index: 0, from: 4, to: 8, severity: 'critical' },
-          { index: 1, from: 9, to: 13, original: 'fell', replacement: 'poured', explanation: 'Weak verb.' },
+          {
+            index: 1,
+            from: 9,
+            to: 13,
+            original: 'fell',
+            replacement: 'poured',
+            explanation: 'Weak verb.',
+          },
         ),
       ),
     });
@@ -103,10 +112,9 @@ describe('proposalExtension', () => {
     expect(cards[0].textContent).toContain('1 of 2');
     expect(cards[1].textContent).toContain('Weak verb.');
     // Each fix is shown as a diff of its own span, and the document is untouched.
-    expect([...view.contentDOM.querySelectorAll('.cm-rewrite-ins')].map((e) => e.textContent)).toEqual([
-      'downpour',
-      'poured',
-    ]);
+    expect(
+      [...view.contentDOM.querySelectorAll('.cm-rewrite-ins')].map((e) => e.textContent),
+    ).toEqual(['downpour', 'poured']);
     expect(view.state.doc.toString()).toBe(TEXT);
     view.destroy();
   });
@@ -115,7 +123,10 @@ describe('proposalExtension', () => {
     const accepted: number[] = [];
     const discarded: number[] = [];
     const host = {
-      current: { onAccept: (i: number) => accepted.push(i), onDiscard: (i: number) => discarded.push(i) },
+      current: {
+        onAccept: (i: number) => accepted.push(i),
+        onDiscard: (i: number) => discarded.push(i),
+      },
     };
     const view = makeView(host);
     view.dispatch({ effects: setProposalOverlay.of(fixes({ index: 3 })) });

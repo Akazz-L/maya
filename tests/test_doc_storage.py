@@ -9,7 +9,7 @@ from fastapi import HTTPException
 async def project(db):
     from backend.db_models import Project, User
 
-    user = User(email="doc@test.com", hashed_password="x")
+    user = User(clerk_user_id="user_doc")
     db.add(user)
     await db.flush()
     project = Project(user_id=user.id, name="P")

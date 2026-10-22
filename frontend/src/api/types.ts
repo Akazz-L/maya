@@ -134,7 +134,6 @@ export interface UsageSnapshot {
 
 /** The signed-in writer, from GET /me. */
 export interface Me {
-  email: string;
   model_key: ModelKey;
   models: ModelOption[];
   usage: UsageSnapshot;
