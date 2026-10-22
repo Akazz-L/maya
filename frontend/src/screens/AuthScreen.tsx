@@ -42,8 +42,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
   return (
     <div className="grid min-h-full lg:grid-cols-[1.1fr_1fr]">
       <section className="relative hidden flex-col justify-between overflow-hidden bg-canvas p-12 lg:flex">
-        <img src="/logo-wordmark-bubble.svg" alt="Maya" className="h-24 w-auto self-start" />
-        <div aria-hidden className="absolute inset-y-0 right-0 w-1.5 bg-(image:--gradient-brand)" />
+        <img src="/logo-wordmark-bubble.svg" alt="Maya" className="h-40 w-auto self-center" />
         <div className="flex flex-1 items-center py-12">
           <ManuscriptSample />
         </div>

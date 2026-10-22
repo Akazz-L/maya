@@ -36,9 +36,6 @@
   --color-brand-line: #d3c6ec;
   --color-on-accent: #ffffff;
 
-  /* Fixed brand gradient, as on the palette sheet; identical in both schemes. */
-  --gradient-brand: linear-gradient(135deg, #6237b2 0%, #9d7ddb 55%, #eae6ed 100%);
-
   --color-danger: #b42318;
   --color-danger-soft: #fdecea;
   --color-danger-line: #f5c2bd;
