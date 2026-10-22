@@ -9,6 +9,7 @@ import {
   getDocument,
   getMe,
   listDocuments,
+  listPlans,
   reorderDocuments,
   setModel,
 } from '../api/endpoints';
@@ -23,6 +24,12 @@ export const documentKey = (projectId: string, documentId: string) =>
 
 export function useMe() {
   return useQuery({ queryKey: meKey, queryFn: getMe });
+}
+
+export const plansKey = ['plans'] as const;
+
+export function usePlans() {
+  return useQuery({ queryKey: plansKey, queryFn: listPlans });
 }
 
 export function useSetModel() {

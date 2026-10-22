@@ -63,13 +63,14 @@ A project id the caller does not own is a `404`, not a `403`, so someone else's 
 
 | Column | What it is |
 |---|---|
-| `id` | Maya's own UUID. Every foreign key (projects, usage) points here, never at Clerk. |
+| `id` | Maya's own UUID. Every foreign key (projects, usage, subscriptions) points here, never at Clerk. |
 | `clerk_user_id` | The token's `sub`. Unique. |
 | `model_key` | The model the writer generates with. |
 | `monthly_budget_micro_usd` | Optional per-writer override of the AI budget. |
+| `stripe_customer_id` | Set on the writer's first checkout; see [billing.md](billing.md). |
 
 No email, name or password is stored.
-Where Maya needs the email, it asks Clerk: the browser reads it from `useUser()`, and the backend would call Clerk's API.
+Where Maya needs the email, it asks Clerk: the browser reads it from `useUser()`, and the backend calls Clerk's API when it creates a writer's Stripe customer.
 A copy would go stale the moment a writer changed their address in Clerk.
 
 ### Frontend
@@ -83,7 +84,7 @@ A copy would go stale the moment a writer changed their address in Clerk.
   Nothing is kept in `localStorage`.
 - **A `401`** from the backend calls the handler `RequireAuth` registers, which signs out through Clerk.
 - **`App`** clears the React Query cache whenever the signed-in user id changes, so one account's data is never shown to the next.
-- **The account menu** shows the email from Clerk, and offers *Manage account* (Clerk's profile modal: email, password, sessions, connected accounts) and *Log out*.
+- **The account menu** shows the email from Clerk, and offers *Plan & billing*, *Manage account* (Clerk's profile modal: email, password, sessions, connected accounts) and *Log out*.
 
 ## Configuration
 

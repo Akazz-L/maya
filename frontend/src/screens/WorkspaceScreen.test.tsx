@@ -399,7 +399,7 @@ describe('WorkspaceScreen', () => {
   it('writes a plan by hand once the budget is spent', async () => {
     const fetchMock = mockApi({ me: BLOCKED });
     renderAt('/p/p1/d/c1');
-    await screen.findByText(/budget used — ai paused/i);
+    await screen.findByRole('link', { name: /upgrade/i });
 
     await userEvent.click(screen.getByRole('tab', { name: 'Plan' }));
     expect(await screen.findByRole('button', { name: /generate plan/i })).toBeDisabled();
@@ -667,7 +667,7 @@ describe('WorkspaceScreen', () => {
     mockApi({ me: BLOCKED });
     renderAt('/p/p1/d/c1');
 
-    expect(await screen.findByText(/budget used — ai paused/i)).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /upgrade/i })).toBeInTheDocument();
     expect(screen.getByLabelText('Message')).toBeDisabled();
     expect(screen.getByText(/budget used — chat is paused/i)).toBeInTheDocument();
 
@@ -727,7 +727,7 @@ describe('WorkspaceScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: /generate plan/i }));
 
     expect(await screen.findByText(/budget for this month is used up/i)).toBeInTheDocument();
-    expect(await screen.findByText(/budget used — ai paused/i)).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /upgrade/i })).toBeInTheDocument();
     // The form stays, so the writer can still fill the plan in by hand.
     expect(await screen.findByLabelText('Goal')).toBeEnabled();
   });

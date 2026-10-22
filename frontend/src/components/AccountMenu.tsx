@@ -1,5 +1,6 @@
 import { useClerk, useUser } from '@clerk/react';
-import { LogOut, UserRound } from 'lucide-react';
+import { CreditCard, LogOut, UserRound } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { Menu, MenuItem, MenuLabel } from './ui/menu';
 
@@ -7,6 +8,7 @@ import { Menu, MenuItem, MenuLabel } from './ui/menu';
 export function AccountMenu() {
   const { openUserProfile, signOut } = useClerk();
   const { user } = useUser();
+  const navigate = useNavigate();
 
   const email = user?.primaryEmailAddress?.emailAddress ?? null;
   // Before the account loads there is no letter to show, so stand in with a dot.
@@ -34,6 +36,9 @@ export function AccountMenu() {
       )}
     >
       {email && <MenuLabel>{email}</MenuLabel>}
+      <MenuItem icon={<CreditCard aria-hidden />} onSelect={() => navigate('/plans')}>
+        Plan & billing
+      </MenuItem>
       <MenuItem icon={<UserRound aria-hidden />} onSelect={() => openUserProfile()}>
         Manage account
       </MenuItem>
