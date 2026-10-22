@@ -22,7 +22,10 @@ export function AppHeader({ leading, title, children }: AppHeaderProps) {
         className="rounded-control px-1.5 py-1 text-lg leading-none hover:bg-surface-sunken"
         aria-label="Maya — all projects"
       >
-        <Wordmark />
+        <span className="flex items-center gap-2">
+          <img src="/logo-mark.svg" alt="" className="size-6" />
+          <Wordmark />
+        </span>
       </Link>
       {title && (
         <>

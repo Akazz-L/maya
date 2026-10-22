@@ -12,14 +12,12 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        /** The one action a view is for. Ink, never the accent colour. */
-        primary: 'bg-ink text-white hover:bg-ink/88 active:bg-ink',
+        /** The one action a view is for, and anything that starts or accepts the AI's work. */
+        primary: 'bg-brand text-on-accent hover:bg-brand-strong',
         secondary:
           'border border-line bg-surface text-ink shadow-xs hover:border-line-strong hover:bg-surface-muted',
         ghost: 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
-        /** Starts or accepts something the AI proposes. */
-        pencil: 'bg-pencil text-white hover:bg-pencil-strong',
-        danger: 'bg-danger text-white hover:bg-danger/90',
+        danger: 'bg-danger text-on-accent hover:bg-danger/90',
       },
       size: {
         sm: 'h-7 px-2.5 text-xs [&_svg]:size-3.5',

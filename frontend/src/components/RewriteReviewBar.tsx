@@ -51,7 +51,7 @@ export function RewriteReviewBar({
 
   return (
     <ReviewBar label="Review rewrite">
-      <Button ref={primary} variant="pencil" size="sm" onClick={onAccept}>
+      <Button ref={primary} variant="primary" size="sm" onClick={onAccept}>
         <Check aria-hidden />
         Accept
       </Button>

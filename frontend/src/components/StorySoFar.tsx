@@ -41,7 +41,11 @@ const STATUS: Record<SummaryStatus, { label: string; detail: string; warn: boole
     detail: 'One of those chapters changed. The next AI request on this chapter rewrites it.',
     warn: true,
   },
-  edited: { label: 'Edited by you', detail: 'Yours, and kept: nothing rewrites it unless you ask.', warn: false },
+  edited: {
+    label: 'Edited by you',
+    detail: 'Yours, and kept: nothing rewrites it unless you ask.',
+    warn: false,
+  },
   edited_stale: {
     label: 'Edited by you',
     detail:
@@ -98,12 +102,12 @@ export function StorySoFar({
             The story so far
           </h3>
           <p className="mt-1 text-sm text-ink-subtle">
-            Everything before the recent chapters, as one running record. The AI reads this in
-            their place, so nothing older is forgotten and none of it is re-read in full.
+            Everything before the recent chapters, as one running record. The AI reads this in their
+            place, so nothing older is forgotten and none of it is re-read in full.
           </p>
         </div>
         <Button
-          variant={digest ? 'secondary' : 'pencil'}
+          variant={digest ? 'secondary' : 'primary'}
           disabled={busy || aiBlocked || generating}
           onClick={() => (mine ? setConfirming(true) : onGenerate())}
         >
@@ -120,7 +124,7 @@ export function StorySoFar({
         )}
       >
         {generating ? (
-          <span className="flex items-center gap-2 text-pencil-strong">
+          <span className="flex items-center gap-2 text-brand-strong">
             <Spinner /> Reading back over the story…
           </span>
         ) : (
@@ -143,8 +147,8 @@ export function StorySoFar({
       />
 
       <p id="story-so-far-covers" className="mt-2 text-xs text-ink-subtle">
-        Covers {covers.length === 1 ? covers[0] : `${covers[0]} – ${covers[covers.length - 1]}`}{' '}
-        ({covers.length} {covers.length === 1 ? 'chapter' : 'chapters'}). Clear it to hand the
+        Covers {covers.length === 1 ? covers[0] : `${covers[0]} – ${covers[covers.length - 1]}`} (
+        {covers.length} {covers.length === 1 ? 'chapter' : 'chapters'}). Clear it to hand the
         chapters back to the AI.
       </p>
 

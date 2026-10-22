@@ -6,9 +6,9 @@
  * Design tokens. Every colour in the app comes from here, including the
  * CodeMirror widgets, which read the same custom properties.
  *
- * The palette is a manuscript on a desk: cool paper around a white page,
- * graphite ink, and one accent — the editor's blue pencil — reserved for what
- * the AI proposes. Primary actions are ink, so blue always means "suggested".
+ * The palette is the Maya brand: lavender-tinted paper around a white page, ink,
+ * and one accent — the brand purple. Primary actions and everything the AI
+ * proposes use it. Dark mode follows the OS and only redefines these variables.
  *
  * `static`: CodeMirror themes read these variables from JavaScript, where
  * Tailwind cannot see them, so every one is emitted whether a class uses it or not.
@@ -17,23 +17,27 @@
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-serif: 'Literata Variable', 'Iowan Old Style', Georgia, serif;
 
-  --color-canvas: #f3f4f1;
+  --color-canvas: #f5f3f7;
   --color-surface: #ffffff;
-  --color-surface-muted: #f8f9f6;
-  --color-surface-sunken: #eceee9;
-  --color-line: #dee1db;
-  --color-line-strong: #c7cbc3;
+  --color-surface-muted: #faf9fb;
+  --color-surface-sunken: #eae6ed;
+  --color-line: #e0dae6;
+  --color-line-strong: #cbc3d4;
 
-  --color-ink: #1d2127;
-  --color-ink-muted: #545b65;
-  --color-ink-subtle: #7d848d;
-  --color-ink-faint: #a7adb3;
+  --color-ink: #1f1b26;
+  --color-ink-muted: #585163;
+  --color-ink-subtle: #80788c;
+  --color-ink-faint: #aaa3b5;
 
-  --color-pencil: #2f4fc4;
-  --color-pencil-strong: #243f9f;
-  --color-pencil-soft: #e9edfb;
-  --color-pencil-faint: #f4f6fd;
-  --color-pencil-line: #c3cdf3;
+  --color-brand: #6237b2;
+  --color-brand-strong: #4e2b92;
+  --color-brand-soft: #eae6ed;
+  --color-brand-faint: #f6f3fa;
+  --color-brand-line: #d3c6ec;
+  --color-on-accent: #ffffff;
+
+  /* Fixed brand gradient, as on the palette sheet; identical in both schemes. */
+  --gradient-brand: linear-gradient(135deg, #6237b2 0%, #9d7ddb 55%, #eae6ed 100%);
 
   --color-danger: #b42318;
   --color-danger-soft: #fdecea;
@@ -74,6 +78,47 @@
   }
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --color-canvas: #14111a;
+    --color-surface: #1c1824;
+    --color-surface-muted: #221e2b;
+    --color-surface-sunken: #0f0d14;
+    --color-line: #332d3e;
+    --color-line-strong: #483f58;
+
+    --color-ink: #ece8f2;
+    --color-ink-muted: #b4adc1;
+    --color-ink-subtle: #8c8499;
+    --color-ink-faint: #625a70;
+
+    /* #9d7ddb is the brand's light purple: 5.4:1 against the dark surface. */
+    --color-brand: #9d7ddb;
+    --color-brand-strong: #b9a1ea;
+    --color-brand-soft: #2c2142;
+    --color-brand-faint: #241b36;
+    --color-brand-line: #4a3a73;
+    --color-on-accent: #14111a;
+
+    --color-danger: #f0766b;
+    --color-danger-soft: #3a1a1c;
+    --color-danger-line: #63292d;
+    --color-success: #4cc38a;
+    --color-warning: #e8a53c;
+    --color-warning-soft: #33260f;
+
+    --color-diff-del: #f0766b;
+    --color-diff-del-bg: #3a1c1f;
+    --color-diff-ins: #5fd493;
+    --color-diff-ins-bg: #14301f;
+
+    --shadow-float: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -6px rgb(0 0 0 / 0.55);
+    --shadow-overlay: 0 24px 48px -12px rgb(0 0 0 / 0.7);
+  }
+}
+
 /* Stacking layers, named once so nothing escalates z-index by guesswork. */
 @utility z-overlay {
   z-index: 20;
@@ -94,6 +139,10 @@ body,
   height: 100%;
 }
 
+html {
+  color-scheme: light;
+}
+
 body {
   background: var(--color-canvas);
   color: var(--color-ink);
@@ -107,11 +156,11 @@ body {
 }
 
 ::selection {
-  background: var(--color-pencil-soft);
+  background: var(--color-brand-soft);
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-pencil);
+  outline: 2px solid var(--color-brand);
   outline-offset: 2px;
 }
 

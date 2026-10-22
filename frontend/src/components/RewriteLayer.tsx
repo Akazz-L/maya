@@ -14,7 +14,7 @@ import { RewriteReviewBar } from './RewriteReviewBar';
 import { ProgressChip } from './ReviewBar';
 import { Button } from './ui/button';
 import { Kbd } from './ui/feedback';
-import { floatingPanel, pencilPanel } from './ui/floating';
+import { floatingPanel, brandPanel } from './ui/floating';
 
 export interface RewriteLayerProps {
   view: EditorView;
@@ -235,12 +235,12 @@ export function RewriteLayer({
             type="button"
             onClick={open}
             className={cn(
-              pencilPanel,
-              'flex h-7 items-center gap-1.5 pr-1.5 pl-2.5 text-xs font-medium text-pencil-strong animate-pop hover:bg-pencil-faint',
+              brandPanel,
+              'flex h-7 items-center gap-1.5 pr-1.5 pl-2.5 text-xs font-medium text-brand-strong animate-pop hover:bg-brand-faint',
             )}
           >
             <Sparkles aria-hidden className="size-3.5" /> Rewrite
-            <Kbd className="border-pencil-line bg-pencil-faint text-pencil">⌘K</Kbd>
+            <Kbd className="border-brand-line bg-brand-faint text-brand">⌘K</Kbd>
           </button>
         ))}
 

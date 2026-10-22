@@ -102,7 +102,7 @@ export function SummaryView({
         </div>
         {written && (
           <Button
-            variant={summary ? 'secondary' : 'pencil'}
+            variant={summary ? 'secondary' : 'primary'}
             disabled={busy || aiBlocked || generating}
             onClick={generate}
           >
@@ -126,7 +126,7 @@ export function SummaryView({
             )}
           >
             {generating ? (
-              <span className="flex items-center gap-2 text-pencil-strong">
+              <span className="flex items-center gap-2 text-brand-strong">
                 <Spinner /> Summarizing the chapter…
               </span>
             ) : (

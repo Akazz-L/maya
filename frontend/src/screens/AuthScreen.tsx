@@ -1,5 +1,4 @@
 import { SignIn, SignUp } from '@clerk/react';
-import { Wordmark } from '../components/Wordmark';
 
 type Mode = 'sign-in' | 'sign-up';
 
@@ -25,9 +24,9 @@ function ManuscriptSample() {
           Ines had walked it twice.
         </p>
       </div>
-      <figcaption className="absolute -right-6 -bottom-8 w-60 rounded-panel border border-pencil-line bg-surface p-3.5 shadow-float">
-        <span className="flex items-center gap-2 text-xs font-semibold text-pencil">
-          <span className="size-1.5 rounded-full bg-pencil" />
+      <figcaption className="absolute -right-6 -bottom-8 w-60 rounded-panel border border-brand-line bg-surface p-3.5 shadow-float">
+        <span className="flex items-center gap-2 text-xs font-semibold text-brand">
+          <span className="size-1.5 rounded-full bg-brand" />
           Continuity check
         </span>
         <span className="mt-1 block text-[13px] leading-snug text-ink-muted">
@@ -43,7 +42,8 @@ export function AuthScreen({ mode }: { mode: Mode }) {
   return (
     <div className="grid min-h-full lg:grid-cols-[1.1fr_1fr]">
       <section className="relative hidden flex-col justify-between overflow-hidden bg-canvas p-12 lg:flex">
-        <Wordmark className="text-2xl" />
+        <img src="/logo-wordmark-bubble.svg" alt="Maya" className="h-24 w-auto self-start" />
+        <div aria-hidden className="absolute inset-y-0 right-0 w-1.5 bg-(image:--gradient-brand)" />
         <div className="flex flex-1 items-center py-12">
           <ManuscriptSample />
         </div>
@@ -54,7 +54,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       </section>
 
       <main className="flex flex-col items-center justify-center gap-8 bg-surface px-4 py-12">
-        <Wordmark className="text-2xl lg:hidden" />
+        <img src="/logo-wordmark-bubble.svg" alt="Maya" className="h-20 w-auto lg:hidden" />
         {mode === 'sign-in' ? (
           <SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" />
         ) : (

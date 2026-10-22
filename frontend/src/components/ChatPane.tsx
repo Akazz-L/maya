@@ -40,7 +40,7 @@ function UserBubble({ text, agent }: { text: string; agent?: string | null }) {
   // A pass the writer ran reads as an action, not as something they typed.
   if (agent) {
     return (
-      <div className="ml-auto flex max-w-[85%] items-center gap-1.5 rounded-full border border-pencil-line bg-pencil-faint py-1 pr-3 pl-2.5 text-xs font-medium text-pencil-strong">
+      <div className="ml-auto flex max-w-[85%] items-center gap-1.5 rounded-full border border-brand-line bg-brand-faint py-1 pr-3 pl-2.5 text-xs font-medium text-brand-strong">
         <ScanSearch aria-hidden className="size-3.5 shrink-0" />
         {text}
       </div>
@@ -69,12 +69,12 @@ function ProposalCard({ proposal }: { proposal: ChatProposal }) {
       className={cn(
         'mt-2 flex flex-col gap-0.5 rounded-control border border-l-[3px] px-3 py-2 text-xs',
         pending
-          ? 'border-pencil-line border-l-pencil bg-pencil-faint'
+          ? 'border-brand-line border-l-brand bg-brand-faint'
           : 'border-line border-l-line-strong bg-surface',
       )}
     >
       <span className="font-medium text-ink">{describeProposal(proposal)}</span>
-      <span className={pending ? 'text-pencil-strong' : 'text-ink-subtle'}>{status}</span>
+      <span className={pending ? 'text-brand-strong' : 'text-ink-subtle'}>{status}</span>
     </div>
   );
 }
@@ -217,7 +217,7 @@ export function ChatPane({
             <div className="mr-6 text-sm leading-relaxed text-ink">
               {streaming.reply && <p className="whitespace-pre-wrap">{streaming.reply}</p>}
               {streaming.progress ? (
-                <p className="mt-1.5 text-xs font-medium text-pencil-strong">
+                <p className="mt-1.5 text-xs font-medium text-brand-strong">
                   Writing… {wordCount(streaming.progress.text)} words
                 </p>
               ) : (
@@ -234,7 +234,7 @@ export function ChatPane({
         <div
           className={cn(
             'rounded-panel border border-line bg-surface shadow-xs transition-[border-color,box-shadow]',
-            'focus-within:border-pencil focus-within:ring-3 focus-within:ring-pencil/15',
+            'focus-within:border-brand focus-within:ring-3 focus-within:ring-brand/15',
             inputDisabled && 'bg-surface-muted',
           )}
         >

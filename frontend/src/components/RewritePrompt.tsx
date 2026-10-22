@@ -6,7 +6,7 @@ import { cn } from '../lib/utils';
 import { Button } from './ui/button';
 import { controlClass } from './ui/control';
 import { Kbd } from './ui/feedback';
-import { pencilPanel } from './ui/floating';
+import { brandPanel } from './ui/floating';
 
 const PRESETS: { label: string; instruction: string }[] = [
   {
@@ -55,9 +55,9 @@ export function RewritePrompt({ initialInstruction, onSubmit, onCancel }: Rewrit
       role="dialog"
       aria-label="Rewrite selection"
       onKeyDown={onKeyDown}
-      className={cn(pencilPanel, 'w-[26rem] max-w-[calc(100vw-2rem)] p-2.5 animate-pop')}
+      className={cn(brandPanel, 'w-[26rem] max-w-[calc(100vw-2rem)] p-2.5 animate-pop')}
     >
-      <div className="mb-2 flex items-center gap-1.5 px-0.5 text-xs font-medium text-pencil-strong">
+      <div className="mb-2 flex items-center gap-1.5 px-0.5 text-xs font-medium text-brand-strong">
         <Sparkles aria-hidden className="size-3.5" /> Rewrite selection
       </div>
       <div className="flex items-center gap-1.5">
@@ -69,7 +69,7 @@ export function RewritePrompt({ initialInstruction, onSubmit, onCancel }: Rewrit
           onChange={(e) => setInstruction(e.target.value)}
           className={cn(controlClass, 'h-8 min-w-0 flex-1')}
         />
-        <Button variant="pencil" disabled={!canSubmit} onClick={submit}>
+        <Button variant="primary" disabled={!canSubmit} onClick={submit}>
           Rewrite
         </Button>
       </div>
@@ -85,8 +85,8 @@ export function RewritePrompt({ initialInstruction, onSubmit, onCancel }: Rewrit
             }}
             className={cn(
               'h-6 rounded-full border border-line px-2.5 text-xs text-ink-muted transition-colors',
-              'hover:border-pencil-line hover:bg-pencil-faint hover:text-pencil-strong',
-              'aria-pressed:border-pencil-line aria-pressed:bg-pencil-soft aria-pressed:text-pencil-strong',
+              'hover:border-brand-line hover:bg-brand-faint hover:text-brand-strong',
+              'aria-pressed:border-brand-line aria-pressed:bg-brand-soft aria-pressed:text-brand-strong',
             )}
           >
             {p.label}

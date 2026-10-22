@@ -36,8 +36,8 @@ export function ProposalReviewBar({
 
   return (
     <ReviewBar label="Review proposal">
-      <span className="px-2 text-xs font-medium text-pencil-strong">{title}</span>
-      <Button ref={primary} variant="pencil" size="sm" onClick={onAccept}>
+      <span className="px-2 text-xs font-medium text-brand-strong">{title}</span>
+      <Button ref={primary} variant="primary" size="sm" onClick={onAccept}>
         <Check aria-hidden />
         {acceptLabel}
       </Button>
