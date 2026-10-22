@@ -160,6 +160,7 @@ Frontend extras: `npm run test:watch`, `npm run typecheck`, `npm run lint`,
 
 - [`docs/auth.md`](docs/auth.md): authentication with Clerk, from the sign-in form to the user row, with configuration, local development, tests and operations.
 - [`docs/billing.md`](docs/billing.md): plans and Stripe billing: which plan a writer is on and why, checkout, the portal, webhooks, setup and known limits.
+- [`docs/deployment.md`](docs/deployment.md): where configuration and secrets live in production, going live with Stripe, and safeguards to add.
 
 ## Diagrams
 
@@ -224,7 +225,7 @@ To turn them on in Stripe (test mode first):
 1. Create a product per plan, each with one recurring monthly price, and put the price ids in `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_STUDIO`.
 2. In the Customer Portal settings, allow switching between those three prices and cancelling at the end of the period.
 3. Point a webhook at `/billing/webhook` for the `customer.subscription.created`, `.updated` and `.deleted` events, and put its signing secret in `STRIPE_WEBHOOK_SECRET`.
-   Locally: `stripe listen --forward-to localhost:8000/billing/webhook`.
+   Locally, `make dev` forwards webhooks with `stripe listen` when billing is configured.
 
 A writer upgrades from **Plan & billing** in the account menu, which opens Stripe Checkout.
 A subscriber changes plan, updates their card or cancels in Stripe's billing portal from the same page.

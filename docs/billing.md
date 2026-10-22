@@ -176,13 +176,10 @@ One row per Stripe subscription, not per writer, so an ended subscription and it
 
 ### Locally
 
-```bash
-stripe listen --forward-to localhost:8000/billing/webhook \
-  --events customer.subscription.created,customer.subscription.updated,customer.subscription.deleted
-```
+`make dev` starts `stripe listen` for you when `STRIPE_SECRET_KEY` is set in `.env` and the Stripe CLI is installed, and skips it otherwise.
+`make stripe-listen` runs it alone.
 
-It prints the `whsec_…` to put in `STRIPE_WEBHOOK_SECRET` (the same one each run), and must stay running while you test.
-`stripe listen --api-key sk_test_…` works without `stripe login`.
+It prints the `whsec_…` to put in `STRIPE_WEBHOOK_SECRET` (the same one each run).
 Pay with the test card `4242 4242 4242 4242`, any future expiry, any CVC.
 Stripe's [test clocks](https://docs.stripe.com/billing/testing/test-clocks) simulate renewals and failed payments without waiting a month.
 
