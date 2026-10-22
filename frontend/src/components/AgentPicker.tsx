@@ -28,7 +28,7 @@ export function AgentPicker({ agents, disabledReason, onRun }: AgentPickerProps)
           className={cn(
             'flex size-7 items-center justify-center rounded-full border transition-colors',
             open
-              ? 'border-pencil-line bg-pencil-soft text-pencil-strong'
+              ? 'border-brand-line bg-brand-soft text-brand-strong'
               : 'border-line bg-surface text-ink-subtle hover:border-line-strong hover:text-ink',
           )}
         >

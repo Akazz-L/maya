@@ -143,7 +143,7 @@ export function DocumentSidebar({
           // Where the dragged row will land: above this one.
           dropTargetId === doc.id &&
             draggingId !== doc.id &&
-            'before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded-full before:bg-pencil',
+            'before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded-full before:bg-brand',
           collapsed && 'justify-center px-0',
         )}
       >
@@ -160,7 +160,7 @@ export function DocumentSidebar({
                 if (e.key === 'Enter') commitRename(doc.id, e.currentTarget.value);
                 if (e.key === 'Escape') setRenamingId(null);
               }}
-              className="-mx-1 h-6 min-w-0 flex-1 rounded-[4px] border border-pencil bg-surface px-1 text-sm text-ink outline-none"
+              className="-mx-1 h-6 min-w-0 flex-1 rounded-[4px] border border-brand bg-surface px-1 text-sm text-ink outline-none"
             />
           </>
         ) : (
@@ -174,7 +174,7 @@ export function DocumentSidebar({
               title={collapsed ? doc.title : undefined}
               className={cn(
                 'flex h-full min-w-0 flex-1 items-center gap-2 text-left outline-none',
-                'after:absolute after:inset-0 after:rounded-control focus-visible:after:ring-2 focus-visible:after:ring-pencil',
+                'after:absolute after:inset-0 after:rounded-control focus-visible:after:ring-2 focus-visible:after:ring-brand',
                 collapsed && 'justify-center',
               )}
             >

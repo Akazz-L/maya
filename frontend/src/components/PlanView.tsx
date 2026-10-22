@@ -30,7 +30,7 @@ interface PlanViewProps {
 function PlanSkeleton({ message }: { message: string }) {
   return (
     <div className="flex flex-col gap-6">
-      <p role="status" className="flex items-center gap-2 text-sm text-pencil-strong">
+      <p role="status" className="flex items-center gap-2 text-sm text-brand-strong">
         <Spinner /> {message}
       </p>
       <Skeleton className="h-16" />
@@ -91,7 +91,7 @@ export function PlanView({
             </Button>
           )}
           <Button
-            variant={plan ? 'secondary' : 'pencil'}
+            variant={plan ? 'secondary' : 'primary'}
             disabled={aiDisabled}
             onClick={onGenerate}
           >
@@ -99,7 +99,7 @@ export function PlanView({
             {plan ? 'Regenerate' : 'Generate plan'}
           </Button>
           {plan && (
-            <Button variant="pencil" disabled={aiDisabled} onClick={onGenerateDraft}>
+            <Button variant="primary" disabled={aiDisabled} onClick={onGenerateDraft}>
               <PenLine aria-hidden />
               Draft from plan
             </Button>
@@ -115,7 +115,7 @@ export function PlanView({
         <div className="mx-auto w-full max-w-page px-6 pb-3">
           <div
             role="status"
-            className="flex items-center gap-3 rounded-panel bg-ink px-3.5 py-2 text-sm text-white animate-pop"
+            className="flex items-center gap-3 rounded-panel bg-ink px-3.5 py-2 text-sm text-canvas animate-pop"
           >
             <span className="flex-1">
               {undo === 'regenerated' ? 'Plan regenerated.' : 'Plan removed.'}
@@ -123,7 +123,7 @@ export function PlanView({
             <button
               type="button"
               onClick={onUndo}
-              className="rounded px-1.5 py-0.5 font-medium text-pencil-soft underline-offset-2 hover:underline"
+              className="rounded px-1.5 py-0.5 font-medium underline-offset-2 hover:underline"
             >
               Undo
             </button>

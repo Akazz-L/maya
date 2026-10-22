@@ -71,7 +71,7 @@ export function ChapterToolbar({
         size="sm"
         aria-pressed={chatOpen}
         onClick={onToggleChat}
-        className="ml-auto aria-pressed:bg-pencil-soft aria-pressed:text-pencil-strong"
+        className="ml-auto aria-pressed:bg-brand-soft aria-pressed:text-brand-strong"
       >
         <MessageSquare aria-hidden />
         Chat

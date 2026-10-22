@@ -136,8 +136,8 @@ export const suggestionTheme = EditorView.baseTheme({
   '.cm-suggestion': { whiteSpace: 'pre-wrap' },
   '.cm-suggestion-diff': {
     borderRadius: '2px',
-    backgroundColor: 'var(--color-pencil-faint)',
-    boxShadow: '0 0 0 2px var(--color-pencil-faint)',
+    backgroundColor: 'var(--color-brand-faint)',
+    boxShadow: '0 0 0 2px var(--color-brand-faint)',
   },
   '.cm-suggestion-card': {
     display: 'block',
@@ -145,7 +145,7 @@ export const suggestionTheme = EditorView.baseTheme({
     padding: '9px 11px 10px',
     borderRadius: 'var(--radius-panel)',
     border: '1px solid var(--color-line)',
-    borderLeft: '3px solid var(--color-pencil)',
+    borderLeft: '3px solid var(--color-brand)',
     backgroundColor: 'var(--color-surface)',
     boxShadow: 'var(--shadow-float)',
     font: '400 13px/1.5 var(--font-sans)',
@@ -155,7 +155,7 @@ export const suggestionTheme = EditorView.baseTheme({
   },
   '.cm-suggestion-critical': { borderLeftColor: 'var(--color-danger)' },
   '.cm-suggestion-minor': { borderLeftColor: 'var(--color-warning)' },
-  '.cm-suggestion-style': { borderLeftColor: 'var(--color-pencil)' },
+  '.cm-suggestion-style': { borderLeftColor: 'var(--color-brand)' },
   '.cm-suggestion-head': {
     display: 'flex',
     alignItems: 'center',
@@ -174,7 +174,7 @@ export const suggestionTheme = EditorView.baseTheme({
     width: '7px',
     height: '7px',
     borderRadius: '50%',
-    backgroundColor: 'var(--color-pencil)',
+    backgroundColor: 'var(--color-brand)',
   },
   '.cm-suggestion-critical .cm-suggestion-dot': { backgroundColor: 'var(--color-danger)' },
   '.cm-suggestion-minor .cm-suggestion-dot': { backgroundColor: 'var(--color-warning)' },
@@ -190,11 +190,14 @@ export const suggestionTheme = EditorView.baseTheme({
     transition: 'background-color 150ms, border-color 150ms',
   },
   '.cm-suggestion-actions button:focus-visible': {
-    outline: '2px solid var(--color-pencil)',
+    outline: '2px solid var(--color-brand)',
     outlineOffset: '2px',
   },
-  '.cm-suggestion-accept': { backgroundColor: 'var(--color-pencil)', color: '#fff' },
-  '.cm-suggestion-accept:hover': { backgroundColor: 'var(--color-pencil-strong)' },
+  '.cm-suggestion-accept': {
+    backgroundColor: 'var(--color-brand)',
+    color: 'var(--color-on-accent)',
+  },
+  '.cm-suggestion-accept:hover': { backgroundColor: 'var(--color-brand-strong)' },
   // Scoped like the rule above, which would otherwise win and hide the border.
   '.cm-suggestion-actions .cm-suggestion-discard': {
     backgroundColor: 'var(--color-surface)',

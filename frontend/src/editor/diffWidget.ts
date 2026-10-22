@@ -63,27 +63,27 @@ export class DiffWidget extends WidgetType {
   }
 }
 
-// Colours are the design tokens from index.css: the AI's work in blue pencil,
+// Colours are the design tokens from index.css: the AI's work in the brand purple,
 // removals in proofreader's red, insertions in green.
 export const diffTheme = EditorView.baseTheme({
   '.cm-rewrite-selection': {
-    backgroundColor: 'var(--color-pencil-soft)',
-    boxShadow: '0 0 0 2px var(--color-pencil-soft)',
+    backgroundColor: 'var(--color-brand-soft)',
+    boxShadow: '0 0 0 2px var(--color-brand-soft)',
     borderRadius: '2px',
   },
   '.cm-rewrite-widget': { whiteSpace: 'pre-wrap', borderRadius: '2px' },
   '.cm-rewrite-stream': {
-    backgroundColor: 'var(--color-pencil-faint)',
-    color: 'var(--color-pencil-strong)',
-    boxShadow: '0 0 0 2px var(--color-pencil-faint)',
+    backgroundColor: 'var(--color-brand-faint)',
+    color: 'var(--color-brand-strong)',
+    boxShadow: '0 0 0 2px var(--color-brand-faint)',
   },
   '.cm-rewrite-result': {
-    backgroundColor: 'var(--color-pencil-faint)',
-    boxShadow: '0 0 0 2px var(--color-pencil-faint)',
+    backgroundColor: 'var(--color-brand-faint)',
+    boxShadow: '0 0 0 2px var(--color-brand-faint)',
   },
   '.cm-rewrite-diff': {
-    backgroundColor: 'var(--color-pencil-faint)',
-    boxShadow: '0 0 0 2px var(--color-pencil-faint)',
+    backgroundColor: 'var(--color-brand-faint)',
+    boxShadow: '0 0 0 2px var(--color-brand-faint)',
   },
   '.cm-rewrite-del': {
     backgroundColor: 'var(--color-diff-del-bg)',
@@ -101,7 +101,7 @@ export const diffTheme = EditorView.baseTheme({
     height: '1em',
     verticalAlign: 'text-bottom',
     marginLeft: '1px',
-    backgroundColor: 'var(--color-pencil)',
+    backgroundColor: 'var(--color-brand)',
     animation: 'cm-rewrite-blink 1s steps(2, start) infinite',
   },
   '@keyframes cm-rewrite-blink': { to: { visibility: 'hidden' } },

@@ -3,7 +3,7 @@
 // them looks and behaves alike.
 import type { ReactNode } from 'react';
 import { cn } from '../lib/utils';
-import { pencilPanel } from './ui/floating';
+import { brandPanel } from './ui/floating';
 
 interface ReviewBarProps {
   /** Names the toolbar for assistive tech: "Review proposal". */
@@ -19,7 +19,7 @@ export function ReviewBar({ label, failed = false, children }: ReviewBarProps) {
       role="toolbar"
       aria-label={label}
       className={cn(
-        pencilPanel,
+        brandPanel,
         'flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-1 p-1 animate-pop',
         failed && 'border-danger-line',
       )}
@@ -48,14 +48,14 @@ export function ProgressChip({ children, action }: { children: ReactNode; action
     <div
       role="status"
       className={cn(
-        pencilPanel,
-        'flex items-center gap-2 py-1.5 pr-1.5 pl-3 text-xs font-medium text-pencil-strong animate-pop',
+        brandPanel,
+        'flex items-center gap-2 py-1.5 pr-1.5 pl-3 text-xs font-medium text-brand-strong animate-pop',
         !action && 'pr-3',
       )}
     >
       <span aria-hidden className="relative flex size-2">
-        <span className="absolute inset-0 animate-ping rounded-full bg-pencil/40" />
-        <span className="relative size-2 rounded-full bg-pencil" />
+        <span className="absolute inset-0 animate-ping rounded-full bg-brand/40" />
+        <span className="relative size-2 rounded-full bg-brand" />
       </span>
       {children}
       {action}
